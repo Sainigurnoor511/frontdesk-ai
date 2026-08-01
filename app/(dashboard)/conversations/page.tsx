@@ -1,12 +1,11 @@
-import { ChatCircle } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { getConversationsForOrg, getCallerMessagesForOrg } from '@/lib/data/conversations'
+import { ConversationsClient } from './conversations-client'
 
-export default function ConversationsPage() {
-  return (
-    <PlaceholderPage
-      title="Conversations"
-      icon={ChatCircle}
-      description="Review call transcripts and summaries."
-    />
-  )
+export default async function ConversationsPage() {
+  const [conversations, messages] = await Promise.all([
+    getConversationsForOrg(),
+    getCallerMessagesForOrg(),
+  ])
+
+  return <ConversationsClient conversations={conversations} messages={messages} />
 }

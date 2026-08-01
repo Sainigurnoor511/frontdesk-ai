@@ -12,6 +12,7 @@ import {
   ChatCircle,
   ChartBar,
   UserCircle,
+  Storefront,
   Plug,
   BookBookmark,
   Gear,
@@ -61,6 +62,7 @@ const navSections = [
     label: 'Setup',
     isSetup: true,
     items: [
+      { title: 'Business', url: '/business', icon: Storefront },
       { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
       { title: 'Bookings page', url: '/booking-page', icon: BookBookmark },
       { title: 'Settings', url: '/settings', icon: Gear },
