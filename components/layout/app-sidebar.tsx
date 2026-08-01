@@ -72,32 +72,23 @@ const navSections = [
 function PhoneNumberPill() {
   const { state } = useSidebar()
 
-  if (state === 'collapsed') {
-    return (
-      <Link href="/phone-numbers" className="relative flex size-8 items-center justify-center">
-        <div className="size-7 shrink-0 overflow-hidden rounded-lg border bg-card shadow-sm">
-          <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
-        </div>
-        <span className="absolute -right-0.5 -bottom-0.5 flex size-3.5 items-center justify-center rounded-full border bg-background text-foreground">
-          <Plus className="size-2.5" weight="bold" />
-        </span>
-      </Link>
-    )
-  }
-
   return (
-    <Link
-      href="/phone-numbers"
-      className="flex items-center gap-2 rounded-full border bg-card px-2 py-1.5 shadow-sm transition-colors hover:bg-accent"
-    >
-      <div className="size-6 shrink-0 overflow-hidden rounded-full">
-        <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
-      </div>
-      <span className="flex-1 truncate text-sm font-medium">Connect a number</span>
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full border bg-background text-muted-foreground">
-        <Phone className="size-3.5" />
-      </span>
-    </Link>
+    <SidebarMenuItem>
+      <SidebarMenuButton render={<Link href="/phone-numbers" />}>
+        <div className="relative size-4 shrink-0">
+          <div className="size-4 overflow-hidden rounded-sm">
+            <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
+          </div>
+          {state === 'collapsed' && (
+            <span className="absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full border bg-background text-foreground">
+              <Plus className="size-2" weight="bold" />
+            </span>
+          )}
+        </div>
+        <span>Connect a number</span>
+        {state !== 'collapsed' && <Phone className="ml-auto" />}
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   )
 }
 
@@ -118,9 +109,9 @@ export function AppSidebar({ orgName }: { orgName: string }) {
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <div className="flex justify-center px-2 group-data-[collapsible=icon]:px-0">
+        <SidebarMenu>
           <PhoneNumberPill />
-        </div>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="gap-0.5 py-2">
         {navSections.map((section, i) => (
