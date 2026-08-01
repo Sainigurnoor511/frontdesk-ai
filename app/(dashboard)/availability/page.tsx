@@ -1,12 +1,16 @@
-import { Clock } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { redirect } from 'next/navigation'
+import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getBusinessHours, getUpcomingExceptions } from '@/lib/data/availability'
+import { AvailabilityClient } from './availability-client'
 
-export default function AvailabilityPage() {
-  return (
-    <PlaceholderPage
-      title="Availability"
-      icon={Clock}
-      description="Set your business hours and availability windows."
-    />
-  )
+export default async function AvailabilityPage() {
+  const context = await getCurrentOrgAndUser()
+  if (!context) redirect('/login')
+
+  const [businessHours, exceptions] = await Promise.all([
+    getBusinessHours(context.org.id),
+    getUpcomingExceptions(context.org.id),
+  ])
+
+  return <AvailabilityClient businessHours={businessHours} exceptions={exceptions} />
 }

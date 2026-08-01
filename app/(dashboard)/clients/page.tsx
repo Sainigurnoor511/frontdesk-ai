@@ -1,12 +1,8 @@
-import { Users } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { getClientsForOrg } from '@/lib/data/clients'
+import { ClientsClient } from './clients-client'
 
-export default function ClientsPage() {
-  return (
-    <PlaceholderPage
-      title="Clients"
-      icon={Users}
-      description="View and manage your client records."
-    />
-  )
+export default async function ClientsPage() {
+  const clients = await getClientsForOrg()
+
+  return <ClientsClient clients={clients} />
 }
