@@ -75,7 +75,7 @@ function PhoneNumberPill() {
     <SidebarMenuItem>
       <SidebarMenuButton
         render={<Link href="/phone-numbers" />}
-        className="border bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] transition-colors hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
+        className="rounded-lg border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
         style={{
           borderColor: 'hsl(228.75deg 47.06% 86.67%)',
         }}
