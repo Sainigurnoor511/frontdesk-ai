@@ -1,4 +1,4 @@
-import { Bot, HelpCircle, Bell } from 'lucide-react'
+import { Robot, Question, Bell } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SidebarTrigger } from '@/components/ui/sidebar'
@@ -6,14 +6,14 @@ import { NavUser } from './nav-user'
 
 export function AppHeader({ email }: { email: string }) {
   return (
-    <header className="flex h-14 items-center justify-between border-b bg-background px-4">
+    <header className="flex h-16 items-center justify-between border-b bg-background px-4">
       <SidebarTrigger />
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-2">
         <Button variant="ghost" size="icon" aria-label="Assistant">
-          <Bot />
+          <Robot />
         </Button>
         <Button variant="ghost" size="icon" aria-label="Help">
-          <HelpCircle />
+          <Question />
         </Button>
         <Popover>
           <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Notifications" />}>

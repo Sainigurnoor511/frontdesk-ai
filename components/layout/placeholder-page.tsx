@@ -1,13 +1,13 @@
-import type { LucideIcon } from 'lucide-react'
+import type { Icon } from '@phosphor-icons/react'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function PlaceholderPage({
   title,
-  icon: Icon,
+  icon: IconComponent,
   description,
 }: {
   title: string
-  icon: LucideIcon
+  icon: Icon
   description: string
 }) {
   return (
@@ -18,7 +18,7 @@ export function PlaceholderPage({
       </div>
       <Card>
         <CardContent className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-          <Icon className="h-8 w-8 text-muted-foreground" />
+          <IconComponent className="h-8 w-8 text-muted-foreground" />
           <p className="font-medium">Coming soon</p>
           <p className="text-sm text-muted-foreground">This feature is on the way.</p>
         </CardContent>

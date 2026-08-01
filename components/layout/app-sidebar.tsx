@@ -3,21 +3,21 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
-  Home,
+  House,
   BookOpen,
   Calendar,
   Clock,
   Users,
-  UserCog,
-  MessageSquare,
-  BarChart3,
-  UserRound,
+  UserGear,
+  ChatCircle,
+  ChartBar,
+  UserCircle,
   Plug,
-  BookMarked,
-  Settings,
-  MoreHorizontal,
+  BookBookmark,
+  Gear,
+  DotsThree,
   Phone,
-} from 'lucide-react'
+} from '@phosphor-icons/react/dist/ssr'
 import {
   Sidebar,
   SidebarContent,
@@ -36,7 +36,7 @@ const navSections = [
   {
     label: null,
     items: [
-      { title: 'Home', url: '/', icon: Home },
+      { title: 'Home', url: '/', icon: House },
       { title: 'Guides', url: '/guides', icon: BookOpen },
     ],
   },
@@ -46,22 +46,22 @@ const navSections = [
       { title: 'Calendar', url: '/calendar', icon: Calendar },
       { title: 'Availability', url: '/availability', icon: Clock },
       { title: 'Clients', url: '/clients', icon: Users },
-      { title: 'Staff', url: '/staff', icon: UserCog },
-      { title: 'Conversations', url: '/conversations', icon: MessageSquare },
-      { title: 'Analytics', url: '/analytics', icon: BarChart3 },
+      { title: 'Staff', url: '/staff', icon: UserGear },
+      { title: 'Conversations', url: '/conversations', icon: ChatCircle },
+      { title: 'Analytics', url: '/analytics', icon: ChartBar },
     ],
   },
   {
     label: 'Receptionist',
-    items: [{ title: 'Receptionists', url: '/agents', icon: UserRound }],
+    items: [{ title: 'Receptionists', url: '/agents', icon: UserCircle }],
   },
   {
     label: 'Setup',
     isSetup: true,
     items: [
       { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
-      { title: 'Bookings page', url: '/booking-page', icon: BookMarked },
-      { title: 'Settings', url: '/settings', icon: Settings },
+      { title: 'Bookings page', url: '/booking-page', icon: BookBookmark },
+      { title: 'Settings', url: '/settings', icon: Gear },
     ],
   },
 ]
@@ -71,22 +71,26 @@ export function AppSidebar({ orgName }: { orgName: string }) {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3 border-b py-3">
+      <SidebarHeader className="gap-3 py-3">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" className="hover:bg-transparent" render={<Link href="/" />}>
-              <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
-                F
-              </div>
-              <span className="text-sm font-semibold tracking-tight">FrontDesk.ai</span>
+              <span className="text-lg font-semibold tracking-tight">
+                <span className="text-foreground">F</span>
+                <span className="font-medium text-muted-foreground">rontDesk</span>
+                <span className="font-medium text-muted-foreground">.ai</span>
+              </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton disabled className="text-muted-foreground">
-              <Phone />
-              <span>No number connected</span>
+            <SidebarMenuButton
+              render={<Link href="/phone-numbers" />}
+              className="bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
+            >
+              <Phone weight="fill" />
+              <span>Connect a number</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -100,7 +104,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                 {'isSetup' in section && section.isSetup && (
                   <SidebarMenuItem>
                     <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
-                      <Home />
+                      <House />
                       <span>{orgName}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -132,7 +136,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
             <SidebarMenu>
               <SidebarMenuItem>
                 <SidebarMenuButton>
-                  <MoreHorizontal />
+                  <DotsThree />
                   <span>More</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>

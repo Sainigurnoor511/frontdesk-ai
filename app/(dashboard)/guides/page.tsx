@@ -1,4 +1,4 @@
-import { BookOpen } from 'lucide-react'
+import { BookOpen } from '@phosphor-icons/react/dist/ssr'
 import { PlaceholderPage } from '@/components/layout/placeholder-page'
 
 export default function GuidesPage() {

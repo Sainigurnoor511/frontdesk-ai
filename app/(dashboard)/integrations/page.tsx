@@ -1,4 +1,4 @@
-import { Plug } from 'lucide-react'
+import { Plug } from '@phosphor-icons/react/dist/ssr'
 import { PlaceholderPage } from '@/components/layout/placeholder-page'
 
 export default function IntegrationsPage() {

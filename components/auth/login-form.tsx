@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Mail, Eye, EyeOff } from 'lucide-react'
+import { Envelope, Eye, EyeSlash } from '@phosphor-icons/react/dist/ssr'
 import { loginSchema, type LoginInput } from '@/lib/validations/auth'
 import { logIn } from '@/app/(auth)/actions'
 import { Button } from '@/components/ui/button'
@@ -38,7 +38,7 @@ export function LoginForm() {
         <InputGroup>
           <InputGroupInput id="email" type="email" {...register('email')} />
           <InputGroupAddon align="inline-end">
-            <Mail />
+            <Envelope />
           </InputGroupAddon>
         </InputGroup>
         {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
@@ -63,7 +63,7 @@ export function LoginForm() {
               aria-label={showPassword ? 'Hide password' : 'Show password'}
               onClick={() => setShowPassword((v) => !v)}
             >
-              {showPassword ? <EyeOff /> : <Eye />}
+              {showPassword ? <EyeSlash /> : <Eye />}
             </InputGroupButton>
           </InputGroupAddon>
         </InputGroup>
