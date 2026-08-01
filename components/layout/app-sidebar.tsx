@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -18,6 +19,9 @@ import {
   Gear,
   DotsThree,
   Phone,
+  X,
+  ChatCircleDots,
+  LockSimple,
 } from '@phosphor-icons/react/dist/ssr'
 import {
   Sidebar,
@@ -32,6 +36,14 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from '@/components/ui/sidebar'
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
 
@@ -94,6 +106,7 @@ function PhoneNumberPill() {
 
 export function AppSidebar({ orgName }: { orgName: string }) {
   const pathname = usePathname()
+  const [lockLayout, setLockLayout] = useState(false)
 
   return (
     <Sidebar collapsible="icon">
@@ -125,7 +138,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                   </SidebarMenuItem>
                 )}
                 {section.items.map((item) => (
-                  <SidebarMenuItem key={item.url}>
+                  <SidebarMenuItem key={item.url} className="group/nav-item">
                     <SidebarMenuButton
                       isActive={pathname === item.url}
                       render={<Link href={item.url} />}
@@ -140,6 +153,14 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                         </Badge>
                       </SidebarMenuBadge>
                     )}
+                    {/* TODO: persist per-user sidebar item visibility once a preferences table exists */}
+                    <button
+                      type="button"
+                      aria-label={`Remove ${item.title} from sidebar`}
+                      className="absolute top-1/2 right-1 hidden size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover/nav-item:flex group-hover/nav-item:opacity-100"
+                    >
+                      <X className="size-3" />
+                    </button>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
@@ -150,10 +171,40 @@ export function AppSidebar({ orgName }: { orgName: string }) {
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton>
-                  <DotsThree />
-                  <span>More</span>
-                </SidebarMenuButton>
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<SidebarMenuButton />}>
+                    <DotsThree />
+                    <span>More</span>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" side="top">
+                    {/* TODO: open the Assistant panel from here once it's lifted to shared layout state */}
+                    <DropdownMenuItem disabled>
+                      <ChatCircleDots />
+                      Assistant
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/business" />}>
+                      <Storefront />
+                      Business
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/agents" />}>
+                      <UserCircle />
+                      Receptionists
+                    </DropdownMenuItem>
+                    <DropdownMenuItem render={<Link href="/settings" />}>
+                      <Gear />
+                      Settings
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    {/* TODO: persist this preference once a per-user settings table exists */}
+                    <DropdownMenuCheckboxItem
+                      checked={lockLayout}
+                      onCheckedChange={setLockLayout}
+                    >
+                      <LockSimple />
+                      Lock sidebar layout
+                    </DropdownMenuCheckboxItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>

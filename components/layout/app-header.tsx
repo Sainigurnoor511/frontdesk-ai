@@ -1,11 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { usePathname } from 'next/navigation'
 import { ChatCircleDots, Bell } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
 import { SidebarToggleButton } from './sidebar-toggle-button'
+import { AssistantPanel } from './assistant-panel'
 
 const pageTitles: Record<string, string> = {
   '/': 'Home',
@@ -18,6 +20,7 @@ const pageTitles: Record<string, string> = {
   '/analytics': 'Analytics',
   '/agents': 'Receptionists',
   '/organization': 'Organization',
+  '/business': 'Business',
   '/integrations': 'Integrations',
   '/booking-page': 'Bookings page',
   '/settings': 'Settings',
@@ -27,6 +30,7 @@ const pageTitles: Record<string, string> = {
 export function AppHeader({ email, orgName }: { email: string; orgName: string }) {
   const pathname = usePathname()
   const title = pageTitles[pathname] ?? ''
+  const [assistantOpen, setAssistantOpen] = useState(false)
 
   return (
     <header className="flex h-[50px] items-center justify-between border-b bg-background px-4">
@@ -35,10 +39,17 @@ export function AppHeader({ email, orgName }: { email: string; orgName: string }
         <span className="text-sm font-medium">{title}</span>
       </div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" className="gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-1.5"
+          aria-label="Assistant panel"
+          onClick={() => setAssistantOpen(true)}
+        >
           <ChatCircleDots />
           Assistant
         </Button>
+        <AssistantPanel open={assistantOpen} onOpenChange={setAssistantOpen} />
         <Button variant="outline" size="sm">
           Help
         </Button>
