@@ -11,7 +11,6 @@ describe('signUp', () => {
     const result = await signUp({
       email: 'not-an-email',
       password: 'password123',
-      businessName: 'Acme',
     })
     expect(result).toEqual({ error: 'Enter a valid email address' })
   })

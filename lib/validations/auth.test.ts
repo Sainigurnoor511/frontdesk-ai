@@ -6,7 +6,6 @@ describe('signupSchema', () => {
     const result = signupSchema.safeParse({
       email: 'test@example.com',
       password: 'password123',
-      businessName: 'Acme Dental',
     })
     expect(result.success).toBe(true)
   })
@@ -15,7 +14,6 @@ describe('signupSchema', () => {
     const result = signupSchema.safeParse({
       email: 'not-an-email',
       password: 'password123',
-      businessName: 'Acme Dental',
     })
     expect(result.success).toBe(false)
   })
@@ -24,16 +22,6 @@ describe('signupSchema', () => {
     const result = signupSchema.safeParse({
       email: 'test@example.com',
       password: 'short',
-      businessName: 'Acme Dental',
-    })
-    expect(result.success).toBe(false)
-  })
-
-  it('rejects empty business name', () => {
-    const result = signupSchema.safeParse({
-      email: 'test@example.com',
-      password: 'password123',
-      businessName: '',
     })
     expect(result.success).toBe(false)
   })

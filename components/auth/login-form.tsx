@@ -1,15 +1,23 @@
 'use client'
 
+import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Mail, Eye, EyeOff } from 'lucide-react'
 import { loginSchema, type LoginInput } from '@/lib/validations/auth'
 import { logIn } from '@/app/(auth)/actions'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import {
+  InputGroup,
+  InputGroupInput,
+  InputGroupAddon,
+  InputGroupButton,
+} from '@/components/ui/input-group'
 import { toast } from 'sonner'
 
 export function LoginForm() {
+  const [showPassword, setShowPassword] = useState(false)
   const {
     register,
     handleSubmit,
@@ -27,12 +35,38 @@ export function LoginForm() {
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
-        <Input id="email" type="email" placeholder="you@example.com" {...register('email')} />
+        <InputGroup>
+          <InputGroupInput id="email" type="email" {...register('email')} />
+          <InputGroupAddon align="inline-end">
+            <Mail />
+          </InputGroupAddon>
+        </InputGroup>
         {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Password</Label>
-        <Input id="password" type="password" placeholder="Your password" {...register('password')} />
+        <div className="flex items-center justify-between">
+          <Label htmlFor="password">Password</Label>
+          <a href="#" className="text-xs text-muted-foreground underline underline-offset-4">
+            Forgot your password?
+          </a>
+        </div>
+        <InputGroup>
+          <InputGroupInput
+            id="password"
+            type={showPassword ? 'text' : 'password'}
+            {...register('password')}
+          />
+          <InputGroupAddon align="inline-end">
+            <InputGroupButton
+              type="button"
+              size="icon-xs"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+              onClick={() => setShowPassword((v) => !v)}
+            >
+              {showPassword ? <EyeOff /> : <Eye />}
+            </InputGroupButton>
+          </InputGroupAddon>
+        </InputGroup>
         {errors.password && (
           <p className="text-sm text-destructive">{errors.password.message}</p>
         )}

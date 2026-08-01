@@ -13,6 +13,9 @@ function friendlyAuthError(message: string): string {
   if (message.includes('Invalid login credentials')) {
     return 'Incorrect email or password.'
   }
+  if (message.includes('rate limit')) {
+    return 'Too many attempts. Please wait a few minutes and try again.'
+  }
   return 'Something went wrong. Please try again.'
 }
 
@@ -36,9 +39,10 @@ export async function signUp(input: SignupInput): Promise<{ error: string }> {
   }
 
   const serviceClient = createServiceRoleClient()
+  const businessName = parsed.data.email.split('@')[0]
   const { data: org, error: orgError } = await serviceClient
     .from('organizations')
-    .insert({ name: parsed.data.businessName })
+    .insert({ name: businessName })
     .select('id')
     .single()
 
