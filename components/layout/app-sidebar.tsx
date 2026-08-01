@@ -76,12 +76,18 @@ function PhoneNumberPill() {
     <SidebarMenuItem>
       <SidebarMenuButton render={<Link href="/phone-numbers" />}>
         <div className="relative size-4 shrink-0">
-          <div className="size-4 overflow-hidden rounded-sm">
+          <div
+            className="size-4 overflow-hidden rounded-sm border"
+            style={{
+              backgroundColor: 'hsl(225deg 66.67% 97.65%)',
+              borderColor: 'hsl(228.75deg 47.06% 86.67%)',
+            }}
+          >
             <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
           </div>
           {state === 'collapsed' && (
-            <span className="absolute -right-1 -bottom-1 flex size-2.5 items-center justify-center rounded-full border bg-background text-foreground">
-              <Plus className="size-2" weight="bold" />
+            <span className="absolute -right-0.5 -bottom-0.5 flex size-2 items-center justify-center rounded-full border bg-background text-foreground">
+              <Plus className="size-1.5" weight="bold" />
             </span>
           )}
         </div>
@@ -100,11 +106,10 @@ export function AppSidebar({ orgName }: { orgName: string }) {
       <SidebarHeader className="gap-3 py-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="hover:bg-transparent" render={<Link href="/" />}>
-              <span className="text-lg font-semibold tracking-tight">
-                <span className="text-foreground">F</span>
-                <span className="font-medium text-muted-foreground">rontDesk</span>
-                <span className="font-medium text-muted-foreground">.ai</span>
+            <SidebarMenuButton className="h-10 hover:bg-transparent" render={<Link href="/" />}>
+              <span className="text-base font-semibold not-italic">F</span>
+              <span className="text-base font-semibold tracking-tight text-muted-foreground">
+                rontDesk<span className="text-foreground">.ai</span>
               </span>
             </SidebarMenuButton>
           </SidebarMenuItem>
