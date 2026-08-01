@@ -37,6 +37,9 @@ export async function signUp(input: SignupInput): Promise<{ error: string }> {
   if (!data.user) {
     return { error: 'Something went wrong. Please try again.' }
   }
+  if (data.user.identities?.length === 0) {
+    return { error: 'An account with this email already exists.' }
+  }
 
   const serviceClient = createServiceRoleClient()
   const businessName = parsed.data.email.split('@')[0]

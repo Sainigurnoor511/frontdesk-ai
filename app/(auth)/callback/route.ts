@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { createServerClient } from '@supabase/ssr'
+import { createServiceRoleClient } from '@/lib/supabase/server'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -9,7 +10,27 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  const supabase = await createClient()
+  let response = NextResponse.redirect(`${origin}/`)
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll()
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.redirect(`${origin}/`)
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          )
+        },
+      },
+    }
+  )
+
   const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
   if (error || !data.user) {
@@ -40,5 +61,5 @@ export async function GET(request: NextRequest) {
       .insert({ organization_id: org.id, user_id: data.user.id, role: 'owner' })
   }
 
-  return NextResponse.redirect(`${origin}/`)
+  return response
 }
