@@ -16,7 +16,6 @@ import {
   BookBookmark,
   Gear,
   DotsThree,
-  Phone,
 } from '@phosphor-icons/react/dist/ssr'
 import {
   Sidebar,
@@ -31,6 +30,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
 import { Badge } from '@/components/ui/badge'
+import { Orb } from '@/components/ui/orb'
 
 const navSections = [
   {
@@ -89,7 +89,9 @@ export function AppSidebar({ orgName }: { orgName: string }) {
               render={<Link href="/phone-numbers" />}
               className="bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary"
             >
-              <Phone weight="fill" />
+              <div className="size-4 shrink-0 overflow-hidden rounded-full">
+                <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
+              </div>
               <span>Connect a number</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
