@@ -21,6 +21,7 @@ export type OrganizationSettings = {
   featureGroupSessions: boolean
   featureRentals: boolean
   featureGuides: boolean
+  bookingPageEnabled: boolean
 }
 
 function defaultOrganizationSettings(organizationId: string): OrganizationSettings {
@@ -45,6 +46,7 @@ function defaultOrganizationSettings(organizationId: string): OrganizationSettin
     featureGroupSessions: true,
     featureRentals: true,
     featureGuides: true,
+    bookingPageEnabled: true,
   }
 }
 
@@ -55,7 +57,7 @@ export async function getOrganizationSettings(
   const { data } = await supabase
     .from('organization_settings')
     .select(
-      'id, organization_id, notify_post_call_summary, notify_appointment_reminders, notify_client_bookings, notify_staff_bookings, feature_services, feature_staff, feature_assets, feature_products, feature_availability, feature_custom_timezones, feature_booking_page, feature_messages, feature_faq, feature_appointments, feature_home_mobile, feature_group_sessions, feature_rentals, feature_guides'
+      'id, organization_id, notify_post_call_summary, notify_appointment_reminders, notify_client_bookings, notify_staff_bookings, feature_services, feature_staff, feature_assets, feature_products, feature_availability, feature_custom_timezones, feature_booking_page, feature_messages, feature_faq, feature_appointments, feature_home_mobile, feature_group_sessions, feature_rentals, feature_guides, booking_page_enabled'
     )
     .eq('organization_id', organizationId)
     .maybeSingle()
@@ -83,5 +85,6 @@ export async function getOrganizationSettings(
     featureGroupSessions: data.feature_group_sessions,
     featureRentals: data.feature_rentals,
     featureGuides: data.feature_guides,
+    bookingPageEnabled: data.booking_page_enabled,
   }
 }

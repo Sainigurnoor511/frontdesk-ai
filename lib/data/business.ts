@@ -27,6 +27,7 @@ export type Service = {
   durationMinutes: number
   price: number
   serviceType: 'appointment' | 'home_mobile' | 'group_session' | 'rental'
+  showOnBookingPage: boolean
 }
 
 export type BusinessAsset = {
@@ -106,7 +107,7 @@ export async function getServices(organizationId: string): Promise<Service[]> {
   const supabase = await createClient()
   const { data } = await supabase
     .from('services')
-    .select('id, name, description, duration_minutes, price, service_type')
+    .select('id, name, description, duration_minutes, price, service_type, show_on_booking_page')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
 
@@ -119,6 +120,7 @@ export async function getServices(organizationId: string): Promise<Service[]> {
     durationMinutes: service.duration_minutes,
     price: Number(service.price),
     serviceType: service.service_type,
+    showOnBookingPage: service.show_on_booking_page,
   }))
 }
 

@@ -29,3 +29,8 @@ export const updateFeatureSettingsSchema = z
   })
   .partial()
 export type UpdateFeatureSettingsInput = z.infer<typeof updateFeatureSettingsSchema>
+
+export const updateBookingPageSettingsSchema = z.object({
+  bookingPageEnabled: z.boolean(),
+})
+export type UpdateBookingPageSettingsInput = z.infer<typeof updateBookingPageSettingsSchema>
