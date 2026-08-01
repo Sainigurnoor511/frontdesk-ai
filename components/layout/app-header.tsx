@@ -4,8 +4,8 @@ import { usePathname } from 'next/navigation'
 import { ChatCircleDots, Bell } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { SidebarTrigger } from '@/components/ui/sidebar'
 import { NavUser } from './nav-user'
+import { SidebarToggleButton } from './sidebar-toggle-button'
 
 const pageTitles: Record<string, string> = {
   '/': 'Home',
@@ -31,7 +31,7 @@ export function AppHeader({ email, orgName }: { email: string; orgName: string }
   return (
     <header className="flex h-[50px] items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">
-        <SidebarTrigger className="rounded-md border" />
+        <SidebarToggleButton className="rounded-md border" />
         <span className="text-sm font-medium">{title}</span>
       </div>
       <div className="flex items-center gap-2">
