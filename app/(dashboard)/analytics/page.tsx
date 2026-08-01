@@ -1,12 +1,42 @@
-import { ChartBar } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { redirect } from 'next/navigation'
+import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getServices, getLocations } from '@/lib/data/business'
+import { getStaffForOrg } from '@/lib/data/staff'
+import {
+  getOverviewMetrics,
+  getCallStats,
+  getCallVolumeByDay,
+  getConversionRate,
+  getClientStats,
+  getDateRange,
+} from '@/lib/data/analytics'
+import { AnalyticsClient } from './analytics-client'
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  const context = await getCurrentOrgAndUser()
+  if (!context) redirect('/login')
+
+  const { startDate, endDate } = getDateRange('7d')
+
+  const [overview, callStats, callVolume, conversionRate, clientStats, services, staff, locations] =
+    await Promise.all([
+      getOverviewMetrics(context.org.id, startDate, endDate),
+      getCallStats(context.org.id, startDate, endDate),
+      getCallVolumeByDay(context.org.id, startDate, endDate),
+      getConversionRate(context.org.id, startDate, endDate),
+      getClientStats(context.org.id, startDate, endDate),
+      getServices(context.org.id),
+      getStaffForOrg(),
+      getLocations(context.org.id),
+    ])
+
   return (
-    <PlaceholderPage
-      title="Analytics"
-      icon={ChartBar}
-      description="Track call volume and performance."
+    <AnalyticsClient
+      initialRange="7d"
+      initialData={{ overview, callStats, callVolume, conversionRate, clientStats }}
+      services={services}
+      staff={staff}
+      locations={locations}
     />
   )
 }
