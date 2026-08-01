@@ -1,12 +1,8 @@
-import { Plug } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { getEnabledIntegrationsForOrg } from '@/lib/data/integrations'
+import { IntegrationsClient } from './integrations-client'
 
-export default function IntegrationsPage() {
-  return (
-    <PlaceholderPage
-      title="Integrations"
-      icon={Plug}
-      description="Connect calendars, CRMs, and other tools."
-    />
-  )
+export default async function IntegrationsPage() {
+  const enabledIntegrationSlugs = await getEnabledIntegrationsForOrg()
+
+  return <IntegrationsClient enabledIntegrationSlugs={enabledIntegrationSlugs} />
 }
