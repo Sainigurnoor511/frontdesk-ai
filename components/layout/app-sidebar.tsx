@@ -17,7 +17,6 @@ import {
   Gear,
   DotsThree,
   Phone,
-  Plus,
 } from '@phosphor-icons/react/dist/ssr'
 import {
   Sidebar,
@@ -74,22 +73,15 @@ function PhoneNumberPill() {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton render={<Link href="/phone-numbers" />}>
-        <div className="relative size-4 shrink-0">
-          <div
-            className="size-4 overflow-hidden rounded-sm border"
-            style={{
-              backgroundColor: 'hsl(225deg 66.67% 97.65%)',
-              borderColor: 'hsl(228.75deg 47.06% 86.67%)',
-            }}
-          >
-            <Orb colors={['#CADCFC', '#A0B9D1']} seed={1} />
-          </div>
-          {state === 'collapsed' && (
-            <span className="absolute -right-0.5 -bottom-0.5 flex size-2 items-center justify-center rounded-full border bg-background text-foreground">
-              <Plus className="size-1.5" weight="bold" />
-            </span>
-          )}
+      <SidebarMenuButton
+        render={<Link href="/phone-numbers" />}
+        className="border bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] transition-colors hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
+        style={{
+          borderColor: 'hsl(228.75deg 47.06% 86.67%)',
+        }}
+      >
+        <div className="size-4 shrink-0 overflow-hidden rounded-sm">
+          <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
         </div>
         <span>Connect a number</span>
         {state !== 'collapsed' && <Phone className="ml-auto" />}
@@ -103,14 +95,12 @@ export function AppSidebar({ orgName }: { orgName: string }) {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3 py-3">
+      <SidebarHeader className="gap-2 py-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="h-10 hover:bg-transparent" render={<Link href="/" />}>
-              <span className="text-base font-semibold not-italic">F</span>
-              <span className="text-base font-semibold tracking-tight text-muted-foreground">
-                rontDesk<span className="text-foreground">.ai</span>
-              </span>
+            <SidebarMenuButton className="h-10 gap-0 hover:bg-transparent" render={<Link href="/" />}>
+              <span className="text-base font-semibold">F</span>
+              <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -118,9 +108,9 @@ export function AppSidebar({ orgName }: { orgName: string }) {
           <PhoneNumberPill />
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent className="gap-0.5 py-2">
+      <SidebarContent className="gap-0 py-1">
         {navSections.map((section, i) => (
-          <SidebarGroup key={i}>
+          <SidebarGroup key={i} className="py-1">
             {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>

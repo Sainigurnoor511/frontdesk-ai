@@ -1,29 +1,56 @@
-import { Robot, Question, Bell } from '@phosphor-icons/react/dist/ssr'
+'use client'
+
+import { usePathname } from 'next/navigation'
+import { ChatCircleDots, Bell } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { NavUser } from './nav-user'
 
-export function AppHeader({ email }: { email: string }) {
+const pageTitles: Record<string, string> = {
+  '/': 'Home',
+  '/guides': 'Guides',
+  '/calendar': 'Calendar',
+  '/availability': 'Availability',
+  '/clients': 'Clients',
+  '/staff': 'Staff',
+  '/conversations': 'Conversations',
+  '/analytics': 'Analytics',
+  '/agents': 'Receptionists',
+  '/organization': 'Organization',
+  '/integrations': 'Integrations',
+  '/booking-page': 'Bookings page',
+  '/settings': 'Settings',
+  '/phone-numbers': 'Phone numbers',
+}
+
+export function AppHeader({ email, orgName }: { email: string; orgName: string }) {
+  const pathname = usePathname()
+  const title = pageTitles[pathname] ?? ''
+
   return (
-    <header className="flex h-16 items-center justify-between border-b bg-background px-4">
-      <SidebarTrigger />
+    <header className="flex h-[50px] items-center justify-between border-b bg-background px-4">
       <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" aria-label="Assistant">
-          <Robot />
+        <SidebarTrigger className="rounded-md border" />
+        <span className="text-sm font-medium">{title}</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <ChatCircleDots />
+          Assistant
         </Button>
-        <Button variant="ghost" size="icon" aria-label="Help">
-          <Question />
+        <Button variant="outline" size="sm">
+          Help
         </Button>
         <Popover>
-          <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label="Notifications" />}>
+          <PopoverTrigger render={<Button variant="outline" size="icon" aria-label="Notifications" />}>
             <Bell />
           </PopoverTrigger>
           <PopoverContent align="end">
             <p className="text-sm text-muted-foreground">No notifications yet.</p>
           </PopoverContent>
         </Popover>
-        <NavUser email={email} />
+        <NavUser email={email} orgName={orgName} />
       </div>
     </header>
   )

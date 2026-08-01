@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FrontDesk.ai",
+  title: "Frontdesk.ai",
   description: "Open-source AI receptionist platform",
 };
 

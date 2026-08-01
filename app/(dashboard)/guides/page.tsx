@@ -6,7 +6,7 @@ export default function GuidesPage() {
     <PlaceholderPage
       title="Guides"
       icon={BookOpen}
-      description="Learn how to get the most out of FrontDesk.ai."
+      description="Learn how to get the most out of Frontdesk.ai."
     />
   )
 }
