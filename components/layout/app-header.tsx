@@ -6,9 +6,9 @@ import { NavUser } from './nav-user'
 
 export function AppHeader({ email }: { email: string }) {
   return (
-    <header className="flex h-14 items-center justify-between border-b px-4">
+    <header className="flex h-14 items-center justify-between border-b bg-background px-4">
       <SidebarTrigger />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <Button variant="ghost" size="icon" aria-label="Assistant">
           <Bot />
         </Button>

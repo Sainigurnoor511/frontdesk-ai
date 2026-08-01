@@ -71,8 +71,17 @@ export function AppSidebar({ orgName }: { orgName: string }) {
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-3">
-        <span className="px-2 text-sm font-semibold">FrontDesk.ai</span>
+      <SidebarHeader className="gap-3 border-b py-3">
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton size="lg" className="hover:bg-transparent" render={<Link href="/" />}>
+              <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-xs font-semibold text-primary-foreground">
+                F
+              </div>
+              <span className="text-sm font-semibold tracking-tight">FrontDesk.ai</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton disabled className="text-muted-foreground">
@@ -82,7 +91,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
-      <SidebarContent>
+      <SidebarContent className="gap-0.5 py-2">
         {navSections.map((section, i) => (
           <SidebarGroup key={i}>
             {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
@@ -107,7 +116,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                     </SidebarMenuButton>
                     {'badge' in item && item.badge && (
                       <SidebarMenuBadge>
-                        <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium">
                           {item.badge}
                         </Badge>
                       </SidebarMenuBadge>
