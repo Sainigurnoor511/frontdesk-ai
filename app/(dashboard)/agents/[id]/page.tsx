@@ -1,5 +1,7 @@
-import { notFound } from 'next/navigation'
-import { getAgentById } from '@/lib/data/agents'
+import { notFound, redirect } from 'next/navigation'
+import { getAgentById, getAgentsForOrg } from '@/lib/data/agents'
+import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { AgentDetailClient } from './agent-detail-client'
 
 export default async function AgentDetailPage({
   params,
@@ -11,14 +13,10 @@ export default async function AgentDetailPage({
 
   if (!agent) notFound()
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{agent.business_name ?? agent.name}</h1>
-        <p className="text-muted-foreground">
-          {agent.industry} · {agent.country} · {agent.language}
-        </p>
-      </div>
-    </div>
-  )
+  const context = await getCurrentOrgAndUser()
+  if (!context) redirect('/login')
+
+  const siblingAgents = await getAgentsForOrg(context.org.id)
+
+  return <AgentDetailClient agent={agent} agents={siblingAgents} />
 }

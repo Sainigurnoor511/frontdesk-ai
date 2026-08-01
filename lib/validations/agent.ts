@@ -43,3 +43,22 @@ export const createAgentSchema = z.object({
   personalityNotes: z.string().optional(),
 })
 export type CreateAgentInput = z.infer<typeof createAgentSchema>
+
+export const updateAgentGeneralSchema = z.object({
+  agentId: z.string().uuid(),
+  voiceId: z.string().optional(),
+  defaultLanguage: z.string().optional(),
+  additionalInstructions: z.string().max(8000).optional(),
+  toneTraits: z.array(z.string()).optional(),
+  firstMessage: z.string().optional(),
+})
+export type UpdateAgentGeneralInput = z.infer<typeof updateAgentGeneralSchema>
+
+export const updateAgentCallSettingsSchema = z.object({
+  agentId: z.string().uuid(),
+  answeringMode: z.enum(['staff_first', 'agent_first']),
+  staffPhoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/, 'Enter a valid phone number'),
+  maxRingSeconds: z.number().int().min(5).max(60),
+  holdMusic: z.string().optional(),
+})
+export type UpdateAgentCallSettingsInput = z.infer<typeof updateAgentCallSettingsSchema>

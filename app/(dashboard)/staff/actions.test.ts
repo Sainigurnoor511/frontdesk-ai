@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { createClient, updateClient, deleteClient } from './actions'
+import { createStaffMember, updateStaffMember, deleteStaffMember } from './actions'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -37,7 +37,7 @@ function mockSupabase({
     if (table === 'members') {
       return { select: memberSelect }
     }
-    if (table === 'clients') {
+    if (table === 'staff_members') {
       return { insert, update, delete: del }
     }
     throw new Error(`Unexpected table: ${table}`)
@@ -52,15 +52,18 @@ function mockSupabase({
   }
 }
 
-describe('createClient', () => {
-  it('returns a validation error for an invalid phone number', async () => {
-    const result = await createClient({
-      name: 'Jane Doe',
-      phoneNumber: 'not-a-phone',
+describe('createStaffMember', () => {
+  it('returns a validation error for a missing name', async () => {
+    const result = await createStaffMember({
+      fullName: '',
+      displayName: '',
+      description: '',
       email: '',
-      notes: '',
+      phone: '',
+      isActive: true,
+      showOnBookingPage: true,
     })
-    expect(result).toEqual({ error: 'Enter a valid phone number' })
+    expect(result).toEqual({ error: 'Full name is required' })
   })
 
   it('returns an error when no user is signed in', async () => {
@@ -69,13 +72,16 @@ describe('createClient', () => {
       mockSupabase({ user: null }) as never
     )
 
-    const result = await createClient({
-      name: 'Jane Doe',
-      phoneNumber: '+14155551234',
+    const result = await createStaffMember({
+      fullName: 'Jane Doe',
+      displayName: '',
+      description: '',
       email: '',
-      notes: '',
+      phone: '',
+      isActive: true,
+      showOnBookingPage: true,
     })
-    expect(result).toEqual({ error: 'You must be signed in to create a client.' })
+    expect(result).toEqual({ error: 'You must be signed in to create a staff member.' })
   })
 
   it('scopes the insert to the correct organization on success', async () => {
@@ -83,36 +89,45 @@ describe('createClient', () => {
     const supabase = mockSupabase({ organizationId: 'org-42' })
     vi.mocked(createSupabaseClient).mockResolvedValue(supabase as never)
 
-    const result = await createClient({
-      name: 'Jane Doe',
-      phoneNumber: '+14155551234',
+    const result = await createStaffMember({
+      fullName: 'Jane Doe',
+      displayName: 'Jane',
+      description: '10 years of experience',
       email: 'jane@example.com',
-      notes: 'VIP',
+      phone: '+14155551234',
+      isActive: true,
+      showOnBookingPage: true,
     })
 
     expect(result).toEqual({ success: true })
     expect(supabase.__mocks.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         organization_id: 'org-42',
-        name: 'Jane Doe',
-        phone_number: '+14155551234',
+        full_name: 'Jane Doe',
+        display_name: 'Jane',
+        description: '10 years of experience',
         email: 'jane@example.com',
-        notes: 'VIP',
+        phone: '+14155551234',
+        is_active: true,
+        show_on_booking_page: true,
       })
     )
   })
 })
 
-describe('updateClient', () => {
-  it('returns a validation error for an invalid phone number', async () => {
-    const result = await updateClient({
+describe('updateStaffMember', () => {
+  it('returns a validation error for a missing name', async () => {
+    const result = await updateStaffMember({
       id: '11111111-1111-1111-1111-111111111111',
-      name: 'Jane Doe',
-      phoneNumber: 'bad',
+      fullName: '',
+      displayName: '',
+      description: '',
       email: '',
-      notes: '',
+      phone: '',
+      isActive: true,
+      showOnBookingPage: true,
     })
-    expect(result).toEqual({ error: 'Enter a valid phone number' })
+    expect(result).toEqual({ error: 'Full name is required' })
   })
 
   it('returns an error when no user is signed in', async () => {
@@ -121,25 +136,28 @@ describe('updateClient', () => {
       mockSupabase({ user: null }) as never
     )
 
-    const result = await updateClient({
+    const result = await updateStaffMember({
       id: '11111111-1111-1111-1111-111111111111',
-      name: 'Jane Doe',
-      phoneNumber: '+14155551234',
+      fullName: 'Jane Doe',
+      displayName: '',
+      description: '',
       email: '',
-      notes: '',
+      phone: '',
+      isActive: true,
+      showOnBookingPage: true,
     })
-    expect(result).toEqual({ error: 'You must be signed in to update a client.' })
+    expect(result).toEqual({ error: 'You must be signed in to update a staff member.' })
   })
 })
 
-describe('deleteClient', () => {
+describe('deleteStaffMember', () => {
   it('returns an error when no user is signed in', async () => {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
     vi.mocked(createSupabaseClient).mockResolvedValue(
       mockSupabase({ user: null }) as never
     )
 
-    const result = await deleteClient('11111111-1111-1111-1111-111111111111')
-    expect(result).toEqual({ error: 'You must be signed in to delete a client.' })
+    const result = await deleteStaffMember('11111111-1111-1111-1111-111111111111')
+    expect(result).toEqual({ error: 'You must be signed in to delete a staff member.' })
   })
 })

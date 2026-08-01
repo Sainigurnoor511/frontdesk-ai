@@ -1,12 +1,8 @@
-import { UserGear } from '@phosphor-icons/react/dist/ssr'
-import { PlaceholderPage } from '@/components/layout/placeholder-page'
+import { getStaffForOrg } from '@/lib/data/staff'
+import { StaffClient } from './staff-client'
 
-export default function StaffPage() {
-  return (
-    <PlaceholderPage
-      title="Staff"
-      icon={UserGear}
-      description="Manage staff members and permissions."
-    />
-  )
+export default async function StaffPage() {
+  const staff = await getStaffForOrg()
+
+  return <StaffClient staff={staff} />
 }
