@@ -1,0 +1,95 @@
+'use server'
+
+import { redirect } from 'next/navigation'
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
+import { signupSchema, loginSchema, type SignupInput, type LoginInput } from '@/lib/validations/auth'
+
+function friendlyAuthError(message: string): string {
+  if (message.includes('already registered')) {
+    return 'An account with this email already exists.'
+  }
+  if (message.includes('Invalid login credentials')) {
+    return 'Incorrect email or password.'
+  }
+  return 'Something went wrong. Please try again.'
+}
+
+export async function signUp(input: SignupInput): Promise<{ error: string }> {
+  const parsed = signupSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.signUp({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  })
+
+  if (error) {
+    return { error: friendlyAuthError(error.message) }
+  }
+  if (!data.user) {
+    return { error: 'Something went wrong. Please try again.' }
+  }
+
+  const serviceClient = createServiceRoleClient()
+  const { data: org, error: orgError } = await serviceClient
+    .from('organizations')
+    .insert({ name: parsed.data.businessName })
+    .select('id')
+    .single()
+
+  if (orgError || !org) {
+    return { error: 'Account created but organization setup failed. Contact support.' }
+  }
+
+  const { error: memberError } = await serviceClient
+    .from('members')
+    .insert({ organization_id: org.id, user_id: data.user.id, role: 'owner' })
+
+  if (memberError) {
+    return { error: 'Account created but organization setup failed. Contact support.' }
+  }
+
+  redirect('/')
+}
+
+export async function logIn(input: LoginInput): Promise<{ error: string }> {
+  const parsed = loginSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase.auth.signInWithPassword(parsed.data)
+
+  if (error) {
+    return { error: friendlyAuthError(error.message) }
+  }
+
+  redirect('/')
+}
+
+export async function logOut(): Promise<void> {
+  const supabase = await createClient()
+  await supabase.auth.signOut()
+  redirect('/login')
+}
+
+export async function signInWithGoogle(): Promise<{ error: string } | void> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/callback`,
+    },
+  })
+
+  if (error) {
+    return { error: friendlyAuthError(error.message) }
+  }
+  if (data.url) {
+    redirect(data.url)
+  }
+}
