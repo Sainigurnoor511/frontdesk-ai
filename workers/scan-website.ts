@@ -1,9 +1,11 @@
-import 'dotenv/config'
+import { config } from 'dotenv'
+config({ path: '.env.local' })
+
 import { Worker } from 'bullmq'
 import { redisConnection } from '@/lib/queue/connection'
 import { crawlWebsite } from '@/lib/crawler/crawl'
 import { createGroqProvider } from '@/lib/providers/llm/groq'
-import { createServiceRoleClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import type { ScanWebsiteJobData } from '@/lib/queue/queues/scan-website'
 
 const worker = new Worker<ScanWebsiteJobData>(

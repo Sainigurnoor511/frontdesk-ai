@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { getScanJobStatus } from '@/app/(dashboard)/agents/actions'
+import { getScanJobStatus } from '@/app/onboarding/actions'
 import type { ExtractedBusinessInfo } from '@/lib/providers/llm/types'
 
 export function ScanProgressStep({

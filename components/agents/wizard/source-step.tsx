@@ -6,20 +6,26 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { scanRequestSchema, type ScanRequestInput } from '@/lib/validations/agent'
+import {
+  scanRequestSchema,
+  manualBusinessInfoSchema,
+  type ScanRequestInput,
+} from '@/lib/validations/agent'
 
-type SourceChoice = 'menu' | 'scan-url' | 'scan-depth'
+type SourceChoice = 'menu' | 'scan-url' | 'scan-depth' | 'manual-name'
 
 export function SourceStep({
   onScanStarted,
   onManual,
 }: {
   onScanStarted: (input: ScanRequestInput) => void
-  onManual: () => void
+  onManual: (businessName: string) => void
 }) {
   const [choice, setChoice] = useState<SourceChoice>('menu')
   const [url, setUrl] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [businessName, setBusinessName] = useState('')
+  const [businessNameError, setBusinessNameError] = useState<string | null>(null)
 
   if (choice === 'menu') {
     return (
@@ -40,12 +46,55 @@ export function SourceStep({
               <p className="font-medium">Scan my website</p>
             </CardContent>
           </Card>
-          <Card className="cursor-pointer transition-colors hover:bg-accent" onClick={onManual}>
+          <Card
+            className="cursor-pointer transition-colors hover:bg-accent"
+            onClick={() => setChoice('manual-name')}
+          >
             <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
               <PencilSimple className="size-8" />
               <p className="font-medium">Enter information manually</p>
             </CardContent>
           </Card>
+        </div>
+      </div>
+    )
+  }
+
+  if (choice === 'manual-name') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-2xl font-semibold">Tell us about your business</h1>
+          <p className="text-muted-foreground">What&apos;s your business called?</p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="business-name">Business name</Label>
+          <Input
+            id="business-name"
+            placeholder="Acme Dental"
+            value={businessName}
+            onChange={(e) => setBusinessName(e.target.value)}
+          />
+          {businessNameError && (
+            <p className="text-sm text-destructive">{businessNameError}</p>
+          )}
+        </div>
+        <div className="flex justify-between">
+          <Button variant="ghost" onClick={() => setChoice('menu')}>
+            Back
+          </Button>
+          <Button
+            onClick={() => {
+              const parsed = manualBusinessInfoSchema.safeParse({ businessName })
+              if (!parsed.success) {
+                setBusinessNameError(parsed.error.issues[0].message)
+                return
+              }
+              onManual(parsed.data.businessName)
+            }}
+          >
+            Continue
+          </Button>
         </div>
       </div>
     )
@@ -69,7 +118,7 @@ export function SourceStep({
           {urlError && <p className="text-sm text-destructive">{urlError}</p>}
         </div>
         <div className="flex justify-between">
-          <Button variant="ghost" onClick={onManual}>
+          <Button variant="ghost" onClick={() => setChoice('manual-name')}>
             Skip
           </Button>
           <Button

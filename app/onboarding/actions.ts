@@ -63,9 +63,18 @@ export async function createAgent(input: CreateAgentInput): Promise<{ error: str
   }
 
   const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be signed in to create an agent.' }
+  }
+
   const { data: member } = await supabase
     .from('members')
     .select('organization_id')
+    .eq('user_id', user.id)
     .single()
 
   if (!member) {
