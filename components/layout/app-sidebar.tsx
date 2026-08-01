@@ -11,26 +11,26 @@ import {
   UserCog,
   MessageSquare,
   BarChart3,
-  Bot,
-  Building2,
+  UserRound,
   Plug,
   BookMarked,
   Settings,
+  MoreHorizontal,
+  Phone,
 } from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuBadge,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import { Card, CardContent } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
 const navSections = [
   {
@@ -53,29 +53,34 @@ const navSections = [
   },
   {
     label: 'Receptionist',
-    items: [{ title: 'AI Agents', url: '/agents', icon: Bot }],
+    items: [{ title: 'Receptionists', url: '/agents', icon: UserRound }],
   },
   {
     label: 'Setup',
+    isSetup: true,
     items: [
-      { title: 'Organization', url: '/organization', icon: Building2 },
-      { title: 'Integrations', url: '/integrations', icon: Plug },
-      { title: 'Booking Page', url: '/booking-page', icon: BookMarked },
+      { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
+      { title: 'Bookings page', url: '/booking-page', icon: BookMarked },
+      { title: 'Settings', url: '/settings', icon: Settings },
     ],
-  },
-  {
-    label: 'General',
-    items: [{ title: 'Settings', url: '/settings', icon: Settings }],
   },
 ]
 
-export function AppSidebar() {
+export function AppSidebar({ orgName }: { orgName: string }) {
   const pathname = usePathname()
 
   return (
-    <Sidebar>
-      <SidebarHeader>
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="gap-3">
         <span className="px-2 text-sm font-semibold">FrontDesk.ai</span>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton disabled className="text-muted-foreground">
+              <Phone />
+              <span>No number connected</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
         {navSections.map((section, i) => (
@@ -83,6 +88,14 @@ export function AppSidebar() {
             {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
             <SidebarGroupContent>
               <SidebarMenu>
+                {'isSetup' in section && section.isSetup && (
+                  <SidebarMenuItem>
+                    <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
+                      <Home />
+                      <span>{orgName}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                )}
                 {section.items.map((item) => (
                   <SidebarMenuItem key={item.url}>
                     <SidebarMenuButton
@@ -92,24 +105,32 @@ export function AppSidebar() {
                       <item.icon />
                       <span>{item.title}</span>
                     </SidebarMenuButton>
+                    {'badge' in item && item.badge && (
+                      <SidebarMenuBadge>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {item.badge}
+                        </Badge>
+                      </SidebarMenuBadge>
+                    )}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
         ))}
+        <SidebarGroup className="mt-auto">
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton>
+                  <MoreHorizontal />
+                  <span>More</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter>
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-sm font-medium">Upgrade to Pro</p>
-            <p className="text-xs text-muted-foreground">Unlock more agents and minutes.</p>
-            <Button size="sm" className="mt-2 w-full">
-              Upgrade
-            </Button>
-          </CardContent>
-        </Card>
-      </SidebarFooter>
     </Sidebar>
   )
 }

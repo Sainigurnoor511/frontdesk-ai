@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <SidebarProvider>
-      <AppSidebar />
+      <AppSidebar orgName={context.org.name} />
       <SidebarInset>
         <AppHeader email={context.user.email} />
         <main className="flex-1 p-6">{children}</main>
