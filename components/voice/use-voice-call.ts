@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Room, RoomEvent, Track, type RemoteTrack } from 'livekit-client'
 import type { AgentState } from '@/components/ui/orb'
 
@@ -15,6 +15,14 @@ export function useVoiceCall(
   const [agentState, setAgentState] = useState<AgentState>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const roomRef = useRef<Room | null>(null)
+  const attachedTracksRef = useRef<Array<{ track: RemoteTrack; element: HTMLMediaElement }>>([])
+
+  const cleanupAttachedElements = useCallback(() => {
+    for (const { track, element } of attachedTracksRef.current) {
+      track.detach(element)
+    }
+    attachedTracksRef.current = []
+  }, [])
 
   const connect = useCallback(async () => {
     setStatus('connecting')
@@ -35,8 +43,9 @@ export function useVoiceCall(
         const el = track.attach()
         el.autoplay = true
         document.body.appendChild(el)
+        attachedTracksRef.current.push({ track, element: el })
+        setAgentState('talking')
       }
-      setAgentState('talking')
     })
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
@@ -44,6 +53,7 @@ export function useVoiceCall(
     })
 
     room.on(RoomEvent.Disconnected, () => {
+      cleanupAttachedElements()
       setStatus('ended')
       setAgentState(null)
     })
@@ -57,14 +67,23 @@ export function useVoiceCall(
       setStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'Could not connect to the call.')
     }
-  }, [startCall])
+  }, [startCall, cleanupAttachedElements])
 
   const disconnect = useCallback(() => {
     roomRef.current?.disconnect()
     roomRef.current = null
+    cleanupAttachedElements()
     setStatus('ended')
     setAgentState(null)
-  }, [])
+  }, [cleanupAttachedElements])
+
+  useEffect(() => {
+    return () => {
+      roomRef.current?.disconnect()
+      roomRef.current = null
+      cleanupAttachedElements()
+    }
+  }, [cleanupAttachedElements])
 
   return { status, agentState, errorMessage, connect, disconnect }
 }
