@@ -429,3 +429,61 @@ describe('toggleFavoriteVoice', () => {
     expect(deleteEq2).toHaveBeenCalledWith('voice_id', 'v1')
   })
 })
+
+describe('designVoiceCandidates', () => {
+  it('returns an error for a blank instruction', async () => {
+    const result = await designVoiceCandidates('   ', 'en')
+    expect(result).toEqual({ error: 'Describe the voice you want to create.' })
+  })
+
+  it('calls Fish Audio voice-design and returns candidates', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{ audio_base64: 'AAAA' }, { audio_base64: 'BBBB' }],
+      }),
+    } as unknown as Response)
+
+    const result = await designVoiceCandidates('A warm narrator', 'en')
+
+    expect(fetch).toHaveBeenCalledWith(
+      'https://api.fish.audio/v1/voice-design',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ model: 'voice-design-1' }),
+      })
+    )
+    expect(result).toEqual({
+      candidates: [{ audioBase64: 'AAAA' }, { audioBase64: 'BBBB' }],
+    })
+  })
+
+  it('returns an error on a non-ok response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    const result = await designVoiceCandidates('A warm narrator', 'en')
+    expect(result).toEqual({ error: 'Could not generate voice candidates. Please try again.' })
+  })
+})
+
+describe('saveVoiceModel', () => {
+  it('posts multipart form data and returns the new model id', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'new-voice-id' }),
+    } as unknown as Response)
+
+    const result = await saveVoiceModel('AAAA', 'My Custom Voice')
+
+    expect(result).toEqual({ id: 'new-voice-id' })
+    const [url, init] = vi.mocked(fetch).mock.calls[0]
+    expect(url).toBe('https://api.fish.audio/model')
+    expect(init?.method).toBe('POST')
+    expect(init?.body).toBeInstanceOf(FormData)
+  })
+
+  it('returns an error on a non-ok response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    const result = await saveVoiceModel('AAAA', 'My Custom Voice')
+    expect(result).toEqual({ error: 'Could not save the new voice. Please try again.' })
+  })
+})

@@ -293,3 +293,63 @@ export async function toggleFavoriteVoice(
   if (error) return { error: 'Could not update favorite.' }
   return { favorited: true }
 }
+
+export async function designVoiceCandidates(
+  instruction: string,
+  language: string
+): Promise<{ error: string } | { candidates: { audioBase64: string }[] }> {
+  if (!instruction.trim()) {
+    return { error: 'Describe the voice you want to create.' }
+  }
+
+  const response = await fetch('https://api.fish.audio/v1/voice-design', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}`,
+      'Content-Type': 'application/json',
+      model: 'voice-design-1',
+    },
+    body: JSON.stringify({ instruction, language, n: 4 }),
+  })
+
+  if (!response.ok) {
+    return { error: 'Could not generate voice candidates. Please try again.' }
+  }
+
+  const data = (await response.json()) as { candidates?: Array<{ audio_base64?: string }> }
+  const candidates = (data.candidates ?? [])
+    .filter((c): c is { audio_base64: string } => typeof c.audio_base64 === 'string')
+    .map((c) => ({ audioBase64: c.audio_base64 }))
+
+  return { candidates }
+}
+
+export async function saveVoiceModel(
+  audioBase64: string,
+  title: string
+): Promise<{ error: string } | { id: string }> {
+  const audioBuffer = Buffer.from(audioBase64, 'base64')
+  const form = new FormData()
+  form.append('voices', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/mpeg' }), 'voice.mp3')
+  form.append('title', title)
+  form.append('type', 'tts')
+  form.append('train_mode', 'fast')
+  form.append('visibility', 'private')
+
+  const response = await fetch('https://api.fish.audio/model', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}` },
+    body: form,
+  })
+
+  if (!response.ok) {
+    return { error: 'Could not save the new voice. Please try again.' }
+  }
+
+  const data = (await response.json()) as { id?: string }
+  if (!data.id) {
+    return { error: 'Could not save the new voice. Please try again.' }
+  }
+
+  return { id: data.id }
+}
