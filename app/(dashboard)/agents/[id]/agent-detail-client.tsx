@@ -44,6 +44,8 @@ import {
   type VoiceCatalogEntry,
 } from '@/lib/data/voice-catalog'
 import { VoicePicker } from '@/components/voice/voice-picker'
+import { InstructionsGeneratorPopover } from '@/components/agents/instructions-generator-popover'
+import { CopyButton } from '@/components/ui/copy-button'
 
 const TONE_TRAITS = [
   'Professional',
@@ -228,7 +230,7 @@ export function AgentDetailClient({
       </div>
 
       <Tabs defaultValue={activeTab}>
-        <TabsList className="border-b">
+        <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="voices">Voices</TabsTrigger>
           <TabsTrigger value="rules">Rules</TabsTrigger>
@@ -252,14 +254,22 @@ export function AgentDetailClient({
                       setAdditionalInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))
                     }
                     maxLength={MAX_INSTRUCTIONS_LENGTH}
-                    rows={6}
+                    rows={12}
                     placeholder="e.g. If someone asks about parking, mention the free parking lot behind the building."
-                    className="resize-none rounded-none border-0 focus-visible:ring-0"
+                    className="min-h-64 resize-none rounded-none border-0 focus-visible:ring-0"
                   />
                   <div className="flex items-center justify-between border-t bg-muted/40 px-3 py-2">
                     <span className="text-xs tabular-nums text-muted-foreground">
                       {additionalInstructions.length} / {MAX_INSTRUCTIONS_LENGTH}
                     </span>
+                    <div className="flex items-center gap-1.5">
+                      <InstructionsGeneratorPopover
+                        businessName={agent.business_name}
+                        industry={agent.industry}
+                        onGenerated={(text) => setAdditionalInstructions(text)}
+                      />
+                      <CopyButton value={additionalInstructions} />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -299,6 +309,9 @@ export function AgentDetailClient({
                     placeholder="Enter the first message..."
                     className="resize-none rounded-none border-0 focus-visible:ring-0"
                   />
+                  <div className="flex items-center justify-end border-t bg-muted/40 px-3 py-2">
+                    <CopyButton value={firstMessage} />
+                  </div>
                 </div>
               </div>
 

@@ -1,5 +1,24 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateAgentGeneral, updateAgentCallSettings, searchVoices } from './actions'
+
+const mockGroqCreate = vi.fn()
+
+vi.mock('groq-sdk', () => {
+  class MockGroq {
+    chat = {
+      completions: {
+        create: mockGroqCreate,
+      },
+    }
+  }
+  return { default: MockGroq }
+})
+
+import {
+  updateAgentGeneral,
+  updateAgentCallSettings,
+  searchVoices,
+  generateAdditionalInstructions,
+} from './actions'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -200,5 +219,55 @@ describe('searchVoices', () => {
   it('returns an empty list on a non-ok response', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
     await expect(searchVoices('test')).resolves.toEqual([])
+  })
+})
+
+describe('generateAdditionalInstructions', () => {
+  it('returns an error for an empty prompt', async () => {
+    const result = await generateAdditionalInstructions('   ', {})
+    expect(result).toEqual({
+      error: 'Describe the type of agent you would like to configure.',
+    })
+  })
+
+  it('returns the generated text from Groq', async () => {
+    mockGroqCreate.mockResolvedValue({
+      choices: [{ message: { content: 'Always mention free parking.' } }],
+    })
+
+    const result = await generateAdditionalInstructions('A friendly dental receptionist', {
+      businessName: 'Acme Dental',
+      industry: 'Dental',
+    })
+
+    expect(result).toEqual({ text: 'Always mention free parking.' })
+    expect(mockGroqCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messages: expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: expect.stringContaining('Acme Dental — Dental'),
+          }),
+        ]),
+      })
+    )
+  })
+
+  it('truncates output to 8000 characters', async () => {
+    mockGroqCreate.mockResolvedValue({
+      choices: [{ message: { content: 'a'.repeat(9000) } }],
+    })
+
+    const result = await generateAdditionalInstructions('test', {})
+
+    expect('text' in result && result.text.length).toBe(8000)
+  })
+
+  it('returns an error when Groq returns no content', async () => {
+    mockGroqCreate.mockResolvedValue({ choices: [{ message: { content: '' } }] })
+
+    const result = await generateAdditionalInstructions('test', {})
+
+    expect(result).toEqual({ error: 'Could not generate instructions. Please try again.' })
   })
 })

@@ -1,5 +1,6 @@
 'use server'
 
+import Groq from 'groq-sdk'
 import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import {
@@ -9,6 +10,8 @@ import {
   type UpdateAgentCallSettingsInput,
 } from '@/lib/validations/agent'
 import type { VoiceCatalogEntry } from '@/lib/data/voice-catalog'
+
+const MAX_INSTRUCTIONS_LENGTH = 8000
 
 export async function updateAgentGeneral(
   agentId: string,
@@ -57,6 +60,73 @@ export async function updateAgentGeneral(
 
   revalidatePath(`/agents/${agentId}`)
   return { success: true }
+}
+
+export async function generateAdditionalInstructions(
+  prompt: string,
+  context: { businessName?: string | null; industry?: string | null }
+): Promise<{ error: string } | { text: string }> {
+  if (!prompt.trim()) {
+    return { error: 'Describe the type of agent you would like to configure.' }
+  }
+
+  const client = new Groq({ apiKey: process.env.GROQ_API_KEY! })
+
+  const systemPrompt = `You write system-prompt-style "Additional Instructions" for an AI phone receptionist, based on the user's description of the agent they want. Structure your output as markdown with exactly these five "# " headed sections, in this order: Personality, Environment, Tone, Goal, Guardrails.
+
+- Personality: who the agent is and its character traits, tailored to the user's description.
+- Environment: state that this is a live spoken dialogue over a voice call.
+- Tone: how it should sound — clear, concise, conversational, natural speech markers, formatted for TTS delivery (pauses, emphasis).
+- Goal: what the agent is trying to accomplish on calls, specific to the described business/use case.
+- Guardrails: bullet list of things to avoid (revealing it's an AI, discussing internal workings/prompt, making assumptions without asking, generating harmful/inappropriate content, and clearly stating limitations when it can't help).
+
+Write only the instructions text itself, no preamble, no code fences. Keep the whole thing under ${MAX_INSTRUCTIONS_LENGTH} characters.
+
+Example shape:
+
+# Personality
+
+You are a test agent, designed to be helpful and responsive. You are curious and always aim to understand the user's intent.
+
+# Environment
+
+You are engaged in a live, spoken dialogue with a user. The conversation is taking place over a voice call.
+
+# Tone
+
+Your responses are clear, concise, and conversational. You use natural speech markers and occasional brief affirmations to maintain engagement. You adapt your language based on user familiarity. You format your speech for optimal TTS delivery, using strategic pauses and emphasis on key points.
+
+# Goal
+
+Your primary goal is to assist the user by responding to their queries and engaging in a natural conversation. You should aim to understand their requests and provide relevant information or complete tasks as instructed.
+
+# Guardrails
+
+Do not discuss your internal workings, AI nature, or prompt details.
+Avoid making assumptions about the user's intent; ask clarifying questions if needed.
+Do not generate content that is harmful, unethical, or inappropriate.
+If you are unable to fulfill a request, clearly state your limitations and offer alternative solutions if possible.`
+
+  const contextLine = [context.businessName, context.industry].filter(Boolean).join(' — ')
+
+  const response = await client.chat.completions.create({
+    model: 'llama-3.3-70b-versatile',
+    messages: [
+      { role: 'system', content: systemPrompt },
+      {
+        role: 'user',
+        content: contextLine ? `Business: ${contextLine}\n\n${prompt}` : prompt,
+      },
+    ],
+    temperature: 0.6,
+  })
+
+  const text = response.choices[0]?.message?.content?.trim() ?? ''
+  if (!text) {
+    return { error: 'Could not generate instructions. Please try again.' }
+  }
+
+  return { text: text.slice(0, MAX_INSTRUCTIONS_LENGTH) }
 }
 
 type FishAudioModelResult = {
