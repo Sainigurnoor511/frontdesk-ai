@@ -14,6 +14,7 @@ import {
   UserPlus,
   type LucideIcon,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -43,21 +44,23 @@ function StatTile({
   label,
   value,
   icon: TileIcon,
+  iconClassName,
 }: {
   href: string
   label: string
   value: string
   icon: LucideIcon
+  iconClassName: string
 }) {
   return (
     <Link href={href} className="flex-1">
       <Card className="h-full transition-colors hover:bg-accent">
         <CardContent className="space-y-1 py-4">
           <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <TileIcon className="size-4" />
+            <TileIcon className={cn('size-4', iconClassName)} />
             {label}
           </p>
-          <p className="text-2xl font-semibold">{value}</p>
+          <p className="font-heading text-2xl font-semibold">{value}</p>
           <p className="text-xs text-muted-foreground">no prior data</p>
         </CardContent>
       </Card>
@@ -213,24 +216,28 @@ export function HomeClient({
           label="Calls (7d)"
           value={String(metrics.calls)}
           icon={Phone}
+          iconClassName="text-blue-500"
         />
         <StatTile
           href="/analytics?tab=services"
           label="Bookings (7d)"
           value={String(metrics.bookings)}
           icon={CalendarCheck}
+          iconClassName="text-violet-500"
         />
         <StatTile
           href="/analytics?tab=services"
           label="Revenue (7d)"
           value={`$${metrics.revenue}`}
           icon={TrendingUp}
+          iconClassName="text-emerald-500"
         />
         <StatTile
           href="/analytics?tab=clients"
           label="New Clients (7d)"
           value={String(metrics.newClients)}
           icon={UserPlus}
+          iconClassName="text-amber-500"
         />
       </div>
 
