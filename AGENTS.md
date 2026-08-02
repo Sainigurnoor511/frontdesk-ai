@@ -6,7 +6,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 # Frontdesk.ai
 
-Open-source, self-hostable AI receptionist SaaS. Original implementation inspired by products like ElevenLabs' Reception.ai — never copy their literal source, copy text, or design assets. Live reference crawls of comparable products are for UX/structure reference only.
+Open-source, self-hostable AI receptionist SaaS. Original implementation inspired by products like ElevenLabs' Reception.ai. User-supplied reference markup/screenshots from comparable products (e.g. pasted HTML) may be copied literally — including class names and structure — when the user provides them as a direct reference to match.
 
 ## Stack
 

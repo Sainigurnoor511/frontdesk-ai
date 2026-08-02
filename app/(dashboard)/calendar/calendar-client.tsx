@@ -166,11 +166,36 @@ export function CalendarClient({
       </div>
 
       {/* Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-full border bg-muted/30 p-1.5">
+        <div className="flex items-center gap-1 rounded-full bg-background p-0.5 shadow-xs">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-full"
+            aria-label="Previous period"
+            onClick={goToPrevious}
+          >
+            <ChevronLeft className="size-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-full"
+            aria-label="Next period"
+            onClick={goToNext}
+          >
+            <ChevronRight className="size-4" />
+          </Button>
+        </div>
+
+        <Button variant="ghost" className="h-7 rounded-full px-3" onClick={goToToday}>
+          Today
+        </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="outline" className="gap-1.5">
+              <Button variant="ghost" className="h-7 gap-1.5 rounded-full px-3 font-medium">
                 {formatMonthYear(anchorDate)}
                 <ChevronDown className="size-4" />
               </Button>
@@ -183,33 +208,10 @@ export function CalendarClient({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <div className="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Previous period"
-            onClick={goToPrevious}
-          >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Next period"
-            onClick={goToNext}
-          >
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
-
-        <Button variant="outline" onClick={goToToday}>
-          Today
-        </Button>
-
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="outline" className="gap-1.5">
+              <Button variant="ghost" className="h-7 gap-1.5 rounded-full px-3">
                 {view}
                 <ChevronDown className="size-4" />
               </Button>
@@ -226,7 +228,9 @@ export function CalendarClient({
 
         <div className="ml-auto flex items-center gap-2">
           <Dialog open={newAppointmentOpen} onOpenChange={setNewAppointmentOpen}>
-            <DialogTrigger render={<Button variant="default">New appointment</Button>} />
+            <DialogTrigger
+              render={<Button className="h-7 rounded-full px-3">New appointment</Button>}
+            />
             <NewAppointmentDialog
               defaultDate={anchorDate}
               onClose={() => setNewAppointmentOpen(false)}
@@ -234,14 +238,25 @@ export function CalendarClient({
           </Dialog>
 
           <Dialog open={newTimeOffOpen} onOpenChange={setNewTimeOffOpen}>
-            <DialogTrigger render={<Button variant="outline">New time off</Button>} />
+            <DialogTrigger
+              render={
+                <Button variant="outline" className="h-7 rounded-full bg-background px-3">
+                  New time off
+                </Button>
+              }
+            />
             <NewTimeOffDialog
               defaultDate={anchorDate}
               onClose={() => setNewTimeOffOpen(false)}
             />
           </Dialog>
 
-          <Button variant="outline" size="icon" aria-label="Filters">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-full"
+            aria-label="Filters"
+          >
             <Funnel className="size-4" />
           </Button>
         </div>
@@ -286,86 +301,104 @@ export function CalendarClient({
             })}
 
             {/* Time rows */}
-            {HOURS.map((hour) => (
-              <React.Fragment key={hour}>
-                <div className="relative -top-2.5 border-r px-2 text-right text-[11px] text-muted-foreground">
-                  {formatHourLabel(hour)}
-                </div>
-                {weekDates.map((date) => {
-                  const isToday = isSameDay(date, today);
-                  const isBusinessHour =
-                    hour >= BUSINESS_START && hour < BUSINESS_END;
-                  const showCurrentTime =
-                    isToday &&
-                    currentHour >= hour &&
-                    currentHour < hour + 1;
-                  const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
-                  const isTimeOff = dayTimeOff.length > 0;
+            {HOURS.map((hour) => {
+              const showCurrentTimeLabel =
+                currentHour >= hour && currentHour < hour + 1;
 
-                  const dayAppointments = (
-                    appointmentsByDay.get(date.toDateString()) ?? []
-                  ).filter((appointment) => {
-                    const start = hourOfDay(new Date(appointment.starts_at));
-                    return start >= hour && start < hour + 1;
-                  });
+              return (
+                <React.Fragment key={hour}>
+                  <div className="relative -top-2.5 border-r px-2 text-right text-[11px] text-muted-foreground">
+                    {formatHourLabel(hour)}
+                    {showCurrentTimeLabel && (
+                      <div
+                        className="absolute inset-x-0 z-20 flex justify-end pr-1"
+                        style={{ top: `${(currentHour - hour) * 100 + 62}%` }}
+                      >
+                        <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                          {formatHourLabel(currentHour).replace(
+                            ":00",
+                            `:${String(Math.floor((currentHour % 1) * 60)).padStart(2, "0")}`
+                          )}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {weekDates.map((date) => {
+                    const isToday = isSameDay(date, today);
+                    const isBusinessHour =
+                      hour >= BUSINESS_START && hour < BUSINESS_END;
+                    const showCurrentTime =
+                      isToday &&
+                      currentHour >= hour &&
+                      currentHour < hour + 1;
+                    const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
+                    const isTimeOff = dayTimeOff.length > 0;
 
-                  return (
-                    <div
-                      key={`${date.toISOString()}-${hour}`}
-                      className={cn(
-                        "relative h-16 border-b border-r last:border-r-0",
-                        isTimeOff
-                          ? "bg-amber-500/10 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
-                          : isBusinessHour
-                            ? "bg-background"
-                            : "bg-muted/40 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]",
-                      )}
-                    >
-                      {showCurrentTime && (
-                        <div
-                          className="absolute inset-x-0 z-10 flex items-center"
-                          style={{
-                            top: `${(currentHour - hour) * 100}%`,
-                          }}
-                        >
-                          <div className="-ml-1 size-2 rounded-full bg-red-500" />
-                          <div className="h-px w-full bg-red-500" />
-                        </div>
-                      )}
+                    const dayAppointments = (
+                      appointmentsByDay.get(date.toDateString()) ?? []
+                    ).filter((appointment) => {
+                      const start = hourOfDay(new Date(appointment.starts_at));
+                      return start >= hour && start < hour + 1;
+                    });
 
-                      {dayAppointments.map((appointment) => {
-                        const start = new Date(appointment.starts_at);
-                        const end = new Date(appointment.ends_at);
-                        const startHourFraction = hourOfDay(start) - hour;
-                        const durationHours = Math.max(
-                          (end.getTime() - start.getTime()) / (1000 * 60 * 60),
-                          0.25
-                        );
-
-                        return (
+                    return (
+                      <div
+                        key={`${date.toISOString()}-${hour}`}
+                        className={cn(
+                          "relative h-16 border-b border-r last:border-r-0",
+                          isTimeOff
+                            ? "bg-amber-500/10 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
+                            : isBusinessHour
+                              ? "bg-background"
+                              : "bg-muted/40 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]",
+                        )}
+                      >
+                        {showCurrentTime && (
                           <div
-                            key={appointment.id}
-                            className="absolute inset-x-0.5 z-10 overflow-hidden rounded-md border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[11px] leading-tight"
+                            className="absolute inset-x-0 z-10 flex items-center"
                             style={{
-                              top: `${startHourFraction * 100}%`,
-                              height: `${durationHours * 100}%`,
+                              top: `${(currentHour - hour) * 100}%`,
                             }}
-                            title={`${appointment.title} — ${appointment.client_name}`}
                           >
-                            <p className="truncate font-medium text-foreground">
-                              {appointment.title}
-                            </p>
-                            <p className="truncate text-muted-foreground">
-                              {appointment.client_name}
-                            </p>
+                            <div className="-ml-1 size-2 rounded-full bg-red-500" />
+                            <div className="h-px w-full bg-red-500" />
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-              </React.Fragment>
-            ))}
+                        )}
+
+                        {dayAppointments.map((appointment) => {
+                          const start = new Date(appointment.starts_at);
+                          const end = new Date(appointment.ends_at);
+                          const startHourFraction = hourOfDay(start) - hour;
+                          const durationHours = Math.max(
+                            (end.getTime() - start.getTime()) / (1000 * 60 * 60),
+                            0.25
+                          );
+
+                          return (
+                            <div
+                              key={appointment.id}
+                              className="absolute inset-x-0.5 z-10 overflow-hidden rounded-md border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[11px] leading-tight"
+                              style={{
+                                top: `${startHourFraction * 100}%`,
+                                height: `${durationHours * 100}%`,
+                              }}
+                              title={`${appointment.title} — ${appointment.client_name}`}
+                            >
+                              <p className="truncate font-medium text-foreground">
+                                {appointment.title}
+                              </p>
+                              <p className="truncate text-muted-foreground">
+                                {appointment.client_name}
+                              </p>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
       </div>
