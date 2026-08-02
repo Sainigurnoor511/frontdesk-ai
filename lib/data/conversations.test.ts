@@ -9,6 +9,10 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/lib/supabase/service-role', () => ({
+  createServiceRoleClient: vi.fn(),
+}))
+
 describe('getConversationsForOrg', () => {
   it('returns an empty array when no user is signed in', async () => {
     const { createClient } = await import('@/lib/supabase/server')
@@ -229,5 +233,51 @@ describe('getCallerMessagesForOrg', () => {
         createdAt: '2026-01-01T00:00:00.000Z',
       },
     ])
+  })
+})
+
+describe('createConversation', () => {
+  it('inserts a conversation row with status active and returns it mapped', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { createConversation } = await import('./conversations-service')
+
+    const mockRow = {
+      id: 'conv-1',
+      organization_id: 'org-1',
+      agent_id: 'agent-1',
+      channel: 'voice_web',
+      outcome: 'successful',
+      category: null,
+      summary: null,
+      duration_seconds: 0,
+      ended_reason: null,
+      transcript: [],
+      call_goals: [],
+      created_at: '2026-08-02T00:00:00Z',
+    }
+
+    const single = vi.fn().mockResolvedValue({ data: mockRow, error: null })
+    const select = vi.fn().mockReturnValue({ single })
+    const insert = vi.fn().mockReturnValue({ select })
+    const from = vi.fn().mockReturnValue({ insert })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+
+    const result = await createConversation({
+      organizationId: 'org-1',
+      agentId: 'agent-1',
+      channel: 'voice_web',
+      status: 'active',
+    })
+
+    expect(from).toHaveBeenCalledWith('conversations')
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organization_id: 'org-1',
+        agent_id: 'agent-1',
+        channel: 'voice_web',
+        status: 'active',
+      })
+    )
+    expect(result.id).toBe('conv-1')
   })
 })
