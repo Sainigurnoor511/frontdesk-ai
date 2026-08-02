@@ -54,7 +54,7 @@ export function CallDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[512px] gap-0 p-6">
+      <DialogContent className="max-w-[512px] gap-0 p-6 sm:max-w-[512px]">
         <DialogHeader className="items-center text-center">
           <DialogTitle className="text-lg font-semibold">{agentName}</DialogTitle>
           <DialogDescription>Start a call or chat to your receptionist</DialogDescription>
