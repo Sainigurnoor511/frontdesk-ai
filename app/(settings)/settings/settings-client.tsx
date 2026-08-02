@@ -33,6 +33,7 @@ import {
 import { toast } from 'sonner'
 import { logOut } from '@/app/(auth)/actions'
 import { AppHeader } from '@/components/layout/app-header'
+import { SidebarProvider } from '@/components/ui/sidebar'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import { updateNotificationSettings, updateFeatureSettings } from './actions'
 
@@ -63,25 +64,24 @@ export function SettingsClient({
     : 'account'
 
   return (
-    <div className="flex h-svh flex-col">
-      <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} backHref="/" />
-      <div className="flex min-h-0 flex-1">
-        <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4">
-          <div className="flex h-10 items-center gap-0 px-2">
-            <span className="text-base font-semibold">F</span>
-            <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
-          </div>
-
-          <div className="space-y-6">
-            <Link
-              href="/"
-              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="size-4" />
-              Back to app
-            </Link>
+    <SidebarProvider>
+      <div className="flex h-svh flex-col">
+        <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} />
+        <div className="flex min-h-0 flex-1">
+          <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4">
+            <div className="flex h-10 items-center gap-0 px-2">
+              <span className="text-base font-semibold">F</span>
+              <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
+            </div>
 
             <nav className="space-y-0.5">
+              <Link
+                href="/"
+                className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+              >
+                <ArrowLeft className="size-4 shrink-0" />
+                Back to app
+              </Link>
               {NAV_ITEMS.map((item) => (
                 <Link
                   key={item.value}
@@ -97,21 +97,21 @@ export function SettingsClient({
                 </Link>
               ))}
             </nav>
-          </div>
-        </aside>
+          </aside>
 
-        <div className="min-w-0 flex-1 overflow-y-auto p-8">
-          <div className="mx-auto max-w-3xl space-y-6">
-            <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
+          <div className="min-w-0 flex-1 overflow-y-auto p-8">
+            <div className="mx-auto max-w-3xl space-y-6">
+              <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
 
-            {activeTab === 'account' && <AccountTab email={email} />}
-            {activeTab === 'billing' && <BillingTab />}
-            {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
-            {activeTab === 'features' && <FeaturesTab settings={settings} />}
+              {activeTab === 'account' && <AccountTab email={email} />}
+              {activeTab === 'billing' && <BillingTab />}
+              {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
+              {activeTab === 'features' && <FeaturesTab settings={settings} />}
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </SidebarProvider>
   )
 }
 

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MessageCircleMore, Bell, PanelLeft } from 'lucide-react'
+import { MessageCircleMore, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
@@ -33,15 +33,10 @@ export function AppHeader({
   email,
   orgName,
   avatarUrl,
-  showSidebarToggle = true,
-  backHref,
 }: {
   email: string
   orgName: string
   avatarUrl: string | null
-  showSidebarToggle?: boolean
-  /** When set, renders a static back-navigation icon instead of the sidebar-collapse toggle (pages with no AppSidebar, e.g. Settings). */
-  backHref?: string
 }) {
   const pathname = usePathname()
   const title = pageTitles[pathname] ?? ''
@@ -50,20 +45,7 @@ export function AppHeader({
   return (
     <header className="flex h-[50px] items-center justify-between border-b bg-background px-2">
       <div className="flex items-center gap-2">
-        {backHref ? (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Back to app"
-            className="rounded-md border text-muted-foreground"
-            nativeButton={false}
-            render={<Link href={backHref} />}
-          >
-            <PanelLeft />
-          </Button>
-        ) : (
-          showSidebarToggle && <SidebarToggleButton className="rounded-md border" />
-        )}
+        <SidebarToggleButton className="rounded-md border" />
         <span className="text-sm font-medium">{title}</span>
       </div>
       <div className="flex items-center gap-2">
