@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
+import { generateUniqueSlug } from '@/lib/data/organization-slug'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -46,9 +47,10 @@ export async function GET(request: NextRequest) {
 
   if (!existingMember) {
     const businessName = data.user.email?.split('@')[0] ?? 'My Business'
+    const slug = await generateUniqueSlug(serviceClient, businessName)
     const { data: org, error: orgError } = await serviceClient
       .from('organizations')
-      .insert({ name: businessName })
+      .insert({ name: businessName, slug })
       .select('id')
       .single()
 

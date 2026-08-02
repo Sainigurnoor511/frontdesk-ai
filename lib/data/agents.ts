@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export type Agent = {
   id: string
+  organization_id: string
   name: string
   business_name: string | null
   industry: string | null
@@ -33,11 +34,48 @@ export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> 
   const supabase = await createClient()
   const { data } = await supabase
     .from('agents')
-    .select('id, name, business_name, industry, country, language, staff_phone_number')
+    .select('id, organization_id, name, business_name, industry, country, language, staff_phone_number')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
 
   return data ?? []
+}
+
+export type PublicAgent = {
+  id: string
+  organizationId: string
+  name: string
+  businessName: string | null
+}
+
+/**
+ * Used by the public booking page, where the caller is unauthenticated
+ * (`anon` role). Selects only the columns the `anon` role is granted on
+ * `agents` (see supabase/migrations/00000000000020_restrict_public_agents_columns.sql)
+ * — a wider select here would be silently rejected by Postgres and return
+ * no rows, per `getAgentsForOrg`'s error-swallowing `data ?? []` pattern.
+ */
+export async function getPublicAgentsForOrg(organizationId: string): Promise<PublicAgent[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('agents')
+    .select('id, organization_id, name, business_name')
+    .eq('organization_id', organizationId)
+    // Order by a column the `anon` role is granted — Postgres checks
+    // column-level SELECT privilege against every column a query
+    // references, including ORDER BY, not just the output list.
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('getPublicAgentsForOrg failed:', error)
+  }
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    businessName: row.business_name,
+  }))
 }
 
 export async function getAgentById(id: string): Promise<AgentDetail | null> {

@@ -17,9 +17,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/onboarding')
   }
 
+  const agent = agents[0]
+
   return (
     <SidebarProvider>
-      <AppSidebar orgName={context.org.name} />
+      <AppSidebar
+        orgName={context.org.name}
+        agent={{
+          id: agent.id,
+          organizationId: agent.organization_id,
+          name: agent.business_name ?? agent.name,
+          staffPhoneNumber: agent.staff_phone_number,
+        }}
+      />
       <SidebarInset className="h-svh overflow-hidden">
         <AppHeader
           email={context.user.email}

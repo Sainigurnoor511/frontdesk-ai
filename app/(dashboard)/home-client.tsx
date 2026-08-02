@@ -17,6 +17,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
+import { CallDialog } from '@/components/voice/call-dialog'
 import type { Agent } from '@/lib/data/agents'
 import type { Conversation } from '@/lib/data/conversations'
 import type { AppointmentRow } from '@/lib/data/calendar'
@@ -83,6 +84,7 @@ export function HomeClient({
   upcomingAppointments: AppointmentRow[]
 }) {
   const [dismissed, setDismissed] = useState(false)
+  const [callOpen, setCallOpen] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -157,6 +159,7 @@ export function HomeClient({
               <button
                 type="button"
                 aria-label="Test your receptionist"
+                onClick={() => setCallOpen(true)}
                 className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="relative flex size-2" aria-hidden="true">
@@ -179,6 +182,18 @@ export function HomeClient({
           </div>
         </CardContent>
       </Card>
+
+      {agent && (
+        <CallDialog
+          open={callOpen}
+          onOpenChange={setCallOpen}
+          organizationId={agent.organization_id}
+          agentId={agent.id}
+          agentName={agent.business_name ?? agent.name}
+          staffPhoneNumber={agent.staff_phone_number}
+          authenticated
+        />
+      )}
 
       <div className="flex flex-wrap gap-4">
         <StatTile

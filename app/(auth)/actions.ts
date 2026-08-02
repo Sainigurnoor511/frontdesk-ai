@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { signupSchema, loginSchema, type SignupInput, type LoginInput } from '@/lib/validations/auth'
 import { organizationNameSchema, type OrganizationNameInput } from '@/lib/validations/organization'
+import { generateUniqueSlug } from '@/lib/data/organization-slug'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -43,9 +44,10 @@ export async function signUp(input: SignupInput): Promise<{ error: string }> {
 
   const serviceClient = createServiceRoleClient()
   const businessName = parsed.data.email.split('@')[0]
+  const slug = await generateUniqueSlug(serviceClient, businessName)
   const { data: org, error: orgError } = await serviceClient
     .from('organizations')
-    .insert({ name: businessName })
+    .insert({ name: businessName, slug })
     .select('id')
     .single()
 

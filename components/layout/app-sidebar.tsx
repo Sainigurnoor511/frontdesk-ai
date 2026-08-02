@@ -46,6 +46,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
+import { CallDialog } from '@/components/voice/call-dialog'
 
 const navSections = [
   {
@@ -104,9 +105,21 @@ function PhoneNumberPill() {
   )
 }
 
-export function AppSidebar({ orgName }: { orgName: string }) {
+export function AppSidebar({
+  orgName,
+  agent,
+}: {
+  orgName: string
+  agent: {
+    id: string
+    organizationId: string
+    name: string
+    staffPhoneNumber: string | null
+  } | null
+}) {
   const pathname = usePathname()
   const [lockLayout, setLockLayout] = useState(false)
+  const [callOpen, setCallOpen] = useState(false)
 
   return (
     <Sidebar collapsible="icon">
@@ -121,6 +134,14 @@ export function AppSidebar({ orgName }: { orgName: string }) {
         </SidebarMenu>
         <SidebarMenu>
           <PhoneNumberPill />
+          {agent && (
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={() => setCallOpen(true)}>
+                <Phone weight="bold" />
+                <span>Call receptionist</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="gap-0 py-1">
@@ -210,6 +231,17 @@ export function AppSidebar({ orgName }: { orgName: string }) {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {agent && (
+        <CallDialog
+          open={callOpen}
+          onOpenChange={setCallOpen}
+          organizationId={agent.organizationId}
+          agentId={agent.id}
+          agentName={agent.name}
+          staffPhoneNumber={agent.staffPhoneNumber}
+          authenticated
+        />
+      )}
     </Sidebar>
   )
 }
