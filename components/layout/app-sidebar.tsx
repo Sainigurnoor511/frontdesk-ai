@@ -13,8 +13,8 @@ import {
   UserCog,
   ChartColumn,
   UserCircle,
-  Plug,
-  BookMarked,
+  Blocks,
+  Building2,
   Settings,
   Ellipsis,
   Phone,
@@ -99,8 +99,8 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
     label: 'Setup',
     isSetup: true,
     items: [
-      { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
-      { title: 'Bookings page', url: '/booking-page', icon: BookMarked },
+      { title: 'Integrations', url: '/integrations', icon: Blocks, badge: 'Alpha' },
+      { title: 'Bookings page', url: '/booking-page', icon: CalendarClock },
       { title: 'Settings', url: '/settings', icon: Settings },
     ],
   },
@@ -219,7 +219,7 @@ export function AppSidebar({
                   {'isSetup' in section && section.isSetup && agent && (
                     <SidebarMenuItem>
                       <SidebarMenuButton isActive={pathname === '/business'} render={<Link href="/business" />}>
-                        <House strokeWidth={2.5} />
+                        <Building2 strokeWidth={2.5} />
                         <span>{agent.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -298,7 +298,7 @@ export function AppSidebar({
                     )}
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
-                        <House />
+                        <Building2 />
                         {agent ? agent.name : 'Business'}
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
