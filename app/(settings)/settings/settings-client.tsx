@@ -64,7 +64,7 @@ export function SettingsClient({
 
   return (
     <div className="flex h-svh flex-col">
-      <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} showSidebarToggle={false} />
+      <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} backHref="/" />
       <div className="flex min-h-0 flex-1">
         <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4">
           <div className="flex h-10 items-center gap-0 px-2">
