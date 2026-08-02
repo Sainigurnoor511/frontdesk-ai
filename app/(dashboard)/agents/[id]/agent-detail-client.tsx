@@ -247,7 +247,7 @@ export function AgentDetailClient({
                   title="Additional Instructions"
                   description={`Extra instructions for the receptionist. E.g. "If someone asks about parking, mention the free parking lot behind the building."`}
                 />
-                <div className="overflow-hidden rounded-2xl border border-border">
+                <div className="max-w-xl overflow-hidden rounded-2xl border border-border">
                   <Textarea
                     value={additionalInstructions}
                     onChange={(e) =>
