@@ -132,14 +132,25 @@ If you are unable to fulfill a request, clearly state your limitations and offer
 type FishAudioModelResult = {
   id: string
   title: string
+  description?: string
   languages?: string[]
   samples?: Array<{ audio?: string }>
+  tags?: string[]
 }
+
+export type VoiceSearchResult = VoiceCatalogEntry & {
+  description?: string
+  gender?: 'male' | 'female'
+  age?: 'young' | 'middle-aged' | 'old'
+}
+
+const GENDER_TAGS = ['male', 'female'] as const
+const AGE_TAGS = ['young', 'middle-aged', 'old'] as const
 
 export async function searchVoices(
   query: string,
   language?: string
-): Promise<VoiceCatalogEntry[]> {
+): Promise<VoiceSearchResult[]> {
   const params = new URLSearchParams({ title: query, page_size: '20' })
   const response = await fetch(`https://api.fish.audio/model?${params}`, {
     headers: { Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}` },
@@ -150,12 +161,21 @@ export async function searchVoices(
   const data = (await response.json()) as { items?: FishAudioModelResult[] }
   const items = data.items ?? []
 
-  const mapped = items.map((item) => ({
-    id: item.id,
-    label: item.title,
-    language: item.languages?.[0] ?? 'en',
-    previewUrl: item.samples?.[0]?.audio ?? '',
-  }))
+  const mapped = items.map((item) => {
+    const tags = item.tags ?? []
+    const gender = GENDER_TAGS.find((g) => tags.includes(g))
+    const age = AGE_TAGS.find((a) => tags.includes(a))
+
+    return {
+      id: item.id,
+      label: item.title,
+      language: item.languages?.[0] ?? 'en',
+      previewUrl: item.samples?.[0]?.audio ?? '',
+      description: item.description,
+      gender,
+      age,
+    }
+  })
 
   return language ? mapped.filter((voice) => voice.language === language) : mapped
 }

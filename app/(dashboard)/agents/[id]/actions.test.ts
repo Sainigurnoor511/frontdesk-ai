@@ -220,6 +220,55 @@ describe('searchVoices', () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
     await expect(searchVoices('test')).resolves.toEqual([])
   })
+
+  it('parses gender and age from tags', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'v1',
+            title: 'Test Voice',
+            description: 'A warm narrator',
+            languages: ['en'],
+            samples: [{ audio: 'a.mp3' }],
+            tags: ['male', 'middle-aged', 'narration', 'warm'],
+          },
+        ],
+      }),
+    } as unknown as Response)
+
+    const result = await searchVoices('test')
+
+    expect(result[0]).toMatchObject({
+      id: 'v1',
+      description: 'A warm narrator',
+      gender: 'male',
+      age: 'middle-aged',
+    })
+  })
+
+  it('omits gender/age when tags do not contain them', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'v2',
+            title: 'Untagged Voice',
+            languages: ['en'],
+            samples: [{ audio: 'b.mp3' }],
+            tags: ['storytelling', 'clear'],
+          },
+        ],
+      }),
+    } as unknown as Response)
+
+    const result = await searchVoices('test')
+
+    expect(result[0].gender).toBeUndefined()
+    expect(result[0].age).toBeUndefined()
+  })
 })
 
 describe('generateAdditionalInstructions', () => {
