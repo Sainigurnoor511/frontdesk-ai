@@ -215,7 +215,7 @@ export function AppSidebar({
                   {visibleItems.map((item) => (
                     <SidebarMenuItem
                       key={item.url}
-                      className={cn('group/nav-item', item.title === 'Settings' && 'mt-2')}
+                      className={cn('group/nav-item', item.title === 'Settings' && 'mt-3')}
                     >
                       <SidebarMenuButton
                         isActive={pathname === item.url}
@@ -252,7 +252,7 @@ export function AppSidebar({
             </SidebarGroup>
           )
         })}
-        <SidebarGroup className="mt-auto pt-3">
+        <SidebarGroup className="pt-3">
           <SidebarGroupContent>
             <SidebarMenu>
               {/* Conversations badge (unread count) intentionally omitted here — no
