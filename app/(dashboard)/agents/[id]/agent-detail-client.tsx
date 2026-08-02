@@ -240,8 +240,8 @@ export function AgentDetailClient({
 
         {/* General tab */}
         <TabsContent value="general" className="pt-6">
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
-            <div className="max-w-xl space-y-8">
+          <div className="grid max-w-[928px] grid-cols-1 gap-8 lg:grid-cols-[576px_320px]">
+            <div className="space-y-8">
               <div className="space-y-2">
                 <SectionHeading
                   title="Additional Instructions"
