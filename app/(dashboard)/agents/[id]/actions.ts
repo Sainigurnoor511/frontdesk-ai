@@ -227,3 +227,69 @@ export async function updateAgentCallSettings(
   revalidatePath(`/agents/${agentId}`)
   return { success: true }
 }
+
+export async function getFavoriteVoiceIds(): Promise<string[]> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) return []
+
+  const { data } = await supabase
+    .from('favorite_voices')
+    .select('voice_id')
+    .eq('organization_id', member.organization_id)
+
+  return (data ?? []).map((row) => row.voice_id as string)
+}
+
+export async function toggleFavoriteVoice(
+  voiceId: string
+): Promise<{ error: string } | { favorited: boolean }> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to do this.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { data: existing } = await supabase
+    .from('favorite_voices')
+    .select('voice_id')
+    .eq('organization_id', member.organization_id)
+    .eq('voice_id', voiceId)
+    .maybeSingle()
+
+  if (existing) {
+    const { error } = await supabase
+      .from('favorite_voices')
+      .delete()
+      .eq('organization_id', member.organization_id)
+      .eq('voice_id', voiceId)
+    if (error) return { error: 'Could not update favorite.' }
+    return { favorited: false }
+  }
+
+  const { error } = await supabase
+    .from('favorite_voices')
+    .insert({ organization_id: member.organization_id, voice_id: voiceId })
+  if (error) return { error: 'Could not update favorite.' }
+  return { favorited: true }
+}

@@ -18,6 +18,10 @@ import {
   updateAgentCallSettings,
   searchVoices,
   generateAdditionalInstructions,
+  getFavoriteVoiceIds,
+  toggleFavoriteVoice,
+  designVoiceCandidates,
+  saveVoiceModel,
 } from './actions'
 
 vi.mock('next/cache', () => ({
@@ -318,5 +322,110 @@ describe('generateAdditionalInstructions', () => {
     const result = await generateAdditionalInstructions('test', {})
 
     expect(result).toEqual({ error: 'Could not generate instructions. Please try again.' })
+  })
+})
+
+describe('getFavoriteVoiceIds', () => {
+  it('returns an empty array when no user is signed in', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    vi.mocked(createSupabaseClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }) },
+    } as never)
+
+    await expect(getFavoriteVoiceIds()).resolves.toEqual([])
+  })
+
+  it('returns the caller organization favorite voice ids', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const selectFavorites = vi.fn().mockReturnValue({
+      eq: vi.fn().mockResolvedValue({ data: [{ voice_id: 'v1' }, { voice_id: 'v2' }] }),
+    })
+    const memberSingle = vi.fn().mockResolvedValue({ data: { organization_id: 'org-1' } })
+    const from = vi.fn((table: string) => {
+      if (table === 'members') {
+        return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: memberSingle }) }),
+        }
+      }
+      if (table === 'favorite_voices') {
+        return { select: selectFavorites }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    vi.mocked(createSupabaseClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from,
+    } as never)
+
+    await expect(getFavoriteVoiceIds()).resolves.toEqual(['v1', 'v2'])
+  })
+})
+
+describe('toggleFavoriteVoice', () => {
+  it('inserts a favorite when not already favorited', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null })
+    const insert = vi.fn().mockResolvedValue({ error: null })
+    const memberSingle = vi.fn().mockResolvedValue({ data: { organization_id: 'org-1' } })
+    const from = vi.fn((table: string) => {
+      if (table === 'members') {
+        return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: memberSingle }) }),
+        }
+      }
+      if (table === 'favorite_voices') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle }) }),
+          }),
+          insert,
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    vi.mocked(createSupabaseClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from,
+    } as never)
+
+    const result = await toggleFavoriteVoice('v1')
+
+    expect(result).toEqual({ favorited: true })
+    expect(insert).toHaveBeenCalledWith({ organization_id: 'org-1', voice_id: 'v1' })
+  })
+
+  it('removes a favorite when already favorited', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const maybeSingle = vi.fn().mockResolvedValue({ data: { voice_id: 'v1' } })
+    const deleteEq2 = vi.fn().mockResolvedValue({ error: null })
+    const deleteEq1 = vi.fn().mockReturnValue({ eq: deleteEq2 })
+    const del = vi.fn().mockReturnValue({ eq: deleteEq1 })
+    const memberSingle = vi.fn().mockResolvedValue({ data: { organization_id: 'org-1' } })
+    const from = vi.fn((table: string) => {
+      if (table === 'members') {
+        return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: memberSingle }) }),
+        }
+      }
+      if (table === 'favorite_voices') {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ maybeSingle }) }),
+          }),
+          delete: del,
+        }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    vi.mocked(createSupabaseClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from,
+    } as never)
+
+    const result = await toggleFavoriteVoice('v1')
+
+    expect(result).toEqual({ favorited: false })
+    expect(deleteEq1).toHaveBeenCalledWith('organization_id', 'org-1')
+    expect(deleteEq2).toHaveBeenCalledWith('voice_id', 'v1')
   })
 })
