@@ -10,7 +10,7 @@ import {
   Clock,
   Users,
   UserCog,
-  ChartBar,
+  ChartColumn,
   UserCircle,
   Store,
   Plug,
@@ -72,7 +72,7 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
       { title: 'Clients', url: '/clients', icon: Users },
       { title: 'Staff', url: '/staff', icon: UserCog },
       { title: 'Conversations', url: '/conversations', icon: MessageCircleMore },
-      { title: 'Analytics', url: '/analytics', icon: ChartBar },
+      { title: 'Analytics', url: '/analytics', icon: ChartColumn },
     ],
   },
   {
