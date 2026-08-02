@@ -1,0 +1,129 @@
+import { config } from 'dotenv'
+config({ path: '.env.local' })
+
+import * as agents from '@livekit/agents'
+import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-openai'
+import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
+import { buildSystemPrompt } from '@/lib/voice/agent-context'
+import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
+import { updateConversationStatus } from '@/lib/data/conversations-service'
+
+/**
+ * JSON payload set on the LiveKit room's metadata at creation time by
+ * `startDashboardCall`/`startPublicCall` (see `app/(dashboard)/actions/voice.ts`
+ * and `app/book/actions.ts`), via `RoomServiceClient.createRoom({ metadata })`.
+ * Room metadata is preferred over cramming identifiers into the room name —
+ * room names stay simple opaque identifiers (`${organizationId}:call:${uuid}`).
+ */
+type RoomMetadata = {
+  agentId: string
+  conversationId: string
+}
+
+function parseRoomMetadata(raw: string | undefined): RoomMetadata | null {
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw)
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof parsed.agentId === 'string' &&
+      typeof parsed.conversationId === 'string'
+    ) {
+      return parsed as RoomMetadata
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+async function entrypoint(ctx: agents.JobContext) {
+  await ctx.connect()
+
+  const metadata = parseRoomMetadata(ctx.room.metadata)
+  if (!metadata) {
+    console.error(`[voice-agent] room ${ctx.room.name} has no valid metadata; disconnecting`)
+    await ctx.room.disconnect()
+    return
+  }
+
+  const { agentId, conversationId } = metadata
+
+  try {
+    const agentDetail = await getAgentByIdServiceRole(agentId)
+    if (!agentDetail) {
+      console.error(`[voice-agent] agent ${agentId} not found; failing conversation ${conversationId}`)
+      await updateConversationStatus(conversationId, {
+        status: 'failed',
+        outcome: 'failed',
+        endedReason: 'agent_not_found',
+      })
+      await ctx.room.disconnect()
+      return
+    }
+
+    const session = new agents.AgentSession({
+      stt: OpenAISTT.withGroq({ model: 'whisper-large-v3-turbo' }),
+      llm: OpenAILLM.withGroq({ model: 'llama-3.3-70b-versatile' }),
+      tts: new FishAudioTTS(),
+    })
+
+    const startedAt = Date.now()
+
+    let finished = false
+    const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
+      if (finished) return
+      finished = true
+      const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
+      try {
+        await updateConversationStatus(conversationId, {
+          status,
+          outcome: status === 'completed' ? 'successful' : 'failed',
+          durationSeconds,
+          ...(endedReason ? { endedReason } : {}),
+        })
+      } catch (err) {
+        console.error(`[voice-agent] failed to update conversation ${conversationId} status:`, err)
+      }
+    }
+
+    ctx.room.on('disconnected', () => {
+      void finalizeConversation('completed')
+    })
+
+    session.on(agents.AgentSessionEventTypes.Error, (ev) => {
+      console.error(`[voice-agent] session error for conversation ${conversationId}:`, ev)
+      void finalizeConversation('failed', 'session_error')
+    })
+
+    ctx.addShutdownCallback(async () => {
+      await finalizeConversation('completed')
+    })
+
+    await session.start({
+      room: ctx.room,
+      agent: new agents.Agent({ instructions: buildSystemPrompt(agentDetail) }),
+    })
+  } catch (error) {
+    console.error(`[voice-agent] entrypoint failed for conversation ${conversationId}:`, error)
+    try {
+      await updateConversationStatus(conversationId, {
+        status: 'failed',
+        outcome: 'failed',
+        endedReason: error instanceof Error ? error.message : 'unknown_error',
+      })
+    } catch (updateError) {
+      console.error(`[voice-agent] failed to record failure for conversation ${conversationId}:`, updateError)
+    }
+    await ctx.room.disconnect()
+  }
+}
+
+export default agents.defineAgent({ entry: entrypoint })
+
+agents.cli.runApp(
+  new agents.WorkerOptions({
+    agent: import.meta.filename,
+  })
+)

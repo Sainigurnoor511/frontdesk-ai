@@ -1,6 +1,6 @@
 'use server'
 
-import { AccessToken } from 'livekit-server-sdk'
+import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import { headers } from 'next/headers'
 import { createConversation } from '@/lib/data/conversations-service'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
@@ -38,6 +38,19 @@ export async function startPublicCall(
     agentId: parsed.data.agentId,
     channel: 'voice_web',
     status: 'active',
+  })
+
+  // Explicitly pre-create the room with metadata so the voice worker
+  // (workers/voice-agent.ts) can read { agentId, conversationId } off
+  // `ctx.room.metadata` instead of parsing them out of the room name.
+  const roomService = new RoomServiceClient(
+    process.env.LIVEKIT_URL!,
+    process.env.LIVEKIT_API_KEY!,
+    process.env.LIVEKIT_API_SECRET!
+  )
+  await roomService.createRoom({
+    name: roomName,
+    metadata: JSON.stringify({ agentId: parsed.data.agentId, conversationId: conversation.id }),
   })
 
   const at = new AccessToken(process.env.LIVEKIT_API_KEY!, process.env.LIVEKIT_API_SECRET!, {
