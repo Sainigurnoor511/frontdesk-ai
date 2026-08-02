@@ -3,11 +3,11 @@
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
-  CalendarBlank,
+  CalendarDays,
   Plus,
-  UserGear,
-  Cube,
-} from '@phosphor-icons/react/dist/ssr'
+  UserCog,
+  Box,
+} from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -196,7 +196,7 @@ export function AvailabilityClient({
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <UserGear />
+                    <UserCog />
                   </EmptyMedia>
                   <EmptyTitle>No staff yet</EmptyTitle>
                   <EmptyDescription>
@@ -220,7 +220,7 @@ export function AvailabilityClient({
               <Empty>
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Cube />
+                    <Box />
                   </EmptyMedia>
                   <EmptyTitle>No assets yet</EmptyTitle>
                   <EmptyDescription>
@@ -426,7 +426,7 @@ function ExceptionsSection({ exceptions }: { exceptions: ExceptionRow[] }) {
           <Empty className="py-8">
             <EmptyHeader>
               <EmptyMedia variant="icon">
-                <CalendarBlank />
+                <CalendarDays />
               </EmptyMedia>
               <EmptyTitle>No upcoming exceptions</EmptyTitle>
               <EmptyDescription>
@@ -531,14 +531,14 @@ function AddExceptionDialog({ onClose }: { onClose: () => void }) {
           <div className="space-y-1.5">
             <Label>Start date</Label>
             <Button variant="outline" className="w-full justify-start font-normal" type="button">
-              <CalendarBlank className="size-4" />
+              <CalendarDays className="size-4" />
               {today}
             </Button>
           </div>
           <div className="space-y-1.5">
             <Label>End date</Label>
             <Button variant="outline" className="w-full justify-start font-normal" type="button">
-              <CalendarBlank className="size-4" />
+              <CalendarDays className="size-4" />
               {today}
             </Button>
           </div>

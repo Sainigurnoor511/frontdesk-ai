@@ -1,5 +1,5 @@
-import type { Icon } from '@phosphor-icons/react'
-import { Rocket, Robot, Buildings, Wrench, Clock, CalendarCheck, Gear } from '@phosphor-icons/react/dist/ssr'
+import type { LucideIcon } from 'lucide-react'
+import { Rocket, Bot, Building2, Wrench, Clock, CalendarCheck, Settings } from 'lucide-react'
 
 export type GuideStep = {
   title: string
@@ -10,7 +10,7 @@ export type Guide = {
   slug: string
   title: string
   description: string
-  icon: Icon
+  icon: LucideIcon
   steps: GuideStep[]
 }
 
@@ -37,7 +37,7 @@ export const guides: Guide[] = [
     slug: 'meet-your-receptionist',
     title: 'Meet your AI receptionist',
     description: 'Instructions, first message, voice, languages, rules, and call settings.',
-    icon: Robot,
+    icon: Bot,
     steps: [
       { title: 'Understand what your receptionist can do', description: 'It answers calls, checks availability, books and reschedules appointments, answers common questions from your knowledge base, and can transfer to a real person when needed.' },
       { title: 'Write its instructions', description: 'This is the system prompt — the personality, tone, and boundaries for how it talks to callers. Keep it specific to your business rather than generic.' },
@@ -62,7 +62,7 @@ export const guides: Guide[] = [
     slug: 'business-setup',
     title: 'Get your business set up',
     description: 'Details, locations, hours, scheduling, plus website scanning and knowledge.',
-    icon: Buildings,
+    icon: Building2,
     steps: [
       { title: 'Enter your business name', description: 'This is how your receptionist refers to your business on calls, so make sure it’s exactly how you want it said out loud.' },
       { title: 'Add your business address', description: 'Used for location-aware answers like directions and for setting the right timezone automatically.' },
@@ -147,7 +147,7 @@ export const guides: Guide[] = [
     slug: 'settings',
     title: 'Find your way around settings',
     description: 'Account, notifications, billing, plus app feature controls.',
-    icon: Gear,
+    icon: Settings,
     steps: [
       { title: 'Update your account name and email', description: 'Keep your profile details current — this is what shows up in team-facing areas of the app.' },
       { title: 'Change your password', description: 'Set a new password from the security section if you ever need to rotate it.' },

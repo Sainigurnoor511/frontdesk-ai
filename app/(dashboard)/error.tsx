@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { Warning } from '@phosphor-icons/react/dist/ssr'
+import { TriangleAlert } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 
@@ -18,7 +18,7 @@ export default function DashboardError({
 
   return (
     <Alert variant="destructive">
-      <Warning className="h-4 w-4" />
+      <TriangleAlert className="h-4 w-4" />
       <AlertTitle>Something went wrong</AlertTitle>
       <AlertDescription className="space-y-2">
         <p>We couldn&apos;t load this page. Please try again.</p>

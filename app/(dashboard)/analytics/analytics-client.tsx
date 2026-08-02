@@ -6,8 +6,8 @@ import {
   Calendar,
   UserPlus,
   XCircle,
-  CurrencyDollar,
-} from '@phosphor-icons/react/dist/ssr'
+  DollarSign,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -182,7 +182,7 @@ function OverviewTab({ data }: { data: AnalyticsData }) {
     <div className="space-y-6">
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {/* Revenue is genuinely $0 — no payments/pricing-per-booking wired up yet. */}
-        <MetricTile icon={CurrencyDollar} label="Revenue" value="$0" />
+        <MetricTile icon={DollarSign} label="Revenue" value="$0" />
         <MetricTile icon={Calendar} label="Bookings" value={data.overview.bookings} />
         <MetricTile icon={UserPlus} label="New Clients" value={data.overview.newClients} />
         <MetricTile icon={XCircle} label="Cancellations" value={data.overview.cancellations} />

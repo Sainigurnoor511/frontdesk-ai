@@ -9,20 +9,20 @@ import {
   Calendar,
   Clock,
   Users,
-  UserGear,
-  ChatCircle,
+  UserCog,
+  MessageCircle,
   ChartBar,
   UserCircle,
-  Storefront,
+  Store,
   Plug,
-  BookBookmark,
-  Gear,
-  DotsThree,
+  BookMarked,
+  Settings,
+  Ellipsis,
   Phone,
   X,
-  ChatCircleDots,
-  LockSimple,
-} from '@phosphor-icons/react/dist/ssr'
+  MessageCircleMore,
+  Lock,
+} from 'lucide-react'
 import {
   Sidebar,
   SidebarContent,
@@ -62,8 +62,8 @@ const navSections = [
       { title: 'Calendar', url: '/calendar', icon: Calendar },
       { title: 'Availability', url: '/availability', icon: Clock },
       { title: 'Clients', url: '/clients', icon: Users },
-      { title: 'Staff', url: '/staff', icon: UserGear },
-      { title: 'Conversations', url: '/conversations', icon: ChatCircle },
+      { title: 'Staff', url: '/staff', icon: UserCog },
+      { title: 'Conversations', url: '/conversations', icon: MessageCircle },
       { title: 'Analytics', url: '/analytics', icon: ChartBar },
     ],
   },
@@ -75,10 +75,10 @@ const navSections = [
     label: 'Setup',
     isSetup: true,
     items: [
-      { title: 'Business', url: '/business', icon: Storefront },
+      { title: 'Business', url: '/business', icon: Store },
       { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
-      { title: 'Bookings page', url: '/booking-page', icon: BookBookmark },
-      { title: 'Settings', url: '/settings', icon: Gear },
+      { title: 'Bookings page', url: '/booking-page', icon: BookMarked },
+      { title: 'Settings', url: '/settings', icon: Settings },
     ],
   },
 ]
@@ -107,7 +107,7 @@ function CallReceptionistPill({
           <Orb seed={1} />
         </div>
         <span>{phoneNumber}</span>
-        {state !== 'collapsed' && <Phone weight="bold" className="ml-auto" />}
+        {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto" />}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -158,7 +158,7 @@ export function AppSidebar({
                 {'isSetup' in section && section.isSetup && (
                   <SidebarMenuItem>
                     <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
-                      <House weight="bold" />
+                      <House strokeWidth={2.5} />
                       <span>{orgName}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -169,7 +169,7 @@ export function AppSidebar({
                       isActive={pathname === item.url}
                       render={<Link href={item.url} />}
                     >
-                      <item.icon weight="bold" />
+                      <item.icon strokeWidth={2.5} />
                       <span>{item.title}</span>
                     </SidebarMenuButton>
                     {'badge' in item && item.badge && (
@@ -199,17 +199,17 @@ export function AppSidebar({
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<SidebarMenuButton />}>
-                    <DotsThree weight="bold" />
+                    <Ellipsis strokeWidth={2.5} />
                     <span>More</span>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top">
                     {/* TODO: open the Assistant panel from here once it's lifted to shared layout state */}
                     <DropdownMenuItem disabled>
-                      <ChatCircleDots />
+                      <MessageCircleMore />
                       Assistant
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/business" />}>
-                      <Storefront />
+                      <Store />
                       Business
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/agents" />}>
@@ -217,7 +217,7 @@ export function AppSidebar({
                       Receptionists
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/settings" />}>
-                      <Gear />
+                      <Settings />
                       Settings
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
@@ -226,7 +226,7 @@ export function AppSidebar({
                       checked={lockLayout}
                       onCheckedChange={setLockLayout}
                     >
-                      <LockSimple />
+                      <Lock />
                       Lock sidebar layout
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>

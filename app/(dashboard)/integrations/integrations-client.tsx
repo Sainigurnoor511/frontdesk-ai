@@ -3,12 +3,12 @@
 import { useMemo, useState, useTransition } from 'react'
 import {
   Plug,
-  MagnifyingGlass,
+  Search,
   CalendarCheck,
   PhoneCall,
-  PlugsConnected,
-  Robot,
-} from '@phosphor-icons/react/dist/ssr'
+  PlugZap,
+  Bot,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -146,7 +146,7 @@ export function IntegrationsClient({
       {connectedIntegrations.length > 0 && (
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative max-w-sm flex-1">
-            <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search integrations"
               value={search}
@@ -193,7 +193,7 @@ export function IntegrationsClient({
                 </p>
               </div>
               <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
-                <PlugsConnected className="h-5 w-5 text-muted-foreground" />
+                <PlugZap className="h-5 w-5 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">
                   Connect CRMs, payments and more
                 </p>
@@ -209,7 +209,7 @@ export function IntegrationsClient({
             <Card key={integration.slug}>
               <CardContent className="flex items-start gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Robot className="h-4 w-4 text-muted-foreground" />
+                  <Bot className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="font-medium">{integration.name}</p>
@@ -243,7 +243,7 @@ export function IntegrationsClient({
           </DialogHeader>
 
           <div className="relative">
-            <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search integrations"
               value={browseSearch}
@@ -290,7 +290,7 @@ export function IntegrationsClient({
                       className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
                     >
                       <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <Robot className="h-4 w-4 text-muted-foreground" />
+                        <Bot className="h-4 w-4 text-muted-foreground" />
                       </div>
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex items-center gap-1.5">
@@ -332,7 +332,7 @@ export function IntegrationsClient({
               <DialogHeader>
                 <div className="flex items-center gap-3">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <Robot className="h-5 w-5 text-muted-foreground" />
+                    <Bot className="h-5 w-5 text-muted-foreground" />
                   </div>
                   <div className="min-w-0">
                     <DialogTitle>{selectedIntegration.name}</DialogTitle>

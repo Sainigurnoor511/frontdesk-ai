@@ -2,11 +2,11 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import {
-  UserGear,
-  MagnifyingGlass,
-  PencilSimple,
+  UserCog,
+  Search,
+  Pencil,
   Trash,
-} from '@phosphor-icons/react/dist/ssr'
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -170,7 +170,7 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative max-w-sm flex-1">
-          <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search staff"
             value={search}
@@ -204,7 +204,7 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
         <CardContent className="p-0">
           {filteredStaff.length === 0 ? (
             <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <UserGear className="h-8 w-8 text-muted-foreground" />
+              <UserCog className="h-8 w-8 text-muted-foreground" />
               <p className="font-medium">No staff yet</p>
               <p className="max-w-sm text-sm text-muted-foreground">
                 Staff are the people who deliver your services. Add your team so
@@ -239,7 +239,7 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
                       aria-label={`Edit ${member.fullName}`}
                       onClick={() => openEditDialog(member)}
                     >
-                      <PencilSimple />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"

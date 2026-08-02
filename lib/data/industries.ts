@@ -1,36 +1,36 @@
-import type { Icon } from '@phosphor-icons/react'
+import type { LucideIcon } from 'lucide-react'
 import {
-  Scales,
+  Scale,
   House,
-  Buildings,
+  Building2,
   Scissors,
   Briefcase,
   PawPrint,
-  Barbell,
+  Dumbbell,
   Sparkle,
   Heart,
   Car,
   Camera,
   GraduationCap,
-  DotsThree,
-  Tooth,
-  FirstAid,
-} from '@phosphor-icons/react/dist/ssr'
+  Ellipsis,
+  Cross,
+  BriefcaseMedical,
+} from 'lucide-react'
 
-export const industries: { value: string; label: string; icon: Icon }[] = [
-  { value: 'legal', label: 'Legal', icon: Scales },
+export const industries: { value: string; label: string; icon: LucideIcon }[] = [
+  { value: 'legal', label: 'Legal', icon: Scale },
   { value: 'home_services', label: 'Home services', icon: House },
-  { value: 'real_estate', label: 'Real estate', icon: Buildings },
+  { value: 'real_estate', label: 'Real estate', icon: Building2 },
   { value: 'salon_barbershop', label: 'Salon & barbershop', icon: Scissors },
   { value: 'consulting', label: 'Consulting', icon: Briefcase },
   { value: 'veterinary', label: 'Veterinary', icon: PawPrint },
-  { value: 'fitness', label: 'Fitness', icon: Barbell },
+  { value: 'fitness', label: 'Fitness', icon: Dumbbell },
   { value: 'nail_beauty', label: 'Nail & beauty', icon: Sparkle },
   { value: 'spa', label: 'Spa', icon: Heart },
   { value: 'auto_service', label: 'Auto service', icon: Car },
   { value: 'photography', label: 'Photography', icon: Camera },
   { value: 'tutoring', label: 'Tutoring', icon: GraduationCap },
-  { value: 'dental', label: 'Dental', icon: Tooth },
-  { value: 'medical', label: 'Medical', icon: FirstAid },
-  { value: 'other', label: 'Other', icon: DotsThree },
+  { value: 'dental', label: 'Dental', icon: Cross },
+  { value: 'medical', label: 'Medical', icon: BriefcaseMedical },
+  { value: 'other', label: 'Other', icon: Ellipsis },
 ]

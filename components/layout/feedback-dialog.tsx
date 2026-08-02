@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Star } from '@phosphor-icons/react/dist/ssr'
+import { Star } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -87,7 +87,7 @@ export function FeedbackDialog({
               )}
             >
               <Star
-                weight={(hoverRating || rating) >= star ? 'fill' : 'regular'}
+                fill={(hoverRating || rating) >= star ? 'currentColor' : 'none'}
                 className="size-4 text-muted-foreground"
               />
             </button>

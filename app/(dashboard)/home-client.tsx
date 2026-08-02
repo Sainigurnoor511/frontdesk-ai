@@ -7,13 +7,13 @@ import {
   PlayCircle,
   Phone,
   X,
-  CalendarBlank,
+  CalendarDays,
   ArrowRight,
   CalendarCheck,
-  TrendUp,
+  TrendingUp,
   UserPlus,
-} from '@phosphor-icons/react/dist/ssr'
-import type { Icon } from '@phosphor-icons/react'
+  type LucideIcon,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -47,7 +47,7 @@ function StatTile({
   href: string
   label: string
   value: string
-  icon: Icon
+  icon: LucideIcon
 }) {
   return (
     <Link href={href} className="flex-1">
@@ -224,7 +224,7 @@ export function HomeClient({
           href="/analytics?tab=services"
           label="Revenue (7d)"
           value={`$${metrics.revenue}`}
-          icon={TrendUp}
+          icon={TrendingUp}
         />
         <StatTile
           href="/analytics?tab=clients"
@@ -312,7 +312,7 @@ export function HomeClient({
             </div>
             {upcomingAppointments.length === 0 ? (
               <div className="flex flex-col items-center gap-2 py-6 text-center">
-                <CalendarBlank className="size-6 text-muted-foreground" />
+                <CalendarDays className="size-6 text-muted-foreground" />
                 <p className="text-sm text-muted-foreground">No upcoming events this week.</p>
                 <Link
                   href="/calendar"

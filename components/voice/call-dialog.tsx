@@ -3,12 +3,12 @@
 import { useEffect, useRef } from 'react'
 import {
   Phone,
-  PhoneX,
+  PhoneOff,
   ArrowUp,
   X,
   Plus,
-  ClockCounterClockwise,
-} from '@phosphor-icons/react/dist/ssr'
+  RotateCcw,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
@@ -97,7 +97,7 @@ export function CallDialog({
                     aria-label="End call"
                     className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-red-500 text-white transition-transform hover:scale-105 active:scale-95"
                   >
-                    <PhoneX weight="fill" className="size-5" />
+                    <PhoneOff fill="currentColor" className="size-5" />
                   </button>
                 ) : (
                   <button
@@ -107,7 +107,7 @@ export function CallDialog({
                     aria-label="Start call"
                     className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-foreground text-white transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
                   >
-                    <Phone weight="fill" className="size-5" />
+                    <Phone fill="currentColor" className="size-5" />
                   </button>
                 )}
               </div>
@@ -173,7 +173,7 @@ export function CallDialog({
                     type="button"
                     className="flex items-center gap-1.5 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
                   >
-                    <ClockCounterClockwise className="size-4" />
+                    <RotateCcw className="size-4" />
                     View details
                   </button>
                 </div>
@@ -200,7 +200,7 @@ export function CallDialog({
                   aria-label="End call"
                   className="flex size-8 shrink-0 items-center justify-center rounded-full border border-red-200 bg-background text-red-500 transition-colors hover:bg-red-50"
                 >
-                  <PhoneX weight="fill" className="size-4" />
+                  <PhoneOff fill="currentColor" className="size-4" />
                 </button>
               )}
               <button

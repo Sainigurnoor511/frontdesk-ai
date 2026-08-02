@@ -3,10 +3,10 @@
 import { useMemo, useState, useTransition } from 'react'
 import {
   Users,
-  MagnifyingGlass,
-  PencilSimple,
+  Search,
+  Pencil,
   Trash,
-} from '@phosphor-icons/react/dist/ssr'
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -134,7 +134,7 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
       </div>
 
       <div className="relative max-w-sm">
-        <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Search clients"
           value={search}
@@ -174,7 +174,7 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
                       aria-label={`Edit ${client.name}`}
                       onClick={() => openEditDialog(client)}
                     >
-                      <PencilSimple />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"

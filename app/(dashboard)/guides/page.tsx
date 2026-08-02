@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { CaretRight } from '@phosphor-icons/react/dist/ssr'
+import { ChevronRight } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -39,7 +39,7 @@ export default function GuidesPage() {
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <Badge variant="secondary">{guide.steps.length} steps</Badge>
-                  <CaretRight className="size-4 text-muted-foreground" />
+                  <ChevronRight className="size-4 text-muted-foreground" />
                 </div>
               </button>
             </CardContent>

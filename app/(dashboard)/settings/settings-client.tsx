@@ -5,15 +5,15 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
-  Envelope,
+  Mail,
   ShieldCheck,
-  Translate,
-  SignOut,
+  Languages,
+  LogOut,
   FileText,
-  BellRinging,
-  UsersThree,
-  UserGear,
-} from '@phosphor-icons/react/dist/ssr'
+  BellRing,
+  Users,
+  UserCog,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -116,7 +116,7 @@ function AccountTab({ email }: { email: string }) {
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex items-center gap-2">
-            <Envelope className="size-4 text-muted-foreground" />
+            <Mail className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Email & Password</h3>
           </div>
           <div className="space-y-1.5">
@@ -153,7 +153,7 @@ function AccountTab({ email }: { email: string }) {
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex items-center gap-2">
-            <Translate className="size-4 text-muted-foreground" />
+            <Languages className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Application language</h3>
           </div>
           <div className="max-w-xs space-y-1.5">
@@ -172,7 +172,7 @@ function AccountTab({ email }: { email: string }) {
       <Card>
         <CardContent className="space-y-4 p-4">
           <div className="flex items-center gap-2">
-            <SignOut className="size-4 text-muted-foreground" />
+            <LogOut className="size-4 text-muted-foreground" />
             <h3 className="text-sm font-semibold">Sign Out All Devices</h3>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -218,19 +218,19 @@ const NOTIFICATION_ROWS: {
   },
   {
     key: 'notifyAppointmentReminders',
-    icon: BellRinging,
+    icon: BellRing,
     title: 'Appointment reminders',
     description: 'Email · 24h before · Reminder',
   },
   {
     key: 'notifyClientBookings',
-    icon: UsersThree,
+    icon: Users,
     title: 'Clients booking notifications',
     description: 'Email',
   },
   {
     key: 'notifyStaffBookings',
-    icon: UserGear,
+    icon: UserCog,
     title: 'Staff booking notifications',
     description: 'Email',
   },

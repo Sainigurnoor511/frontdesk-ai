@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname } from 'next/navigation'
-import { ChatCircleDots, Bell } from '@phosphor-icons/react/dist/ssr'
+import { MessageCircleMore, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
@@ -56,7 +56,7 @@ export function AppHeader({
           aria-label="Assistant panel"
           onClick={() => setAssistantOpen(true)}
         >
-          <ChatCircleDots />
+          <MessageCircleMore />
           Assistant
         </Button>
         <AssistantPanel open={assistantOpen} onOpenChange={setAssistantOpen} />

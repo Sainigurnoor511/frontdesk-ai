@@ -3,17 +3,17 @@
 import { useMemo, useState, useTransition } from 'react'
 import Link from 'next/link'
 import {
-  Storefront,
-  MagnifyingGlass,
-  PencilSimple,
+  Store,
+  Search,
+  Pencil,
   Trash,
   Plus,
   MapPin,
-  Cube,
+  Box,
   Package,
   BookOpen,
-  Question,
-} from '@phosphor-icons/react/dist/ssr'
+  CircleQuestionMark,
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -545,7 +545,7 @@ function ServicesTab({ services }: { services: Service[] }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative max-w-sm flex-1">
-            <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search services"
               value={search}
@@ -580,7 +580,7 @@ function ServicesTab({ services }: { services: Service[] }) {
               <Empty className="py-10">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Storefront />
+                    <Store />
                   </EmptyMedia>
                   <EmptyTitle>Create your first service</EmptyTitle>
                   <EmptyDescription>
@@ -626,7 +626,7 @@ function ServicesTab({ services }: { services: Service[] }) {
                       aria-label={`Edit ${service.name}`}
                       onClick={() => openEditDialog(service)}
                     >
-                      <PencilSimple />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
@@ -858,7 +858,7 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative max-w-sm flex-1">
-          <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search assets"
             value={search}
@@ -876,7 +876,7 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
               <Empty className="py-10">
                 <EmptyHeader>
                   <EmptyMedia variant="icon">
-                    <Cube />
+                    <Box />
                   </EmptyMedia>
                   <EmptyTitle>No assets yet</EmptyTitle>
                   <EmptyDescription>
@@ -915,7 +915,7 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
                       aria-label={`Edit ${asset.name}`}
                       onClick={() => openEditDialog(asset)}
                     >
-                      <PencilSimple />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
@@ -1106,7 +1106,7 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="relative max-w-sm flex-1">
-          <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="Search products"
             value={search}
@@ -1164,7 +1164,7 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
                       aria-label={`Edit ${product.name}`}
                       onClick={() => openEditDialog(product)}
                     >
-                      <PencilSimple />
+                      <Pencil />
                     </Button>
                     <Button
                       variant="ghost"
@@ -1431,7 +1431,7 @@ function FaqTab() {
         <Empty>
           <EmptyHeader>
             <EmptyMedia variant="icon">
-              <Question />
+              <CircleQuestionMark />
             </EmptyMedia>
             <EmptyTitle>No FAQs yet</EmptyTitle>
             <EmptyDescription>

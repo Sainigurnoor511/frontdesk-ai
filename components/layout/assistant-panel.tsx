@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, ClockCounterClockwise, ArrowUp } from '@phosphor-icons/react/dist/ssr'
+import { Plus, RotateCcw, ArrowUp } from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 
@@ -51,7 +51,7 @@ export function AssistantPanel({
               <Plus />
             </Button>
             <Button variant="ghost" size="icon-sm" aria-label="Open history">
-              <ClockCounterClockwise />
+              <RotateCcw />
             </Button>
           </div>
         </SheetHeader>

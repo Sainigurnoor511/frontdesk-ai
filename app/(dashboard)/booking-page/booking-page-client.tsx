@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Copy, CaretDown, Code } from '@phosphor-icons/react/dist/ssr'
+import { Copy, ChevronDown, Code } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -114,7 +114,7 @@ export function BookingPageClient({
                 <Code className="size-4" />
                 Embed on your website
               </span>
-              <CaretDown className="size-4 text-muted-foreground" />
+              <ChevronDown className="size-4 text-muted-foreground" />
             </CollapsibleTrigger>
             <CollapsibleContent className="space-y-2 pt-3">
               <p className="text-sm text-muted-foreground">

@@ -2,23 +2,23 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import {
-  ChatCircle,
-  ChatsCircle,
+  MessageCircle,
+  MessagesSquare,
   Phone,
   Globe,
-  MagnifyingGlass,
-  ChatText,
+  Search,
+  MessageSquareText,
   Clock,
-  ArrowSquareOut,
-  Waveform,
-  Robot,
+  SquareArrowOutUpRight,
+  AudioWaveform,
+  Bot,
   User,
-  EnvelopeSimple,
+  Mail,
   CheckCircle,
   XCircle,
   Trash,
   UserPlus,
-} from '@phosphor-icons/react/dist/ssr'
+} from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -62,7 +62,7 @@ function formatDuration(seconds: number): string {
 
 function ChannelIcon({ channel }: { channel: Conversation['channel'] }) {
   if (channel === 'phone') return <Phone className="size-4 text-muted-foreground" />
-  if (channel === 'chat') return <ChatCircle className="size-4 text-muted-foreground" />
+  if (channel === 'chat') return <MessageCircle className="size-4 text-muted-foreground" />
   return <Globe className="size-4 text-muted-foreground" />
 }
 
@@ -167,7 +167,7 @@ export function ConversationsClient({
         <TabsContent value="conversations" className="space-y-4 pt-4">
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative max-w-sm flex-1 min-w-[200px]">
-              <MagnifyingGlass className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 placeholder="Search conversations"
                 value={search}
@@ -190,7 +190,7 @@ export function ConversationsClient({
             <CardContent className="p-0">
               {filteredConversations.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                  <ChatsCircle className="h-8 w-8 text-muted-foreground" />
+                  <MessagesSquare className="h-8 w-8 text-muted-foreground" />
                   <p className="font-medium">No conversations yet</p>
                   <p className="max-w-sm text-sm text-muted-foreground">
                     Calls and chats with your receptionist will show up here.
@@ -242,7 +242,7 @@ export function ConversationsClient({
                         </div>
                         <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <ChatText className="size-3.5" />
+                            <MessageSquareText className="size-3.5" />
                             {conversation.transcript.length}
                           </span>
                           <span>{formatRelativeTime(conversation.createdAt)}</span>
@@ -250,7 +250,7 @@ export function ConversationsClient({
                             <Clock className="size-3.5" />
                             {formatDuration(conversation.durationSeconds)}
                           </span>
-                          <ArrowSquareOut className="size-4" />
+                          <SquareArrowOutUpRight className="size-4" />
                         </div>
                       </button>
                     </li>
@@ -279,7 +279,7 @@ export function ConversationsClient({
             <CardContent className="p-0">
               {messageList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                  <EnvelopeSimple className="h-8 w-8 text-muted-foreground" />
+                  <Mail className="h-8 w-8 text-muted-foreground" />
                   <p className="font-medium">No messages yet</p>
                   <p className="max-w-sm text-sm text-muted-foreground">
                     Messages callers leave for you will show up here.
@@ -377,7 +377,7 @@ export function ConversationsClient({
               <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
                 {/* TODO: real audio playback - no recording storage yet, this is a static placeholder. */}
                 <div className="flex h-16 items-center justify-center gap-0.5 rounded-lg bg-muted px-4">
-                  <Waveform className="size-8 text-muted-foreground" />
+                  <AudioWaveform className="size-8 text-muted-foreground" />
                   <div className="flex flex-1 items-center gap-0.5">
                     {Array.from({ length: 40 }).map((_, i) => (
                       <span
@@ -485,7 +485,7 @@ export function ConversationsClient({
                           >
                             {message.role === 'agent' && (
                               <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
-                                <Robot className="size-3.5 text-muted-foreground" />
+                                <Bot className="size-3.5 text-muted-foreground" />
                               </span>
                             )}
                             {message.role === 'caller' && (

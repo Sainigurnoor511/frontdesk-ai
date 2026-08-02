@@ -1,4 +1,4 @@
-import { Phone } from '@phosphor-icons/react/dist/ssr'
+import { Phone } from 'lucide-react'
 import { PlaceholderPage } from '@/components/layout/placeholder-page'
 
 export default function PhoneNumbersPage() {

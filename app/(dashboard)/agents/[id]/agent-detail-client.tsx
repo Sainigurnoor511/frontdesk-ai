@@ -3,15 +3,15 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  PencilSimple,
-  SpeakerHigh,
+  Pencil,
+  Speaker,
   ListChecks,
-  UsersThree,
+  Users,
   ShieldCheck,
   ArrowRight,
   Wrench,
-  Question,
-} from '@phosphor-icons/react/dist/ssr'
+  CircleQuestionMark,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -168,7 +168,7 @@ export function AgentDetailClient({
           )}
           {/* TODO: wire up edit receptionist (rename/delete) action */}
           <Button variant="outline" size="icon" aria-label="Edit receptionist">
-            <PencilSimple />
+            <Pencil />
           </Button>
         </div>
       </div>
@@ -320,7 +320,7 @@ export function AgentDetailClient({
                 <div className="flex items-center gap-1.5 rounded-[10px] border border-border px-2.5 py-2">
                   <Wrench className="size-4 shrink-0 text-foreground" />
                   <span className="text-sm font-medium">Detect language</span>
-                  <Question className="size-3.5 shrink-0 text-muted-foreground" />
+                  <CircleQuestionMark className="size-3.5 shrink-0 text-muted-foreground" />
                   <Switch
                     checked={detectLanguage}
                     onCheckedChange={setDetectLanguage}
@@ -336,7 +336,7 @@ export function AgentDetailClient({
         <TabsContent value="voices" className="pt-6">
           <Card>
             <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-              <SpeakerHigh className="h-8 w-8 text-muted-foreground" />
+              <Speaker className="h-8 w-8 text-muted-foreground" />
               <p className="font-medium">Voice library coming soon</p>
               <p className="max-w-sm text-sm text-muted-foreground">
                 Manage and preview receptionist voices here once the voice catalog integration is
@@ -372,7 +372,7 @@ export function AgentDetailClient({
                 </Card>
                 <Card size="sm">
                   <CardContent className="space-y-1">
-                    <UsersThree className="h-4 w-4 text-muted-foreground" />
+                    <Users className="h-4 w-4 text-muted-foreground" />
                     <p className="text-sm font-medium">Handoff to a human</p>
                     <p className="text-xs text-muted-foreground">
                       Set when to transfer to a human

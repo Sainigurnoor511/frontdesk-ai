@@ -3,11 +3,11 @@
 import * as React from "react";
 import { toast } from "sonner";
 import {
-  CaretLeftIcon,
-  CaretRightIcon,
-  CaretDownIcon,
-  FunnelIcon,
-} from "@phosphor-icons/react/dist/ssr";
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  Funnel,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -172,7 +172,7 @@ export function CalendarClient({
             render={
               <Button variant="outline" className="gap-1.5">
                 {formatMonthYear(anchorDate)}
-                <CaretDownIcon className="size-4" />
+                <ChevronDown className="size-4" />
               </Button>
             }
           />
@@ -190,7 +190,7 @@ export function CalendarClient({
             aria-label="Previous period"
             onClick={goToPrevious}
           >
-            <CaretLeftIcon className="size-4" />
+            <ChevronLeft className="size-4" />
           </Button>
           <Button
             variant="outline"
@@ -198,7 +198,7 @@ export function CalendarClient({
             aria-label="Next period"
             onClick={goToNext}
           >
-            <CaretRightIcon className="size-4" />
+            <ChevronRight className="size-4" />
           </Button>
         </div>
 
@@ -211,7 +211,7 @@ export function CalendarClient({
             render={
               <Button variant="outline" className="gap-1.5">
                 {view}
-                <CaretDownIcon className="size-4" />
+                <ChevronDown className="size-4" />
               </Button>
             }
           />
@@ -242,7 +242,7 @@ export function CalendarClient({
           </Dialog>
 
           <Button variant="outline" size="icon" aria-label="Filters">
-            <FunnelIcon className="size-4" />
+            <Funnel className="size-4" />
           </Button>
         </div>
       </div>

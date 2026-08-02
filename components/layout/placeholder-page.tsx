@@ -1,4 +1,4 @@
-import type { Icon } from '@phosphor-icons/react'
+import type { LucideIcon } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 
 export function PlaceholderPage({
@@ -7,7 +7,7 @@ export function PlaceholderPage({
   description,
 }: {
   title: string
-  icon: Icon
+  icon: LucideIcon
   description: string
 }) {
   return (

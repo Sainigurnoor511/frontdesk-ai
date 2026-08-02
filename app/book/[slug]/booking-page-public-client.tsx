@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Phone } from '@phosphor-icons/react/dist/ssr'
+import { Phone } from 'lucide-react'
 import type { Service } from '@/lib/data/business'
 import { CallDialog } from '@/components/voice/call-dialog'
 

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Globe, PencilSimple, Lightning, Target, FileText } from '@phosphor-icons/react/dist/ssr'
+import { Globe, Pencil, Zap, Target, FileText } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -51,7 +51,7 @@ export function SourceStep({
             onClick={() => setChoice('manual-name')}
           >
             <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-              <PencilSimple className="size-8" />
+              <Pencil className="size-8" />
               <p className="font-medium">Enter information manually</p>
             </CardContent>
           </Card>
@@ -140,7 +140,7 @@ export function SourceStep({
 
   const depthOptions: { value: 'single' | 'quick' | 'deep'; label: string; description: string; icon: typeof FileText }[] = [
     { value: 'single', label: 'Single page', description: 'Ideal for a business profile or listing', icon: FileText },
-    { value: 'quick', label: 'Quick scan', description: 'Scans a smart selection of your pages', icon: Lightning },
+    { value: 'quick', label: 'Quick scan', description: 'Scans a smart selection of your pages', icon: Zap },
     { value: 'deep', label: 'Deep scan', description: 'Systematically maps and reads your site', icon: Target },
   ]
 
