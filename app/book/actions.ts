@@ -78,12 +78,16 @@ export async function startPublicCall(
       conversationId: conversation.id,
     }
   } catch (err) {
-    await updateConversationStatus(conversation.id, {
-      status: 'failed',
-      outcome: 'failed',
-      endedReason: 'room_creation_failed',
-    })
     console.error('Failed to create LiveKit room for public call:', err)
+    try {
+      await updateConversationStatus(conversation.id, {
+        status: 'failed',
+        outcome: 'failed',
+        endedReason: 'room_creation_failed',
+      })
+    } catch (updateErr) {
+      console.error(`Failed to mark conversation ${conversation.id} as failed:`, updateErr)
+    }
     return { error: 'Could not start the call. Please try again.' }
   }
 }

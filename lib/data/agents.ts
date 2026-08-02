@@ -41,6 +41,36 @@ export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> 
   return data ?? []
 }
 
+export type PublicAgent = {
+  id: string
+  organizationId: string
+  name: string
+  businessName: string | null
+}
+
+/**
+ * Used by the public booking page, where the caller is unauthenticated
+ * (`anon` role). Selects only the columns the `anon` role is granted on
+ * `agents` (see supabase/migrations/00000000000020_restrict_public_agents_columns.sql)
+ * — a wider select here would be silently rejected by Postgres and return
+ * no rows, per `getAgentsForOrg`'s error-swallowing `data ?? []` pattern.
+ */
+export async function getPublicAgentsForOrg(organizationId: string): Promise<PublicAgent[]> {
+  const supabase = await createClient()
+  const { data } = await supabase
+    .from('agents')
+    .select('id, organization_id, name, business_name')
+    .eq('organization_id', organizationId)
+    .order('created_at', { ascending: false })
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    organizationId: row.organization_id,
+    name: row.name,
+    businessName: row.business_name,
+  }))
+}
+
 export async function getAgentById(id: string): Promise<AgentDetail | null> {
   const supabase = await createClient()
   const { data } = await supabase
