@@ -1,8 +1,7 @@
 'use client'
 
-import { Phone, X } from '@phosphor-icons/react/dist/ssr'
+import { Phone, X, ArrowUp } from '@phosphor-icons/react/dist/ssr'
 import { Orb } from '@/components/ui/orb'
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -42,40 +41,64 @@ export function CallDialog({
     onOpenChange(next)
   }
 
+  const isConnected = status === 'connected'
+  const isConnecting = status === 'connecting'
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-sm">
-        <DialogHeader>
-          <DialogTitle>{agentName}</DialogTitle>
-          <DialogDescription>Start a call to your receptionist</DialogDescription>
+      <DialogContent className="max-w-sm gap-0 p-6">
+        <DialogHeader className="items-center text-center">
+          <DialogTitle className="text-lg font-semibold">{agentName}</DialogTitle>
+          <DialogDescription>Start a call or chat to your receptionist</DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-col items-center gap-4 py-4">
-          <div className="size-32 overflow-hidden rounded-full">
-            <Orb agentState={agentState} colors={['#DCE9FF', '#B9D3FF']} seed={1} />
+        <div className="mt-6 flex flex-col items-center">
+          <div className="relative">
+            <div className="size-44 overflow-hidden rounded-full">
+              <Orb agentState={agentState} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+            </div>
+            <button
+              type="button"
+              onClick={isConnected ? disconnect : connect}
+              disabled={isConnecting}
+              aria-label={isConnected ? 'End call' : 'Start call'}
+              className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-foreground text-background shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+            >
+              {isConnected ? <X className="size-6" /> : <Phone weight="fill" className="size-6" />}
+            </button>
           </div>
 
-          {status === 'idle' || status === 'error' ? (
-            <Button onClick={connect} className="gap-1.5">
-              <Phone />
-              {status === 'error' ? 'Try again' : 'Start call'}
-            </Button>
-          ) : status === 'connecting' ? (
-            <p className="text-sm text-muted-foreground">Connecting…</p>
-          ) : status === 'connected' ? (
-            <Button onClick={disconnect} variant="destructive" className="gap-1.5">
-              <X />
-              End call
-            </Button>
-          ) : (
-            <p className="text-sm text-muted-foreground">Call ended</p>
-          )}
+          <p className="mt-6 h-4 text-sm text-muted-foreground">
+            {isConnecting ? 'Connecting…' : isConnected ? 'Call in progress' : ''}
+          </p>
 
-          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+          {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
 
           {staffPhoneNumber && (
-            <p className="text-sm text-muted-foreground">Or call {staffPhoneNumber}</p>
+            <div className="mt-4 flex flex-col items-center gap-2">
+              <p className="text-sm text-muted-foreground">Or call</p>
+              <span className="rounded-full border border-border bg-background px-4 py-1.5 text-sm font-medium">
+                {staffPhoneNumber}
+              </span>
+            </div>
           )}
+        </div>
+
+        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3">
+          <input
+            type="text"
+            placeholder="Send a message..."
+            disabled
+            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
+          />
+          <button
+            type="button"
+            disabled
+            aria-label="Send message"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground disabled:cursor-not-allowed"
+          >
+            <ArrowUp className="size-4" />
+          </button>
         </div>
       </DialogContent>
     </Dialog>
