@@ -83,13 +83,21 @@ const navSections = [
   },
 ]
 
-function PhoneNumberPill() {
+const DUMMY_PHONE_NUMBER = '+1 (415) 555-0100'
+
+function CallReceptionistPill({
+  phoneNumber,
+  onClick,
+}: {
+  phoneNumber: string
+  onClick: () => void
+}) {
   const { state } = useSidebar()
 
   return (
     <SidebarMenuItem>
       <SidebarMenuButton
-        render={<Link href="/phone-numbers" />}
+        onClick={onClick}
         className="rounded-lg border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
         style={{
           borderColor: 'hsl(228.75deg 47.06% 86.67%)',
@@ -98,7 +106,7 @@ function PhoneNumberPill() {
         <div className="size-4 shrink-0 overflow-hidden rounded-sm">
           <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
         </div>
-        <span>Connect a number</span>
+        <span>{phoneNumber}</span>
         {state !== 'collapsed' && <Phone weight="bold" className="ml-auto" />}
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -132,17 +140,14 @@ export function AppSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
-        <SidebarMenu>
-          <PhoneNumberPill />
-          {agent && (
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={() => setCallOpen(true)}>
-                <Phone weight="bold" />
-                <span>Call receptionist</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-        </SidebarMenu>
+        {agent && (
+          <SidebarMenu>
+            <CallReceptionistPill
+              phoneNumber={agent.staffPhoneNumber ?? DUMMY_PHONE_NUMBER}
+              onClick={() => setCallOpen(true)}
+            />
+          </SidebarMenu>
+        )}
       </SidebarHeader>
       <SidebarContent className="gap-0 py-1">
         {navSections.map((section, i) => (

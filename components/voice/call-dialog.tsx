@@ -1,6 +1,8 @@
 'use client'
 
-import { Phone, X, ArrowUp } from '@phosphor-icons/react/dist/ssr'
+import { useEffect, useRef } from 'react'
+import { Phone, PhoneX, ArrowUp, UserCircle } from '@phosphor-icons/react/dist/ssr'
+import { cn } from '@/lib/utils'
 import { Orb } from '@/components/ui/orb'
 import {
   Dialog,
@@ -30,11 +32,13 @@ export function CallDialog({
   staffPhoneNumber?: string | null
   authenticated: boolean
 }) {
-  const { status, agentState, errorMessage, connect, disconnect } = useVoiceCall(() =>
+  const { status, agentState, errorMessage, transcript, connect, disconnect } = useVoiceCall(() =>
     authenticated
       ? startDashboardCall({ agentId })
       : startPublicCall({ organizationId, agentId })
   )
+
+  const transcriptEndRef = useRef<HTMLDivElement>(null)
 
   function handleOpenChange(next: boolean) {
     if (!next) disconnect()
@@ -44,6 +48,10 @@ export function CallDialog({
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
 
+  useEffect(() => {
+    transcriptEndRef.current?.scrollIntoView({ block: 'end' })
+  }, [transcript])
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-sm gap-0 p-6">
@@ -52,37 +60,86 @@ export function CallDialog({
           <DialogDescription>Start a call or chat to your receptionist</DialogDescription>
         </DialogHeader>
 
-        <div className="mt-6 flex flex-col items-center">
-          <div className="relative">
-            <div className="size-44 overflow-hidden rounded-full">
-              <Orb agentState={agentState} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+        {isConnected ? (
+          <div className="mt-4 flex flex-col">
+            <div className="flex h-72 flex-col gap-3 overflow-y-auto scrollbar-thin pr-1">
+              {transcript.length === 0 ? (
+                <p className="m-auto text-sm text-muted-foreground">Listening…</p>
+              ) : (
+                transcript.map((message) => (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      'flex items-end gap-2',
+                      message.speaker === 'user' && 'flex-row-reverse'
+                    )}
+                  >
+                    {message.speaker === 'agent' ? (
+                      <div className="size-7 shrink-0 overflow-hidden rounded-full">
+                        <Orb agentState={null} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+                      </div>
+                    ) : (
+                      <UserCircle weight="fill" className="size-7 shrink-0 text-muted-foreground" />
+                    )}
+                    <div
+                      className={cn(
+                        'max-w-[75%] rounded-2xl px-3 py-2 text-sm',
+                        message.speaker === 'agent'
+                          ? 'rounded-bl-sm bg-muted text-foreground'
+                          : 'rounded-br-sm bg-foreground text-background',
+                        !message.final && 'opacity-70'
+                      )}
+                    >
+                      {message.text}
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={transcriptEndRef} />
             </div>
+
             <button
               type="button"
-              onClick={isConnected ? disconnect : connect}
-              disabled={isConnecting}
-              aria-label={isConnected ? 'End call' : 'Start call'}
-              className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-foreground text-background shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+              onClick={disconnect}
+              aria-label="End call"
+              className="mx-auto mt-4 flex size-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
             >
-              {isConnected ? <X className="size-6" /> : <Phone weight="fill" className="size-6" />}
+              <PhoneX weight="fill" className="size-5" />
             </button>
           </div>
-
-          <p className="mt-6 h-4 text-sm text-muted-foreground">
-            {isConnecting ? 'Connecting…' : isConnected ? 'Call in progress' : ''}
-          </p>
-
-          {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
-
-          {staffPhoneNumber && (
-            <div className="mt-4 flex flex-col items-center gap-2">
-              <p className="text-sm text-muted-foreground">Or call</p>
-              <span className="rounded-full border border-border bg-background px-4 py-1.5 text-sm font-medium">
-                {staffPhoneNumber}
-              </span>
+        ) : (
+          <div className="mt-6 flex flex-col items-center">
+            <div className="relative">
+              <div className="size-44 overflow-hidden rounded-full">
+                <Orb agentState={agentState} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+              </div>
+              <button
+                type="button"
+                onClick={connect}
+                disabled={isConnecting}
+                aria-label="Start call"
+                className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-foreground text-white shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+              >
+                <Phone weight="fill" className="size-6" />
+              </button>
             </div>
-          )}
-        </div>
+
+            <p className="mt-6 h-4 text-sm text-muted-foreground">
+              {isConnecting ? 'Connecting…' : ''}
+            </p>
+
+            {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
+
+            {staffPhoneNumber && (
+              <div className="mt-4 flex flex-col items-center gap-2">
+                <p className="text-sm text-muted-foreground">Or call</p>
+                <span className="rounded-full border border-border bg-background px-4 py-1.5 text-sm font-medium">
+                  {staffPhoneNumber}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3">
           <input

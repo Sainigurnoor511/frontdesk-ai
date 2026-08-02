@@ -1,10 +1,23 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Room, RoomEvent, Track, type RemoteTrack } from 'livekit-client'
+import {
+  Room,
+  RoomEvent,
+  Track,
+  type RemoteTrack,
+  type TranscriptionSegment,
+} from 'livekit-client'
 import type { AgentState } from '@/components/ui/orb'
 
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'ended' | 'error'
+
+export type TranscriptMessage = {
+  id: string
+  speaker: 'agent' | 'user'
+  text: string
+  final: boolean
+}
 
 export function useVoiceCall(
   startCall: () => Promise<
@@ -14,6 +27,7 @@ export function useVoiceCall(
   const [status, setStatus] = useState<CallStatus>('idle')
   const [agentState, setAgentState] = useState<AgentState>(null)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
   const roomRef = useRef<Room | null>(null)
   const attachedTracksRef = useRef<Array<{ track: RemoteTrack; element: HTMLMediaElement }>>([])
 
@@ -34,6 +48,7 @@ export function useVoiceCall(
   const connect = useCallback(async () => {
     setStatus('connecting')
     setErrorMessage(null)
+    setTranscript([])
 
     const result = await startCall()
     if ('error' in result) {
@@ -57,6 +72,22 @@ export function useVoiceCall(
 
     room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
       setAgentState(speakers.length > 0 ? 'talking' : 'listening')
+    })
+
+    room.on(RoomEvent.TranscriptionReceived, (segments: TranscriptionSegment[], participant) => {
+      const speaker: TranscriptMessage['speaker'] = participant?.isLocal ? 'user' : 'agent'
+      setTranscript((prev) => {
+        const next = new Map(prev.map((m) => [m.id, m]))
+        for (const segment of segments) {
+          next.set(segment.id, {
+            id: segment.id,
+            speaker,
+            text: segment.text,
+            final: segment.final,
+          })
+        }
+        return Array.from(next.values())
+      })
     })
 
     room.on(RoomEvent.Disconnected, () => {
@@ -92,5 +123,5 @@ export function useVoiceCall(
     }
   }, [cleanupAttachedElements])
 
-  return { status, agentState, errorMessage, connect, disconnect }
+  return { status, agentState, errorMessage, transcript, connect, disconnect }
 }
