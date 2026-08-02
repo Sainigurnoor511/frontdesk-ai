@@ -7,6 +7,8 @@ import {
   ChevronRight,
   ChevronDown,
   Funnel,
+  Plus,
+  CalendarOff,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -55,7 +57,8 @@ function formatHourLabel(hour: number) {
 
 function getWeekDates(anchor: Date) {
   const start = new Date(anchor);
-  start.setDate(start.getDate() - start.getDay());
+  const dayOffset = (start.getDay() + 6) % 7; // Monday = 0
+  start.setDate(start.getDate() - dayOffset);
   return Array.from({ length: 7 }, (_, i) => {
     const d = new Date(start);
     d.setDate(start.getDate() + i);
@@ -106,7 +109,11 @@ export function CalendarClient({
   const [newAppointmentOpen, setNewAppointmentOpen] = React.useState(false);
   const [newTimeOffOpen, setNewTimeOffOpen] = React.useState(false);
 
-  const today = React.useMemo(() => new Date(), []);
+  const [today, setToday] = React.useState(() => new Date());
+  React.useEffect(() => {
+    const interval = setInterval(() => setToday(new Date()), 1000 * 30);
+    return () => clearInterval(interval);
+  }, []);
   const weekDates = React.useMemo(() => getWeekDates(anchorDate), [anchorDate]);
   const currentHour = hourOfDay(today);
 
@@ -157,79 +164,97 @@ export function CalendarClient({
   }, [initialTimeOff, weekDates]);
 
   return (
-    <div className="flex h-[calc(100svh-50px-4rem)] min-h-0 flex-col gap-6">
-      <div className="shrink-0">
-        <h1 className="font-heading text-2xl font-semibold">Calendar</h1>
-        <p className="mt-1 text-sm font-normal text-[#96989d]">
-          View and manage appointments and time off.
-        </p>
-      </div>
-
+    <div className="flex h-[calc(100svh-50px)] min-h-0 flex-col">
       {/* Toolbar */}
-      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-full border bg-muted/30 p-1.5">
-        <div className="flex items-center gap-1 rounded-full bg-background p-0.5 shadow-xs">
+      <div className="flex h-[44.8px] shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1.5 border-b bg-background/90 px-2.5 backdrop-blur-sm">
+        <div className="mr-auto flex min-w-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  className="h-8 shrink-0 justify-between gap-1 rounded-[10px] px-3 text-sm font-medium"
+                >
+                  <span className="min-w-0 truncate">{formatMonthYear(anchorDate)}</span>
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={goToToday}>
+                {formatMonthYear(today)}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          <div className="flex items-center">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg p-0"
+              aria-label="Previous period"
+              onClick={goToPrevious}
+            >
+              <ChevronLeft className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 rounded-lg p-0"
+              aria-label="Next period"
+              onClick={goToNext}
+            >
+              <ChevronRight className="size-4" />
+            </Button>
+          </div>
+
           <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-full"
-            aria-label="Previous period"
-            onClick={goToPrevious}
+            variant="outline"
+            className="h-8 rounded-lg border-border bg-background px-2.5 text-sm text-foreground shadow-none"
+            onClick={goToToday}
           >
-            <ChevronLeft className="size-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-full"
-            aria-label="Next period"
-            onClick={goToNext}
-          >
-            <ChevronRight className="size-4" />
+            Today
           </Button>
         </div>
 
-        <Button variant="ghost" className="h-7 rounded-full px-3" onClick={goToToday}>
-          Today
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  className="h-8 gap-1 rounded-lg border-border bg-background px-2.5 text-sm text-foreground shadow-none"
+                >
+                  {view}
+                  <ChevronDown className="size-3.5" />
+                </Button>
+              }
+            />
+            <DropdownMenuContent align="start">
+              {VIEWS.map((v) => (
+                <DropdownMenuItem key={v} onClick={() => setView(v)}>
+                  {v}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" className="h-7 gap-1.5 rounded-full px-3 font-medium">
-                {formatMonthYear(anchorDate)}
-                <ChevronDown className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start">
-            <DropdownMenuItem onClick={goToToday}>
-              {formatMonthYear(today)}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="ghost" className="h-7 gap-1.5 rounded-full px-3">
-                {view}
-                <ChevronDown className="size-4" />
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start">
-            {VIEWS.map((v) => (
-              <DropdownMenuItem key={v} onClick={() => setView(v)}>
-                {v}
-              </DropdownMenuItem>
-            ))}
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <div className="ml-auto flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Dialog open={newAppointmentOpen} onOpenChange={setNewAppointmentOpen}>
             <DialogTrigger
-              render={<Button className="h-7 rounded-full px-3">New appointment</Button>}
+              render={
+                <Button
+                  aria-label="New appointment"
+                  title="New appointment"
+                  className="h-8 gap-1 rounded-lg bg-foreground px-2 text-background shadow-none hover:bg-foreground/80 lg:px-3"
+                >
+                  <Plus className="size-3.5" />
+                  <span className="hidden lg:inline">New appointment</span>
+                </Button>
+              }
             />
             <NewAppointmentDialog
               defaultDate={anchorDate}
@@ -240,8 +265,13 @@ export function CalendarClient({
           <Dialog open={newTimeOffOpen} onOpenChange={setNewTimeOffOpen}>
             <DialogTrigger
               render={
-                <Button variant="outline" className="h-7 rounded-full bg-background px-3">
-                  New time off
+                <Button
+                  aria-label="New time off"
+                  title="New time off"
+                  className="h-8 gap-1 rounded-lg bg-foreground px-2 text-background shadow-none hover:bg-foreground/80 lg:px-3"
+                >
+                  <CalendarOff className="size-3.5" />
+                  <span className="hidden lg:inline">New time off</span>
                 </Button>
               }
             />
@@ -254,8 +284,9 @@ export function CalendarClient({
           <Button
             variant="ghost"
             size="icon"
-            className="size-7 rounded-full"
             aria-label="Filters"
+            title="Filters"
+            className="-mr-2 h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground"
           >
             <Funnel className="size-4" />
           </Button>
@@ -263,34 +294,55 @@ export function CalendarClient({
       </div>
 
       {/* Week grid */}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border">
+      <div className="min-h-0 flex-1 overflow-hidden">
         <div className="scrollbar-thin h-full overflow-y-auto">
-          <div className="grid grid-cols-[64px_repeat(7,1fr)]">
+          <div className="grid grid-cols-[80px_repeat(7,1fr)]">
             {/* Header row */}
-            <div className="sticky top-0 z-20 flex items-end justify-start border-b border-r bg-background p-2 text-[11px] text-muted-foreground">
-              GMT+5:30
+            <div className="sticky top-0 z-20 flex h-8 shrink-0 items-center justify-center border-b border-border bg-background px-2">
+              <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground">
+                GMT+5:30
+              </span>
             </div>
             {weekDates.map((date) => {
               const isToday = isSameDay(date, today);
-              const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
               return (
                 <div
                   key={date.toISOString()}
-                  className={cn(
-                    "sticky top-0 z-20 flex flex-col items-center gap-0.5 border-b border-r bg-background py-2 last:border-r-0",
-                  )}
+                  className="sticky top-0 z-20 flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 border-b border-border bg-background px-2 lg:px-4"
                 >
-                  <span className="text-xs font-medium text-muted-foreground">
+                  <span
+                    className={cn(
+                      "min-w-0 truncate text-[10px] font-medium sm:text-xs",
+                      isToday ? "text-foreground" : "text-muted-foreground",
+                    )}
+                  >
                     {DAYS[date.getDay()]}
                   </span>
                   <span
                     className={cn(
-                      "flex size-7 items-center justify-center rounded-full text-sm font-semibold",
-                      isToday && "bg-foreground text-background",
+                      "min-w-[22px] shrink-0 rounded-sm px-1 py-0.5 text-center text-xs font-medium whitespace-nowrap",
+                      isToday ? "bg-foreground text-background" : "text-muted-foreground",
                     )}
                   >
                     {date.getDate()}
                   </span>
+                </div>
+              );
+            })}
+
+            {/* All day row */}
+            <div className="sticky top-8 z-20 flex h-7 w-20 shrink-0 items-center justify-center border-b border-border bg-background px-2">
+              <span className="whitespace-nowrap text-xs font-medium text-muted-foreground">
+                All day
+              </span>
+            </div>
+            {weekDates.map((date) => {
+              const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
+              return (
+                <div
+                  key={`allday-${date.toISOString()}`}
+                  className="sticky top-8 z-20 flex h-7 min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden border-b border-l border-border bg-background px-4 py-1"
+                >
                   {dayTimeOff.length > 0 && (
                     <span className="max-w-full truncate rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
                       {dayTimeOff[0].name}
@@ -307,30 +359,36 @@ export function CalendarClient({
 
               return (
                 <React.Fragment key={hour}>
-                  <div className="relative -top-2.5 border-r px-2 text-right text-[11px] text-muted-foreground">
-                    {formatHourLabel(hour)}
+                  <div className="relative h-[90px] border-r px-2 text-right text-[13px] text-muted-foreground">
+                    <span className="relative -top-2.5 inline-block">{formatHourLabel(hour)}</span>
                     {showCurrentTimeLabel && (
                       <div
-                        className="absolute inset-x-0 z-20 flex justify-end pr-1"
-                        style={{ top: `${(currentHour - hour) * 100 + 62}%` }}
+                        className="absolute inset-x-0 z-30 flex -translate-y-1/2 items-center justify-end"
+                        style={{ top: `${(currentHour - hour) * 100}%` }}
                       >
-                        <span className="rounded-full bg-red-500 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                          {formatHourLabel(currentHour).replace(
+                        <span className="rounded-md bg-foreground px-1.5 py-0.5 text-[11px] font-semibold text-background">
+                          {formatHourLabel(Math.floor(currentHour)).replace(
                             ":00",
                             `:${String(Math.floor((currentHour % 1) * 60)).padStart(2, "0")}`
                           )}
                         </span>
+                        <div className="h-0.5 flex-1 bg-border" />
                       </div>
                     )}
                   </div>
                   {weekDates.map((date) => {
                     const isToday = isSameDay(date, today);
+                    const isBeforeToday = date < today && !isToday;
+                    const isAfterToday = date > today && !isToday;
                     const isBusinessHour =
                       hour >= BUSINESS_START && hour < BUSINESS_END;
-                    const showCurrentTime =
-                      isToday &&
-                      currentHour >= hour &&
-                      currentHour < hour + 1;
+                    const inCurrentHourBand =
+                      currentHour >= hour && currentHour < hour + 1;
+                    const showCurrentTime = isToday && inCurrentHourBand;
+                    const showCurrentTimeLine =
+                      (isToday || isAfterToday) && inCurrentHourBand;
+                    const showCurrentTimeReference =
+                      isBeforeToday && inCurrentHourBand;
                     const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
                     const isTimeOff = dayTimeOff.length > 0;
 
@@ -345,7 +403,7 @@ export function CalendarClient({
                       <div
                         key={`${date.toISOString()}-${hour}`}
                         className={cn(
-                          "relative h-16 border-b border-r last:border-r-0",
+                          "relative h-[90px] border-b border-r last:border-r-0",
                           isTimeOff
                             ? "bg-amber-500/10 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
                             : isBusinessHour
@@ -353,15 +411,28 @@ export function CalendarClient({
                               : "bg-muted/40 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]",
                         )}
                       >
-                        {showCurrentTime && (
+                        {showCurrentTimeLine && (
                           <div
-                            className="absolute inset-x-0 z-10 flex items-center"
+                            className="absolute inset-x-0 z-20 flex -translate-y-1/2 items-center"
                             style={{
                               top: `${(currentHour - hour) * 100}%`,
                             }}
                           >
-                            <div className="-ml-1 size-2 rounded-full bg-red-500" />
-                            <div className="h-px w-full bg-red-500" />
+                            {showCurrentTime && (
+                              <div className="-ml-1 size-2 rounded-full bg-foreground" />
+                            )}
+                            <div className="h-0.5 w-full bg-foreground" />
+                          </div>
+                        )}
+
+                        {showCurrentTimeReference && (
+                          <div
+                            className="absolute inset-x-0 z-20 flex -translate-y-1/2 items-center"
+                            style={{
+                              top: `${(currentHour - hour) * 100}%`,
+                            }}
+                          >
+                            <div className="h-0.5 w-full bg-border" />
                           </div>
                         )}
 

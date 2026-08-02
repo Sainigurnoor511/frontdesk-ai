@@ -6,7 +6,8 @@ import { CalendarClient } from "./calendar-client";
 function getWeekRange(anchor: Date) {
   const start = new Date(anchor);
   start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - start.getDay());
+  const dayOffset = (start.getDay() + 6) % 7; // Monday = 0
+  start.setDate(start.getDate() - dayOffset);
   const end = new Date(start);
   end.setDate(end.getDate() + 7);
   return { start, end };
