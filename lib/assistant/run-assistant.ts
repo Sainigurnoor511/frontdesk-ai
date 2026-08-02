@@ -7,11 +7,6 @@ export type AssistantMessage = {
   content: string
 }
 
-export type AssistantRunResult = {
-  reply: string
-  toolsCalled: string[]
-}
-
 const DEFAULT_MODEL = 'openai/gpt-oss-120b'
 const MAX_ITERATIONS = 6
 
@@ -35,13 +30,15 @@ function createClient(): Groq {
 }
 
 /**
- * Runs the tool-calling loop against Groq's OpenAI-compatible chat completions
- * API: ask the model, execute any tool calls it returns, feed the results back,
- * and repeat until it produces a plain text answer.
+ * Same tool-calling loop as runAssistant, but streams the final text answer
+ * to onTextChunk as it arrives instead of returning it all at once. Tool-call
+ * iterations are not streamed (there's no user-facing text to show yet) —
+ * only the last, tool-free completion streams token by token.
  */
-export async function runAssistant(
-  history: AssistantMessage[]
-): Promise<AssistantRunResult> {
+export async function runAssistantStream(
+  history: AssistantMessage[],
+  onTextChunk: (chunk: string) => void
+): Promise<{ toolsCalled: string[] }> {
   const client = createClient()
   const model = process.env.GROQ_ASSISTANT_MODEL ?? DEFAULT_MODEL
   const tools = buildGroqTools()
@@ -53,29 +50,71 @@ export async function runAssistant(
   ]
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
-    const completion = await client.chat.completions.create({
+    const stream = await client.chat.completions.create({
       model,
       messages,
       tools,
       tool_choice: 'auto',
       temperature: 0.3,
+      stream: true,
     })
 
-    const choice = completion.choices[0]?.message
-    if (!choice) {
-      return { reply: 'Something went wrong talking to the assistant. Please try again.', toolsCalled }
+    let content = ''
+    const toolCallChunks: {
+      id?: string
+      function: { name?: string; arguments: string }
+    }[] = []
+
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta
+      if (!delta) continue
+
+      if (delta.content) {
+        content += delta.content
+        onTextChunk(delta.content)
+      }
+
+      for (const toolCallDelta of delta.tool_calls ?? []) {
+        const index = toolCallDelta.index
+        const existing = toolCallChunks[index]
+        if (!existing) {
+          toolCallChunks[index] = {
+            id: toolCallDelta.id,
+            function: {
+              name: toolCallDelta.function?.name,
+              arguments: toolCallDelta.function?.arguments ?? '',
+            },
+          }
+        } else {
+          if (toolCallDelta.id) existing.id = toolCallDelta.id
+          if (toolCallDelta.function?.name) existing.function.name = toolCallDelta.function.name
+          if (toolCallDelta.function?.arguments) {
+            existing.function.arguments += toolCallDelta.function.arguments
+          }
+        }
+      }
     }
 
-    const toolCalls = choice.tool_calls ?? []
-
-    if (toolCalls.length === 0) {
-      return { reply: choice.content?.trim() || 'Done.', toolsCalled }
+    if (toolCallChunks.length === 0) {
+      if (!content.trim()) onTextChunk('Done.')
+      return { toolsCalled }
     }
 
-    messages.push(choice as ChatCompletionMessageParam)
+    messages.push({
+      role: 'assistant',
+      content: content || null,
+      tool_calls: toolCallChunks.map((toolCall, index) => ({
+        id: toolCall.id ?? `call_${index}`,
+        type: 'function' as const,
+        function: {
+          name: toolCall.function.name ?? '',
+          arguments: toolCall.function.arguments,
+        },
+      })),
+    })
 
-    for (const toolCall of toolCalls) {
-      const name = toolCall.function.name
+    for (const toolCall of toolCallChunks) {
+      const name = toolCall.function.name ?? ''
       toolsCalled.push(name)
 
       let parsedArgs: unknown = {}
@@ -92,15 +131,14 @@ export async function runAssistant(
 
       messages.push({
         role: 'tool',
-        tool_call_id: toolCall.id,
+        tool_call_id: toolCall.id ?? '',
         content: JSON.stringify(outcome.ok ? outcome.result : { error: outcome.error }),
       })
     }
   }
 
-  return {
-    reply:
-      'I ran out of steps while working on that. Could you break the request into smaller parts?',
-    toolsCalled,
-  }
+  onTextChunk(
+    '\n\nI ran out of steps while working on that. Could you break the request into smaller parts?'
+  )
+  return { toolsCalled }
 }

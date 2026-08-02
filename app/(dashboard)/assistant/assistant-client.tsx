@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { sendAssistantMessage } from './actions'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -11,11 +10,12 @@ export function AssistantClient() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [isStreaming, setIsStreaming] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
   const hasConversation = messages.length > 0
-  const canSend = input.trim().length > 0 && !isThinking
+  const canSend = input.trim().length > 0 && !isThinking && !isStreaming
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
@@ -23,7 +23,7 @@ export function AssistantClient() {
 
   async function handleSend() {
     const text = input.trim()
-    if (!text || isThinking) return
+    if (!text || isThinking || isStreaming) return
 
     const nextMessages: ChatMessage[] = [...messages, { role: 'user', content: text }]
     setMessages(nextMessages)
@@ -31,15 +31,49 @@ export function AssistantClient() {
     setErrorMessage(null)
     setIsThinking(true)
 
-    const result = await sendAssistantMessage(nextMessages)
-    setIsThinking(false)
-
-    if ('error' in result) {
-      setErrorMessage(result.error)
+    let response: Response
+    try {
+      response = await fetch('/api/assistant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nextMessages),
+      })
+    } catch {
+      setIsThinking(false)
+      setErrorMessage('The assistant could not respond. Please try again.')
       return
     }
 
-    setMessages((prev) => [...prev, { role: 'assistant', content: result.reply }])
+    if (!response.ok || !response.body) {
+      setIsThinking(false)
+      const body = await response.json().catch(() => null)
+      setErrorMessage(body?.error ?? 'The assistant could not respond. Please try again.')
+      return
+    }
+
+    setIsThinking(false)
+    setIsStreaming(true)
+    setMessages((prev) => [...prev, { role: 'assistant', content: '' }])
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        const chunk = decoder.decode(value, { stream: true })
+        setMessages((prev) => {
+          const next = [...prev]
+          const last = next[next.length - 1]
+          next[next.length - 1] = { ...last, content: last.content + chunk }
+          return next
+        })
+      }
+    } finally {
+      setIsStreaming(false)
+    }
   }
 
   const composer = (
