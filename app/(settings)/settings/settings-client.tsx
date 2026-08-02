@@ -71,7 +71,7 @@ export function SettingsClient({
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="none">
+      <Sidebar collapsible="none" className="border-r">
         <SidebarHeader className="gap-2 py-2">
           <SidebarMenu>
             <SidebarMenuItem>
@@ -92,12 +92,6 @@ export function SettingsClient({
                     <span>Back to app</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-          <SidebarGroup className="py-1">
-            <SidebarGroupContent>
-              <SidebarMenu>
                 {NAV_ITEMS.map((item) => (
                   <SidebarMenuItem key={item.value}>
                     <SidebarMenuButton
