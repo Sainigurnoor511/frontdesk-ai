@@ -125,7 +125,7 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Clients</h1>
+          <h1 className="font-heading text-2xl font-semibold">Clients</h1>
           <p className="mt-1 text-sm font-normal text-[#96989d]">
             Clients are the people who call or book with you.
           </p>

@@ -159,7 +159,7 @@ export function CalendarClient({
   return (
     <div className="flex h-full min-h-0 flex-col gap-6">
       <div className="shrink-0">
-        <h1 className="text-2xl font-semibold">Calendar</h1>
+        <h1 className="font-heading text-2xl font-semibold">Calendar</h1>
         <p className="mt-1 text-sm font-normal text-[#96989d]">
           View and manage appointments and time off.
         </p>

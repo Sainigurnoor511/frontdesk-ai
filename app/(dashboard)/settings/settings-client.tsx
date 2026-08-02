@@ -82,7 +82,7 @@ export function SettingsClient({
 
       <div className="min-w-0 flex-1 space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Settings</h1>
+          <h1 className="font-heading text-2xl font-semibold">Settings</h1>
           <p className="mt-1 text-sm font-normal text-[#96989d]">Manage your account, notifications, and modules.</p>
         </div>
 

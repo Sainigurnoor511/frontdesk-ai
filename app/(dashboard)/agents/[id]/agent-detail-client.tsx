@@ -126,7 +126,7 @@ export function AgentDetailClient({
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">{agent.business_name ?? agent.name}</h1>
+          <h1 className="font-heading text-2xl font-semibold">{agent.business_name ?? agent.name}</h1>
           <p className="mt-1 text-sm font-normal text-[#96989d]">
             {agent.industry} · {agent.country} · {agent.language}
           </p>
