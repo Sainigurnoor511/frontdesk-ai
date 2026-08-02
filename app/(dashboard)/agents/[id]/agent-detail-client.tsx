@@ -8,7 +8,6 @@ import {
   ListChecks,
   Users,
   ShieldCheck,
-  ArrowRight,
   Wrench,
   CircleQuestionMark,
 } from 'lucide-react'
@@ -37,15 +36,9 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
-import { updateAgentGeneral, updateAgentCallSettings } from './actions'
-
-const VOICE_OPTIONS = [
-  { id: 'default-neutral', label: 'Default — Neutral' },
-  { id: 'warm-friendly', label: 'Warm — Friendly' },
-  { id: 'professional-calm', label: 'Professional — Calm' },
-]
-
-const LANGUAGE_OPTIONS = ['English', 'Hindi', 'Punjabi']
+import { updateAgentGeneral, updateAgentCallSettings, searchVoices } from './actions'
+import { voiceCatalog, languageOptions, type VoiceCatalogEntry } from '@/lib/data/voice-catalog'
+import { VoicePicker } from '@/components/voice/voice-picker'
 
 const TONE_TRAITS = [
   'Professional',
@@ -92,9 +85,24 @@ export function AgentDetailClient({
     : 'general'
 
   // General tab state
-  const [voiceId, setVoiceId] = useState(agent.voice_id ?? VOICE_OPTIONS[0].id)
-  const [defaultLanguage, setDefaultLanguage] = useState(agent.language ?? LANGUAGE_OPTIONS[0])
+  const [voiceId, setVoiceId] = useState(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
+  const [defaultLanguage, setDefaultLanguage] = useState(
+    agent.language ?? languageOptions[0].code
+  )
   const [detectLanguage, setDetectLanguage] = useState(false)
+  const [voiceSearchResults, setVoiceSearchResults] = useState<VoiceCatalogEntry[]>([])
+
+  async function handleVoiceSearch(query: string) {
+    if (!query) {
+      setVoiceSearchResults([])
+      return
+    }
+    const results = await searchVoices(query, defaultLanguage)
+    setVoiceSearchResults(results)
+  }
+
+  const shortlistForLanguage = voiceCatalog.filter((voice) => voice.language === defaultLanguage)
+  const voiceOptionsToShow = voiceSearchResults.length > 0 ? voiceSearchResults : shortlistForLanguage
   const [additionalInstructions, setAdditionalInstructions] = useState(
     agent.additional_instructions ?? ''
   )
@@ -119,16 +127,16 @@ export function AgentDetailClient({
 
   const originalToneTraits = agent.tone_traits ?? []
   const generalDirty =
-    voiceId !== (agent.voice_id ?? VOICE_OPTIONS[0].id) ||
-    defaultLanguage !== (agent.language ?? LANGUAGE_OPTIONS[0]) ||
+    voiceId !== (agent.voice_id ?? voiceCatalog[0]?.id ?? '') ||
+    defaultLanguage !== (agent.language ?? languageOptions[0].code) ||
     additionalInstructions !== (agent.additional_instructions ?? '') ||
     firstMessage !== (agent.first_message ?? '') ||
     toneTraits.length !== originalToneTraits.length ||
     toneTraits.some((trait) => !originalToneTraits.includes(trait))
 
   function handleCancelGeneral() {
-    setVoiceId(agent.voice_id ?? VOICE_OPTIONS[0].id)
-    setDefaultLanguage(agent.language ?? LANGUAGE_OPTIONS[0])
+    setVoiceId(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
+    setDefaultLanguage(agent.language ?? languageOptions[0].code)
     setAdditionalInstructions(agent.additional_instructions ?? '')
     setToneTraits(agent.tone_traits ?? [])
     setFirstMessage(agent.first_message ?? '')
@@ -302,26 +310,13 @@ export function AgentDetailClient({
                   title="Receptionist voice"
                   description="Select the voice for the receptionist."
                 />
-                <Select value={voiceId} onValueChange={(value) => setVoiceId(value as string)}>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Select a voice" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {VOICE_OPTIONS.map((voice) => (
-                      <SelectItem key={voice.id} value={voice.id}>
-                        {voice.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {/* TODO: wire up real voice catalog (ElevenLabs/Fish Audio) browsing */}
-                <button
-                  type="button"
-                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Browse all voices
-                  <ArrowRight className="size-3" />
-                </button>
+                <VoicePicker
+                  voices={voiceOptionsToShow}
+                  value={voiceId}
+                  onValueChange={setVoiceId}
+                  onSearch={handleVoiceSearch}
+                  placeholder="Select a voice"
+                />
               </div>
 
               <div className="space-y-2">
@@ -339,9 +334,14 @@ export function AgentDetailClient({
                       <SelectValue placeholder="Select a language" />
                     </SelectTrigger>
                     <SelectContent>
-                      {LANGUAGE_OPTIONS.map((lang) => (
-                        <SelectItem key={lang} value={lang}>
-                          {lang}
+                      {languageOptions.map((lang) => (
+                        <SelectItem key={lang.code} value={lang.code}>
+                          <span className="flex items-center gap-2">
+                            <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">
+                              {lang.flag}
+                            </span>
+                            {lang.label}
+                          </span>
                         </SelectItem>
                       ))}
                     </SelectContent>
