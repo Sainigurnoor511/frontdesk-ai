@@ -32,6 +32,7 @@ import {
 } from '@/components/ui/select'
 import { toast } from 'sonner'
 import { logOut } from '@/app/(auth)/actions'
+import { AppHeader } from '@/components/layout/app-header'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import { updateNotificationSettings, updateFeatureSettings } from './actions'
 
@@ -46,10 +47,14 @@ const NAV_ITEMS: { value: Tab; label: string; icon: typeof User }[] = [
 
 export function SettingsClient({
   email,
+  orgName,
+  avatarUrl,
   settings,
   initialTab,
 }: {
   email: string
+  orgName: string
+  avatarUrl: string | null
   settings: OrganizationSettings
   initialTab?: string
 }) {
@@ -58,44 +63,52 @@ export function SettingsClient({
     : 'account'
 
   return (
-    <div className="flex h-svh">
-      <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20 p-4">
-        <div className="space-y-6">
-          <Link
-            href="/"
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="size-4" />
-            Back to app
-          </Link>
+    <div className="flex h-svh flex-col">
+      <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} showSidebarToggle={false} />
+      <div className="flex min-h-0 flex-1">
+        <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4">
+          <div className="flex h-10 items-center gap-0 px-2">
+            <span className="text-base font-semibold">F</span>
+            <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
+          </div>
 
-          <nav className="space-y-0.5">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.value}
-                href={`/settings?tab=${item.value}`}
-                className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition-colors ${
-                  activeTab === item.value
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                }`}
-              >
-                <item.icon className="size-4 shrink-0" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </div>
-      </aside>
+          <div className="space-y-6">
+            <Link
+              href="/"
+              className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+              Back to app
+            </Link>
 
-      <div className="min-w-0 flex-1 overflow-y-auto p-8">
-        <div className="mx-auto max-w-3xl space-y-6">
-          <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
+            <nav className="space-y-0.5">
+              {NAV_ITEMS.map((item) => (
+                <Link
+                  key={item.value}
+                  href={`/settings?tab=${item.value}`}
+                  className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition-colors ${
+                    activeTab === item.value
+                      ? 'bg-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  }`}
+                >
+                  <item.icon className="size-4 shrink-0" />
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
+        </aside>
 
-          {activeTab === 'account' && <AccountTab email={email} />}
-          {activeTab === 'billing' && <BillingTab />}
-          {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
-          {activeTab === 'features' && <FeaturesTab settings={settings} />}
+        <div className="min-w-0 flex-1 overflow-y-auto p-8">
+          <div className="mx-auto max-w-3xl space-y-6">
+            <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
+
+            {activeTab === 'account' && <AccountTab email={email} />}
+            {activeTab === 'billing' && <BillingTab />}
+            {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
+            {activeTab === 'features' && <FeaturesTab settings={settings} />}
+          </div>
         </div>
       </div>
     </div>

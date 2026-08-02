@@ -32,10 +32,12 @@ export function AppHeader({
   email,
   orgName,
   avatarUrl,
+  showSidebarToggle = true,
 }: {
   email: string
   orgName: string
   avatarUrl: string | null
+  showSidebarToggle?: boolean
 }) {
   const pathname = usePathname()
   const title = pageTitles[pathname] ?? ''
@@ -45,7 +47,7 @@ export function AppHeader({
   return (
     <header className="flex h-[50px] items-center justify-between border-b bg-background px-2">
       <div className="flex items-center gap-2">
-        <SidebarToggleButton className="rounded-md border" />
+        {showSidebarToggle && <SidebarToggleButton className="rounded-md border" />}
         <span className="text-sm font-medium">{title}</span>
       </div>
       <div className="flex items-center gap-2">

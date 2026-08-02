@@ -14,5 +14,13 @@ export default async function SettingsPage({
   const settings = await getOrganizationSettings(context.org.id)
   const { tab } = await searchParams
 
-  return <SettingsClient email={context.user.email} settings={settings} initialTab={tab} />
+  return (
+    <SettingsClient
+      email={context.user.email}
+      orgName={context.org.name}
+      avatarUrl={context.user.avatarUrl}
+      settings={settings}
+      initialTab={tab}
+    />
+  )
 }
