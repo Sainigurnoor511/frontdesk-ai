@@ -241,13 +241,13 @@ export function AgentDetailClient({
         {/* General tab */}
         <TabsContent value="general" className="pt-6">
           <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
-            <div className="space-y-8">
+            <div className="max-w-xl space-y-8">
               <div className="space-y-2">
                 <SectionHeading
                   title="Additional Instructions"
                   description={`Extra instructions for the receptionist. E.g. "If someone asks about parking, mention the free parking lot behind the building."`}
                 />
-                <div className="max-w-xl overflow-hidden rounded-2xl border border-border">
+                <div className="overflow-hidden rounded-2xl border border-border">
                   <Textarea
                     value={additionalInstructions}
                     onChange={(e) =>
