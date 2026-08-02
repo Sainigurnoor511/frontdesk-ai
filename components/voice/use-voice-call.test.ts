@@ -11,8 +11,14 @@ class MockTrack {
     document.body.appendChild(el)
     return el
   })
+  // Matches the real livekit-client Track.detach() behavior: it clears
+  // element.srcObject and pauses the element, but deliberately does NOT
+  // remove it from the DOM (the real library caches/recycles <audio>
+  // elements internally). See node_modules/livekit-client/dist/livekit-client.esm.mjs
+  // detach() -> detachTrack() / recycleElement().
   detach = vi.fn((element: HTMLMediaElement) => {
-    element.remove()
+    element.srcObject = null
+    element.pause()
     return element
   })
 }

@@ -19,7 +19,14 @@ export function useVoiceCall(
 
   const cleanupAttachedElements = useCallback(() => {
     for (const { track, element } of attachedTracksRef.current) {
+      // track.detach() only clears element.srcObject and pauses it — the real
+      // livekit-client implementation deliberately keeps the element around
+      // (it caches/recycles <audio> elements internally) rather than removing
+      // it from the DOM. We still call detach() first to release the track's
+      // internal reference to the element, but we must remove it from the DOM
+      // ourselves or it leaks as an orphaned node in document.body.
       track.detach(element)
+      element.remove()
     }
     attachedTracksRef.current = []
   }, [])
