@@ -1,13 +1,22 @@
 import { AudioByteStream, shortuuid, tts, type APIConnectOptions } from '@livekit/agents'
 
-export async function synthesizeSpeech(text: string): Promise<ReadableStream<Uint8Array>> {
+export async function synthesizeSpeech(
+  text: string,
+  voiceId?: string
+): Promise<ReadableStream<Uint8Array>> {
   const response = await fetch('https://api.fish.audio/v1/tts', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}`,
       'Content-Type': 'application/json',
+      model: 's2.1-pro-free',
     },
-    body: JSON.stringify({ text, format: 'pcm', sample_rate: 24000 }),
+    body: JSON.stringify({
+      text,
+      format: 'pcm',
+      sample_rate: 24000,
+      ...(voiceId ? { reference_id: voiceId } : {}),
+    }),
   })
 
   if (!response.ok || !response.body) {
@@ -41,7 +50,7 @@ export class FishAudioTTS extends tts.TTS {
     return 'fish.audio'
   }
 
-  constructor() {
+  constructor(private readonly voiceId?: string) {
     super(FISH_AUDIO_TTS_SAMPLE_RATE, FISH_AUDIO_TTS_CHANNELS, { streaming: false })
   }
 
@@ -53,7 +62,7 @@ export class FishAudioTTS extends tts.TTS {
     const signal = abortSignal
       ? AbortSignal.any([abortSignal, this.abortController.signal])
       : this.abortController.signal
-    return new FishAudioChunkedStream(this, text, connOptions, signal)
+    return new FishAudioChunkedStream(this, text, this.voiceId, connOptions, signal)
   }
 
   stream(): tts.SynthesizeStream {
@@ -71,6 +80,7 @@ class FishAudioChunkedStream extends tts.ChunkedStream {
   constructor(
     ttsInstance: FishAudioTTS,
     text: string,
+    private readonly voiceId: string | undefined,
     connOptions?: APIConnectOptions,
     abortSignal?: AbortSignal
   ) {
@@ -79,7 +89,7 @@ class FishAudioChunkedStream extends tts.ChunkedStream {
 
   protected async run(): Promise<void> {
     try {
-      const stream = await synthesizeSpeech(this.inputText)
+      const stream = await synthesizeSpeech(this.inputText, this.voiceId)
       const reader = stream.getReader()
       const requestId = shortuuid()
       const audioByteStream = new AudioByteStream(

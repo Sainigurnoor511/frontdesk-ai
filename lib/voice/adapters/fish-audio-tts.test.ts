@@ -25,4 +25,28 @@ describe('synthesizeSpeech', () => {
     vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500 } as Response)
     await expect(synthesizeSpeech('test')).rejects.toThrow()
   })
+
+  it('includes reference_id in the request body when a voiceId is given', async () => {
+    const mockBody = new ReadableStream()
+    vi.mocked(fetch).mockClear()
+    vi.mocked(fetch).mockResolvedValue({ ok: true, body: mockBody } as Response)
+
+    await synthesizeSpeech('Hello', 'voice-123')
+
+    const [, requestInit] = vi.mocked(fetch).mock.calls[0]
+    const body = JSON.parse(requestInit!.body as string)
+    expect(body.reference_id).toBe('voice-123')
+  })
+
+  it('omits reference_id when no voiceId is given', async () => {
+    const mockBody = new ReadableStream()
+    vi.mocked(fetch).mockClear()
+    vi.mocked(fetch).mockResolvedValue({ ok: true, body: mockBody } as Response)
+
+    await synthesizeSpeech('Hello')
+
+    const [, requestInit] = vi.mocked(fetch).mock.calls[0]
+    const body = JSON.parse(requestInit!.body as string)
+    expect(body.reference_id).toBeUndefined()
+  })
 })
