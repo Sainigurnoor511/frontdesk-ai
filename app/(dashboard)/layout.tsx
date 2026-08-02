@@ -5,6 +5,7 @@ import { AppHeader } from '@/components/layout/app-header'
 import { DashboardMain } from '@/components/layout/dashboard-main'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
+import { getBusinessProfile } from '@/lib/data/business'
 import { getHiddenSidebarItems } from '@/lib/data/sidebar-preferences'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -20,7 +21,11 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const agent = agents[0]
-  const hiddenSidebarItems = await getHiddenSidebarItems(context.org.id)
+  const [hiddenSidebarItems, businessProfile] = await Promise.all([
+    getHiddenSidebarItems(context.org.id),
+    getBusinessProfile(context.org.id),
+  ])
+  const businessName = businessProfile.businessName ?? agent.business_name ?? agent.name
 
   return (
     <SidebarProvider>
@@ -28,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         agent={{
           id: agent.id,
           organizationId: agent.organization_id,
-          name: agent.business_name ?? agent.name,
+          name: businessName,
           staffPhoneNumber: agent.staff_phone_number,
         }}
         hiddenItems={hiddenSidebarItems}
@@ -38,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           email={context.user.email}
           orgName={context.org.name}
           avatarUrl={context.user.avatarUrl}
-          businessName={agent.business_name ?? agent.name}
+          businessName={businessName}
         />
         <DashboardMain>{children}</DashboardMain>
       </SidebarInset>

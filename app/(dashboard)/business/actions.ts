@@ -78,6 +78,7 @@ export async function updateBusinessProfile(
   }
 
   revalidatePath('/business')
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 

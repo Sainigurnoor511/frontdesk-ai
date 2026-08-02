@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
+import { getBusinessProfile } from '@/lib/data/business'
 import { getOverviewMetrics, getCallStats, getDateRange } from '@/lib/data/analytics'
 import { getConversationsForOrg } from '@/lib/data/conversations'
 import { getAppointmentsForRange } from '@/lib/data/calendar'
@@ -16,16 +17,22 @@ export default async function HomePage() {
   const now = new Date()
   const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
 
-  const [overview, callStats, conversations, upcomingAppointments] = await Promise.all([
-    getOverviewMetrics(context.org.id, startDate, endDate),
-    getCallStats(context.org.id, startDate, endDate),
-    getConversationsForOrg(),
-    getAppointmentsForRange(context.org.id, now.toISOString(), in7Days.toISOString()),
-  ])
+  const [overview, callStats, conversations, upcomingAppointments, businessProfile] =
+    await Promise.all([
+      getOverviewMetrics(context.org.id, startDate, endDate),
+      getCallStats(context.org.id, startDate, endDate),
+      getConversationsForOrg(),
+      getAppointmentsForRange(context.org.id, now.toISOString(), in7Days.toISOString()),
+      getBusinessProfile(context.org.id),
+    ])
+
+  const agent = agents[0] ?? null
+  const businessName = businessProfile.businessName ?? agent?.business_name ?? agent?.name ?? null
 
   return (
     <HomeClient
-      agent={agents[0] ?? null}
+      agent={agent}
+      businessName={businessName}
       metrics={{
         calls: callStats.totalCalls,
         bookings: overview.bookings,

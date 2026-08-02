@@ -86,11 +86,13 @@ function formatDuration(seconds: number) {
 
 export function HomeClient({
   agent,
+  businessName,
   metrics,
   latestCalls,
   upcomingAppointments,
 }: {
   agent: Agent | null
+  businessName: string | null
   metrics: Metrics
   latestCalls: Conversation[]
   upcomingAppointments: AppointmentRow[]
@@ -148,9 +150,7 @@ export function HomeClient({
               <Orb seed={1} />
             </div>
             <div className="min-w-0 space-y-1">
-              <h2 className="text-base font-semibold">
-                {agent ? (agent.business_name ?? agent.name) : 'Your Business'}
-              </h2>
+              <h2 className="text-base font-semibold">{businessName ?? 'Your Business'}</h2>
               {agent?.staff_phone_number ? (
                 <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
                   <Phone className="size-3.5" />
@@ -204,7 +204,7 @@ export function HomeClient({
           onOpenChange={setCallOpen}
           organizationId={agent.organization_id}
           agentId={agent.id}
-          agentName={agent.business_name ?? agent.name}
+          agentName={businessName ?? agent.name}
           staffPhoneNumber={agent.staff_phone_number}
           authenticated
         />
