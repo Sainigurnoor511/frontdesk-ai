@@ -50,15 +50,29 @@ async function entrypoint(ctx: agents.JobContext) {
 
   const { agentId, conversationId } = metadata
 
+  const startedAt = Date.now()
+  let finished = false
+  const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
+    if (finished) return
+    finished = true
+    const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
+    try {
+      await updateConversationStatus(conversationId, {
+        status,
+        outcome: status === 'completed' ? 'successful' : 'failed',
+        durationSeconds,
+        ...(endedReason ? { endedReason } : {}),
+      })
+    } catch (err) {
+      console.error(`[voice-agent] failed to update conversation ${conversationId} status:`, err)
+    }
+  }
+
   try {
     const agentDetail = await getAgentByIdServiceRole(agentId)
     if (!agentDetail) {
       console.error(`[voice-agent] agent ${agentId} not found; failing conversation ${conversationId}`)
-      await updateConversationStatus(conversationId, {
-        status: 'failed',
-        outcome: 'failed',
-        endedReason: 'agent_not_found',
-      })
+      await finalizeConversation('failed', 'agent_not_found')
       await ctx.room.disconnect()
       return
     }
@@ -68,25 +82,6 @@ async function entrypoint(ctx: agents.JobContext) {
       llm: OpenAILLM.withGroq({ model: 'llama-3.3-70b-versatile' }),
       tts: new FishAudioTTS(),
     })
-
-    const startedAt = Date.now()
-
-    let finished = false
-    const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
-      if (finished) return
-      finished = true
-      const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
-      try {
-        await updateConversationStatus(conversationId, {
-          status,
-          outcome: status === 'completed' ? 'successful' : 'failed',
-          durationSeconds,
-          ...(endedReason ? { endedReason } : {}),
-        })
-      } catch (err) {
-        console.error(`[voice-agent] failed to update conversation ${conversationId} status:`, err)
-      }
-    }
 
     ctx.room.on('disconnected', () => {
       void finalizeConversation('completed')
@@ -106,16 +101,10 @@ async function entrypoint(ctx: agents.JobContext) {
       agent: new agents.Agent({ instructions: buildSystemPrompt(agentDetail) }),
     })
   } catch (error) {
+    // Full error detail (which may include sensitive internals like API error
+    // bodies) stays in worker logs only; the DB column gets a generic reason.
     console.error(`[voice-agent] entrypoint failed for conversation ${conversationId}:`, error)
-    try {
-      await updateConversationStatus(conversationId, {
-        status: 'failed',
-        outcome: 'failed',
-        endedReason: error instanceof Error ? error.message : 'unknown_error',
-      })
-    } catch (updateError) {
-      console.error(`[voice-agent] failed to record failure for conversation ${conversationId}:`, updateError)
-    }
+    await finalizeConversation('failed', 'internal_error')
     await ctx.room.disconnect()
   }
 }

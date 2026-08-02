@@ -97,7 +97,17 @@ export async function updateConversationStatus(
   if (patch.endedReason !== undefined) update.ended_reason = patch.endedReason
   if (patch.transcript !== undefined) update.transcript = patch.transcript
 
-  const { error } = await supabase.from('conversations').update(update).eq('id', id)
+  // When transitioning out of 'active' (the terminal-state writes made by the
+  // voice worker), guard the write with `WHERE status = 'active'` so a stale
+  // update (e.g. from a crashed-and-restarted worker racing a fresher one)
+  // can't clobber a status another writer already finalized. Non-terminal
+  // patches (status omitted or explicitly 'active') are unaffected.
+  let query = supabase.from('conversations').update(update).eq('id', id)
+  if (patch.status === 'completed' || patch.status === 'failed') {
+    query = query.eq('status', 'active')
+  }
+
+  const { error } = await query
   if (error) {
     throw new Error(`Failed to update conversation ${id}: ${error.message}`)
   }
