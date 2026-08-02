@@ -5,7 +5,6 @@ import {
   Phone,
   PhoneX,
   ArrowUp,
-  UserCircle,
   X,
   Plus,
   ClockCounterClockwise,
@@ -140,19 +139,17 @@ export function CallDialog({
                     message.speaker === 'user' && 'flex-row-reverse'
                   )}
                 >
-                  {message.speaker === 'agent' ? (
+                  {message.speaker === 'agent' && (
                     <div className="size-7 shrink-0 overflow-hidden rounded-full">
                       <Orb agentState={null} seed={1} />
                     </div>
-                  ) : (
-                    <UserCircle weight="fill" className="size-7 shrink-0 text-muted-foreground" />
                   )}
                   <div
                     className={cn(
-                      'max-w-[75%] rounded-2xl px-3 py-2 text-sm',
+                      'max-w-[75%] rounded-2xl px-3 py-2 text-sm text-black',
                       message.speaker === 'agent'
-                        ? 'rounded-bl-sm bg-muted text-foreground'
-                        : 'rounded-br-sm bg-foreground text-background',
+                        ? 'rounded-bl-sm bg-transparent'
+                        : 'rounded-br-sm bg-[#f4f4f4]',
                       !message.final && 'opacity-70'
                     )}
                   >
