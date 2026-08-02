@@ -11,6 +11,30 @@ export type LanguageOption = {
   flag: string
 }
 
+// Onboarding (a separate flow) has historically stored the full English
+// label ("English", "Hindi") rather than an ISO code in `agents.language`.
+// Normalize either form to a code so existing rows still resolve to a real
+// catalog entry instead of an empty voice list.
+const LEGACY_LABEL_TO_CODE: Record<string, string> = {
+  english: 'en',
+  spanish: 'es',
+  french: 'fr',
+  german: 'de',
+  portuguese: 'pt',
+  chinese: 'zh',
+  japanese: 'ja',
+  hindi: 'hi',
+  punjabi: 'pa',
+  tamil: 'ta',
+  telugu: 'te',
+  bengali: 'bn',
+  marathi: 'mr',
+}
+
+export function normalizeLanguageCode(value: string): string {
+  return LEGACY_LABEL_TO_CODE[value.toLowerCase()] ?? value
+}
+
 export const languageOptions: LanguageOption[] = [
   { code: 'en', label: 'English', flag: '🇬🇧' },
   { code: 'es', label: 'Spanish', flag: '🇪🇸' },

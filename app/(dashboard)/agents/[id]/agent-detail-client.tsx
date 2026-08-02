@@ -37,7 +37,12 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
 import { updateAgentGeneral, updateAgentCallSettings, searchVoices } from './actions'
-import { voiceCatalog, languageOptions, type VoiceCatalogEntry } from '@/lib/data/voice-catalog'
+import {
+  voiceCatalog,
+  languageOptions,
+  normalizeLanguageCode,
+  type VoiceCatalogEntry,
+} from '@/lib/data/voice-catalog'
 import { VoicePicker } from '@/components/voice/voice-picker'
 
 const TONE_TRAITS = [
@@ -87,7 +92,7 @@ export function AgentDetailClient({
   // General tab state
   const [voiceId, setVoiceId] = useState(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
   const [defaultLanguage, setDefaultLanguage] = useState(
-    agent.language ?? languageOptions[0].code
+    agent.language ? normalizeLanguageCode(agent.language) : languageOptions[0].code
   )
   const [detectLanguage, setDetectLanguage] = useState(false)
   const [voiceSearchResults, setVoiceSearchResults] = useState<VoiceCatalogEntry[]>([])
@@ -126,9 +131,12 @@ export function AgentDetailClient({
   }
 
   const originalToneTraits = agent.tone_traits ?? []
+  const originalLanguage = agent.language
+    ? normalizeLanguageCode(agent.language)
+    : languageOptions[0].code
   const generalDirty =
     voiceId !== (agent.voice_id ?? voiceCatalog[0]?.id ?? '') ||
-    defaultLanguage !== (agent.language ?? languageOptions[0].code) ||
+    defaultLanguage !== originalLanguage ||
     additionalInstructions !== (agent.additional_instructions ?? '') ||
     firstMessage !== (agent.first_message ?? '') ||
     toneTraits.length !== originalToneTraits.length ||
@@ -136,7 +144,7 @@ export function AgentDetailClient({
 
   function handleCancelGeneral() {
     setVoiceId(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
-    setDefaultLanguage(agent.language ?? languageOptions[0].code)
+    setDefaultLanguage(originalLanguage)
     setAdditionalInstructions(agent.additional_instructions ?? '')
     setToneTraits(agent.tone_traits ?? [])
     setFirstMessage(agent.first_message ?? '')
@@ -331,7 +339,21 @@ export function AgentDetailClient({
                     onValueChange={(value) => setDefaultLanguage(value as string)}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select a language" />
+                      <SelectValue placeholder="Select a language">
+                        {(value: string) => {
+                          const selectedLang = languageOptions.find((lang) => lang.code === value)
+                          return selectedLang ? (
+                            <span className="flex items-center gap-2">
+                              <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">
+                                {selectedLang.flag}
+                              </span>
+                              {selectedLang.label}
+                            </span>
+                          ) : (
+                            'Select a language'
+                          )
+                        }}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       {languageOptions.map((lang) => (
