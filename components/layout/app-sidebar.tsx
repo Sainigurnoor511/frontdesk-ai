@@ -1,16 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   House,
   BookOpen,
-  Calendar,
+  CalendarDays,
   Clock,
   Users,
   UserCog,
-  MessageCircle,
   ChartBar,
   UserCircle,
   Store,
@@ -19,7 +18,8 @@ import {
   Settings,
   Ellipsis,
   Phone,
-  X,
+  Pin,
+  PinOff,
   MessageCircleMore,
   Lock,
 } from 'lucide-react'
@@ -47,8 +47,16 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
 import { CallDialog } from '@/components/voice/call-dialog'
+import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
 
-const navSections = [
+type NavItem = {
+  title: string
+  url: string
+  icon: typeof House
+  badge?: string
+}
+
+const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }[] = [
   {
     label: null,
     items: [
@@ -59,11 +67,11 @@ const navSections = [
   {
     label: 'Operations',
     items: [
-      { title: 'Calendar', url: '/calendar', icon: Calendar },
+      { title: 'Calendar', url: '/calendar', icon: CalendarDays },
       { title: 'Availability', url: '/availability', icon: Clock },
       { title: 'Clients', url: '/clients', icon: Users },
       { title: 'Staff', url: '/staff', icon: UserCog },
-      { title: 'Conversations', url: '/conversations', icon: MessageCircle },
+      { title: 'Conversations', url: '/conversations', icon: MessageCircleMore },
       { title: 'Analytics', url: '/analytics', icon: ChartBar },
     ],
   },
@@ -82,6 +90,8 @@ const navSections = [
     ],
   },
 ]
+
+const allNavItems: NavItem[] = navSections.flatMap((section) => section.items)
 
 const DUMMY_PHONE_NUMBER = '+1 (415) 555-0100'
 
@@ -116,6 +126,7 @@ function CallReceptionistPill({
 export function AppSidebar({
   orgName,
   agent,
+  hiddenItems,
 }: {
   orgName: string
   agent: {
@@ -124,10 +135,40 @@ export function AppSidebar({
     name: string
     staffPhoneNumber: string | null
   } | null
+  hiddenItems: string[]
 }) {
   const pathname = usePathname()
   const [lockLayout, setLockLayout] = useState(false)
   const [callOpen, setCallOpen] = useState(false)
+  const { state: sidebarState } = useSidebar()
+
+  // Optimistic local mirror of the server-persisted hidden-items list, so
+  // pin/unpin feels instant instead of waiting on a round trip + revalidation.
+  const [hidden, setHidden] = useState<Set<string>>(() => new Set(hiddenItems))
+  const [, startTransition] = useTransition()
+
+  function toggleItemHidden(url: string, nextHidden: boolean) {
+    setHidden((prev) => {
+      const next = new Set(prev)
+      if (nextHidden) next.add(url)
+      else next.delete(url)
+      return next
+    })
+    startTransition(async () => {
+      const result = await setSidebarItemHidden(url, nextHidden)
+      if ('error' in result) {
+        // Revert on failure — the server state didn't actually change.
+        setHidden((prev) => {
+          const reverted = new Set(prev)
+          if (nextHidden) reverted.delete(url)
+          else reverted.add(url)
+          return reverted
+        })
+      }
+    })
+  }
+
+  const unpinnedItems = allNavItems.filter((item) => hidden.has(item.url))
 
   return (
     <Sidebar collapsible="icon">
@@ -150,59 +191,92 @@ export function AppSidebar({
         )}
       </SidebarHeader>
       <SidebarContent className="gap-0 py-1">
-        {navSections.map((section, i) => (
-          <SidebarGroup key={i} className="py-1">
-            {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {'isSetup' in section && section.isSetup && (
-                  <SidebarMenuItem>
-                    <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
-                      <House strokeWidth={2.5} />
-                      <span>{orgName}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                )}
-                {section.items.map((item) => (
-                  <SidebarMenuItem key={item.url} className="group/nav-item">
-                    <SidebarMenuButton
-                      isActive={pathname === item.url}
-                      render={<Link href={item.url} />}
-                    >
-                      <item.icon strokeWidth={2.5} />
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                    {'badge' in item && item.badge && (
-                      <SidebarMenuBadge>
-                        <Badge variant="secondary" className="h-4 px-1.5 text-[10px] font-medium">
-                          {item.badge}
-                        </Badge>
-                      </SidebarMenuBadge>
-                    )}
-                    {/* TODO: persist per-user sidebar item visibility once a preferences table exists */}
-                    <button
-                      type="button"
-                      aria-label={`Remove ${item.title} from sidebar`}
-                      className="absolute top-1/2 right-1 hidden size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover/nav-item:flex group-hover/nav-item:opacity-100"
-                    >
-                      <X className="size-3" />
-                    </button>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
+        {navSections.map((section, i) => {
+          const visibleItems = section.items.filter((item) => !hidden.has(item.url))
+          if (visibleItems.length === 0 && !('isSetup' in section && section.isSetup)) return null
+
+          return (
+            <SidebarGroup key={i} className="py-1">
+              {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {'isSetup' in section && section.isSetup && (
+                    <SidebarMenuItem>
+                      <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
+                        <House strokeWidth={2.5} />
+                        <span>{orgName}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  )}
+                  {visibleItems.map((item) => (
+                    <SidebarMenuItem key={item.url} className="group/nav-item">
+                      <SidebarMenuButton
+                        isActive={pathname === item.url}
+                        render={<Link href={item.url} />}
+                      >
+                        <item.icon strokeWidth={2.5} />
+                        <span>{item.title}</span>
+                        {item.badge && (
+                          <Badge
+                            variant="outline"
+                            className="h-4 shrink-0 border-current px-1.5 text-[10px] font-medium text-muted-foreground"
+                          >
+                            {item.badge}
+                          </Badge>
+                        )}
+                      </SidebarMenuButton>
+                      {sidebarState !== 'collapsed' && (
+                        <button
+                          type="button"
+                          aria-label={`Unpin ${item.title} from sidebar`}
+                          onClick={(e) => {
+                            e.preventDefault()
+                            toggleItemHidden(item.url, true)
+                          }}
+                          className="absolute top-1/2 right-1 hidden size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-muted group-hover/nav-item:flex group-hover/nav-item:opacity-100"
+                        >
+                          <PinOff className="size-3" />
+                        </button>
+                      )}
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )
+        })}
         <SidebarGroup className="mt-auto">
           <SidebarGroupContent>
             <SidebarMenu>
+              {/* Conversations badge (unread count) intentionally omitted here — no
+                  live unread-count data source is wired into this component yet. */}
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<SidebarMenuButton />}>
                     <Ellipsis strokeWidth={2.5} />
                     <span>More</span>
+                    {unpinnedItems.length > 0 && (
+                      <SidebarMenuBadge className="static ml-auto">
+                        {unpinnedItems.length}
+                      </SidebarMenuBadge>
+                    )}
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top">
+                    {unpinnedItems.length > 0 && (
+                      <>
+                        {unpinnedItems.map((item) => (
+                          <DropdownMenuItem
+                            key={item.url}
+                            onClick={() => toggleItemHidden(item.url, false)}
+                          >
+                            <item.icon />
+                            {item.title}
+                            <Pin className="ml-auto size-3.5 text-muted-foreground" />
+                          </DropdownMenuItem>
+                        ))}
+                        <DropdownMenuSeparator />
+                      </>
+                    )}
                     {/* TODO: open the Assistant panel from here once it's lifted to shared layout state */}
                     <DropdownMenuItem disabled>
                       <MessageCircleMore />

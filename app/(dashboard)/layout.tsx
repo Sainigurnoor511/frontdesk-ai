@@ -4,6 +4,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
+import { getHiddenSidebarItems } from '@/lib/data/sidebar-preferences'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const context = await getCurrentOrgAndUser()
@@ -18,6 +19,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const agent = agents[0]
+  const hiddenSidebarItems = await getHiddenSidebarItems(context.org.id)
 
   return (
     <SidebarProvider>
@@ -29,6 +31,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           name: agent.business_name ?? agent.name,
           staffPhoneNumber: agent.staff_phone_number,
         }}
+        hiddenItems={hiddenSidebarItems}
       />
       <SidebarInset className="h-svh overflow-hidden">
         <AppHeader
