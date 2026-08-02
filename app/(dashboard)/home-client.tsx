@@ -228,7 +228,7 @@ export function HomeClient({
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Latest Calls</h2>
+              <h2 className="font-heading text-base font-semibold">Latest Calls</h2>
               {latestCalls.length > 0 && (
                 <Link
                   href="/conversations"
@@ -254,20 +254,25 @@ export function HomeClient({
             ) : (
               <ul className="divide-y">
                 {latestCalls.map((call) => (
-                  <li key={call.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm text-muted-foreground">
-                        {formatRelativeDate(call.createdAt)}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center gap-2">
-                      <span className="text-xs text-muted-foreground">
-                        {formatDuration(call.durationSeconds)}
-                      </span>
-                      <Badge variant={call.outcome === 'successful' ? 'secondary' : 'destructive'}>
-                        {call.outcome === 'successful' ? 'Successful' : 'Failed'}
-                      </Badge>
-                    </div>
+                  <li key={call.id}>
+                    <Link
+                      href="/conversations"
+                      className="flex items-center justify-between gap-3 rounded-md py-2.5 transition-colors hover:bg-accent"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm text-muted-foreground">
+                          {formatRelativeDate(call.createdAt)}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          {formatDuration(call.durationSeconds)}
+                        </span>
+                        <Badge variant={call.outcome === 'successful' ? 'secondary' : 'destructive'}>
+                          {call.outcome === 'successful' ? 'Successful' : 'Failed'}
+                        </Badge>
+                      </div>
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -278,7 +283,7 @@ export function HomeClient({
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-semibold">Upcoming Events</h2>
+              <h2 className="font-heading text-base font-semibold">Upcoming Events</h2>
               {upcomingAppointments.length > 0 && (
                 <Link
                   href="/calendar"

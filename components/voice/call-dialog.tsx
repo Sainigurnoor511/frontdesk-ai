@@ -50,7 +50,6 @@ export function CallDialog({
   const isConnecting = status === 'connecting'
   const isConnected = status === 'connected'
   const isEnded = status === 'ended'
-  const isOnCall = isConnected || isEnded
   const hasTranscript = transcript.length > 0
 
   useEffect(() => {
@@ -81,8 +80,58 @@ export function CallDialog({
         </div>
 
         <div className="scrollbar-none flex-1 overflow-y-auto px-4">
-          {isOnCall && hasTranscript ? (
-            <div className="flex flex-col gap-3 pb-2">
+          {!isEnded && (
+            <div className="flex flex-col items-center py-6 text-center">
+              <h2 className="text-lg font-semibold">{agentName}</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isConnected ? 'Voice call active' : 'Start a call or chat to your receptionist'}
+              </p>
+
+              <div className="relative mt-6">
+                <div className="size-44 overflow-hidden rounded-full">
+                  <Orb agentState={agentState} seed={1} />
+                </div>
+                {isConnected ? (
+                  <button
+                    type="button"
+                    onClick={disconnect}
+                    aria-label="End call"
+                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-red-500 text-white transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <PhoneX weight="fill" className="size-5" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={connect}
+                    disabled={isConnecting}
+                    aria-label="Start call"
+                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-foreground text-white transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+                  >
+                    <Phone weight="fill" className="size-5" />
+                  </button>
+                )}
+              </div>
+
+              <p className="mt-6 h-4 text-sm text-muted-foreground">
+                {isConnecting ? 'Connecting…' : ''}
+              </p>
+
+              {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
+
+              {staffPhoneNumber && !isConnected && (
+                <div className="mt-5 flex flex-col items-center gap-2">
+                  <p className="text-sm text-muted-foreground">Or call</p>
+                  <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
+                    {staffPhoneNumber}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {hasTranscript && (
+            <div className={cn('flex flex-col gap-3', !isEnded && 'pb-2', isEnded && 'py-4')}>
               {transcript.map((message) => (
                 <div
                   key={message.id}
@@ -134,54 +183,6 @@ export function CallDialog({
               )}
 
               <div ref={transcriptEndRef} />
-            </div>
-          ) : (
-            <div className="flex flex-col items-center py-6 text-center">
-              <h2 className="text-lg font-semibold">{agentName}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {isOnCall ? 'Voice call active' : 'Start a call or chat to your receptionist'}
-              </p>
-
-              <div className="relative mt-6">
-                <div className="size-44 overflow-hidden rounded-full">
-                  <Orb agentState={agentState} seed={1} />
-                </div>
-                {isConnected ? (
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    aria-label="End call"
-                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-red-500 text-white transition-transform hover:scale-105 active:scale-95"
-                  >
-                    <PhoneX weight="fill" className="size-5" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={connect}
-                    disabled={isConnecting}
-                    aria-label="Start call"
-                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-foreground text-white transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
-                  >
-                    <Phone weight="fill" className="size-5" />
-                  </button>
-                )}
-              </div>
-
-              <p className="mt-6 h-4 text-sm text-muted-foreground">
-                {isConnecting ? 'Connecting…' : ''}
-              </p>
-
-              {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
-
-              {staffPhoneNumber && !isOnCall && (
-                <div className="mt-5 flex flex-col items-center gap-2">
-                  <p className="text-sm text-muted-foreground">Or call</p>
-                  <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
-                    {staffPhoneNumber}
-                  </span>
-                </div>
-              )}
             </div>
           )}
         </div>
