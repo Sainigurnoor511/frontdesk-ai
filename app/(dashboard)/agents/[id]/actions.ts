@@ -8,6 +8,7 @@ import {
   type UpdateAgentGeneralInput,
   type UpdateAgentCallSettingsInput,
 } from '@/lib/validations/agent'
+import type { VoiceCatalogEntry } from '@/lib/data/voice-catalog'
 
 export async function updateAgentGeneral(
   agentId: string,
@@ -56,6 +57,37 @@ export async function updateAgentGeneral(
 
   revalidatePath(`/agents/${agentId}`)
   return { success: true }
+}
+
+type FishAudioModelResult = {
+  id: string
+  title: string
+  languages?: string[]
+  samples?: Array<{ audio?: string }>
+}
+
+export async function searchVoices(
+  query: string,
+  language?: string
+): Promise<VoiceCatalogEntry[]> {
+  const params = new URLSearchParams({ title: query, page_size: '20' })
+  const response = await fetch(`https://api.fish.audio/model?${params}`, {
+    headers: { Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}` },
+  })
+
+  if (!response.ok) return []
+
+  const data = (await response.json()) as { items?: FishAudioModelResult[] }
+  const items = data.items ?? []
+
+  const mapped = items.map((item) => ({
+    id: item.id,
+    label: item.title,
+    language: item.languages?.[0] ?? 'en',
+    previewUrl: item.samples?.[0]?.audio ?? '',
+  }))
+
+  return language ? mapped.filter((voice) => voice.language === language) : mapped
 }
 
 export async function updateAgentCallSettings(

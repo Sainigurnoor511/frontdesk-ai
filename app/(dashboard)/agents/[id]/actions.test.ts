@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { updateAgentGeneral, updateAgentCallSettings } from './actions'
+import { updateAgentGeneral, updateAgentCallSettings, searchVoices } from './actions'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -149,5 +149,56 @@ describe('updateAgentCallSettings', () => {
     )
     expect(supabase.__mocks.updateEq1).toHaveBeenCalledWith('id', AGENT_ID)
     expect(supabase.__mocks.updateEq2).toHaveBeenCalledWith('organization_id', 'org-42')
+  })
+})
+
+describe('searchVoices', () => {
+  it('queries Fish Audio and maps results to the catalog shape', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          {
+            id: 'abc123',
+            title: 'Test Voice',
+            languages: ['en'],
+            samples: [{ audio: 'https://example.com/sample.mp3' }],
+          },
+        ],
+      }),
+    } as unknown as Response)
+
+    const result = await searchVoices('test')
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('title=test'),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Authorization: expect.stringContaining('Bearer') }),
+      })
+    )
+    expect(result).toEqual([
+      { id: 'abc123', label: 'Test Voice', language: 'en', previewUrl: 'https://example.com/sample.mp3' },
+    ])
+  })
+
+  it('filters results by language client-side', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        items: [
+          { id: '1', title: 'A', languages: ['en'], samples: [{ audio: 'a.mp3' }] },
+          { id: '2', title: 'B', languages: ['hi'], samples: [{ audio: 'b.mp3' }] },
+        ],
+      }),
+    } as unknown as Response)
+
+    const result = await searchVoices('', 'hi')
+
+    expect(result).toEqual([{ id: '2', label: 'B', language: 'hi', previewUrl: 'b.mp3' }])
+  })
+
+  it('returns an empty list on a non-ok response', async () => {
+    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    await expect(searchVoices('test')).resolves.toEqual([])
   })
 })
