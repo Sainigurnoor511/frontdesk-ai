@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import Image from 'next/image'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,7 +16,7 @@ const USED_MINUTES = 0
 const remainingMinutes = INCLUDED_MINUTES - USED_MINUTES
 const usedPercent = Math.round((USED_MINUTES / INCLUDED_MINUTES) * 100)
 
-function UsageRing({ percent }: { percent: number }) {
+function UsageRing({ percent, avatarUrl }: { percent: number; avatarUrl: string | null }) {
   const radius = 15
   const circumference = 2 * Math.PI * radius
   const offset = circumference * (1 - percent / 100)
@@ -43,22 +44,39 @@ function UsageRing({ percent }: { percent: number }) {
           strokeLinecap="round"
         />
       </svg>
-      <span className="absolute text-[9px] font-medium">{percent}%</span>
+      {avatarUrl ? (
+        <Image
+          src={avatarUrl}
+          alt=""
+          width={24}
+          height={24}
+          className="absolute size-6 rounded-full object-cover"
+          unoptimized
+        />
+      ) : (
+        <span className="absolute text-[9px] font-medium">{percent}%</span>
+      )}
     </div>
   )
 }
 
-export function NavUser({ email, orgName }: { email: string; orgName: string }) {
-  const name = email.split('@')[0]
-
+export function NavUser({
+  email,
+  orgName,
+  avatarUrl,
+}: {
+  email: string
+  orgName: string
+  avatarUrl: string | null
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="outline-none">
-        <UsageRing percent={usedPercent} />
+        <UsageRing percent={usedPercent} avatarUrl={avatarUrl} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <div className="px-2 py-1.5">
-          <p className="text-sm font-medium">{name}</p>
+          <p className="truncate text-sm font-medium">{email}</p>
           <p className="text-xs text-muted-foreground">{orgName}</p>
         </div>
         <DropdownMenuSeparator />

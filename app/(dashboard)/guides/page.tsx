@@ -20,7 +20,7 @@ export default function GuidesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Guides</h1>
-        <p className="text-muted-foreground">Learn how to use the product, step by step.</p>
+        <p className="mt-1 text-sm font-normal text-[#96989d]">Learn how to use the product, step by step.</p>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

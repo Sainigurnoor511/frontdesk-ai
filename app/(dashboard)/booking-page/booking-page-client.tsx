@@ -72,7 +72,7 @@ export function BookingPageClient({
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Bookings page</h1>
-          <p className="text-muted-foreground">
+          <p className="mt-1 text-sm font-normal text-[#96989d]">
             Your public booking link, where clients can book appointments themselves.
           </p>
         </div>

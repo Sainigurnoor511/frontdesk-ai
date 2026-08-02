@@ -10,7 +10,7 @@ export default async function OrganizationPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Organization</h1>
-        <p className="text-muted-foreground">Manage your organization details.</p>
+        <p className="mt-1 text-sm font-normal text-[#96989d]">Manage your organization details.</p>
       </div>
       <OrgNameForm
         orgId={context.org.id}

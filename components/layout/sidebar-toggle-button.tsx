@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
+import { cn } from '@/lib/utils'
 
 function OpenIcon() {
   return (
@@ -29,7 +30,7 @@ export function SidebarToggleButton({ className }: { className?: string }) {
       variant="ghost"
       size="icon-sm"
       aria-label="Toggle Sidebar"
-      className={className}
+      className={cn('text-muted-foreground', className)}
       onClick={toggleSidebar}
     >
       {state === 'expanded' ? <OpenIcon /> : <CollapsedIcon />}

@@ -98,7 +98,7 @@ function PhoneNumberPill() {
           <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
         </div>
         <span>Connect a number</span>
-        {state !== 'collapsed' && <Phone className="ml-auto" />}
+        {state !== 'collapsed' && <Phone weight="bold" className="ml-auto" />}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -132,7 +132,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                 {'isSetup' in section && section.isSetup && (
                   <SidebarMenuItem>
                     <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
-                      <House />
+                      <House weight="bold" />
                       <span>{orgName}</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
@@ -143,7 +143,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
                       isActive={pathname === item.url}
                       render={<Link href={item.url} />}
                     >
-                      <item.icon />
+                      <item.icon weight="bold" />
                       <span>{item.title}</span>
                     </SidebarMenuButton>
                     {'badge' in item && item.badge && (
@@ -173,7 +173,7 @@ export function AppSidebar({ orgName }: { orgName: string }) {
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<SidebarMenuButton />}>
-                    <DotsThree />
+                    <DotsThree weight="bold" />
                     <span>More</span>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" side="top">

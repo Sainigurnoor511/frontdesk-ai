@@ -72,7 +72,7 @@ export function AnalyticsClient({
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">Analytics</h1>
-        <p className="text-muted-foreground">Track call volume and performance.</p>
+        <p className="mt-1 text-sm font-normal text-[#96989d]">Track call volume and performance.</p>
       </div>
 
       <Tabs defaultValue="overview">

@@ -16,7 +16,7 @@ export default async function AgentsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Receptionists</h1>
-          <p className="text-muted-foreground">Configure your AI receptionists.</p>
+          <p className="mt-1 text-sm font-normal text-[#96989d]">Configure your AI receptionists.</p>
         </div>
         <Button render={<Link href="/onboarding" />}>Create receptionist</Button>
       </div>

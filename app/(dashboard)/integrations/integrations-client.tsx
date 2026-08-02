@@ -136,7 +136,7 @@ export function IntegrationsClient({
             <h1 className="text-2xl font-semibold">Integrations</h1>
             <Badge variant="secondary">Alpha</Badge>
           </div>
-          <p className="text-muted-foreground">
+          <p className="mt-1 text-sm font-normal text-[#96989d]">
             Connect external tools and services to your account.
           </p>
         </div>

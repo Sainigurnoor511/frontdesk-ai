@@ -8,7 +8,11 @@ import {
   X,
   CalendarBlank,
   ArrowRight,
+  CalendarCheck,
+  TrendUp,
+  UserPlus,
 } from '@phosphor-icons/react/dist/ssr'
+import type { Icon } from '@phosphor-icons/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -27,16 +31,21 @@ function StatTile({
   href,
   label,
   value,
+  icon: TileIcon,
 }: {
   href: string
   label: string
   value: string
+  icon: Icon
 }) {
   return (
     <Link href={href} className="flex-1">
       <Card className="h-full transition-colors hover:bg-accent">
         <CardContent className="space-y-1 py-4">
-          <p className="text-sm text-muted-foreground">{label}</p>
+          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <TileIcon className="size-4" />
+            {label}
+          </p>
           <p className="text-2xl font-semibold">{value}</p>
           <p className="text-xs text-muted-foreground">no prior data</p>
         </CardContent>
@@ -153,21 +162,29 @@ export function HomeClient({
       </Card>
 
       <div className="flex flex-wrap gap-4">
-        <StatTile href="/analytics?tab=calls" label="Calls (7d)" value={String(metrics.calls)} />
+        <StatTile
+          href="/analytics?tab=calls"
+          label="Calls (7d)"
+          value={String(metrics.calls)}
+          icon={Phone}
+        />
         <StatTile
           href="/analytics?tab=services"
           label="Bookings (7d)"
           value={String(metrics.bookings)}
+          icon={CalendarCheck}
         />
         <StatTile
           href="/analytics?tab=services"
           label="Revenue (7d)"
           value={`$${metrics.revenue}`}
+          icon={TrendUp}
         />
         <StatTile
           href="/analytics?tab=clients"
           label="New Clients (7d)"
           value={String(metrics.newClients)}
+          icon={UserPlus}
         />
       </div>
 
