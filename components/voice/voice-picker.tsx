@@ -52,21 +52,21 @@ function VoiceOrbButton({
         e.stopPropagation()
         onToggle()
       }}
-      className="group relative size-6 shrink-0 overflow-hidden rounded-full"
+      className="group relative size-5 shrink-0 overflow-hidden rounded-full"
       style={{
         background: `radial-gradient(circle at 30% 30%, ${c1}, ${c2} 55%, ${c3} 100%)`,
       }}
     >
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition-opacity group-hover:bg-black/20 group-hover:opacity-100">
         {playing ? (
-          <Pause className="size-3 fill-white text-white" />
+          <Pause className="size-2.5 fill-white text-white" />
         ) : (
-          <Play className="size-3 fill-white text-white" />
+          <Play className="size-2.5 fill-white text-white" />
         )}
       </span>
       {playing && (
         <span className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <Pause className="size-3 fill-white text-white" />
+          <Pause className="size-2.5 fill-white text-white" />
         </span>
       )}
     </button>
@@ -151,18 +151,18 @@ export function VoicePicker({
                     onValueChange(voice.id)
                     setOpen(false)
                   }}
-                  className="flex items-center gap-3"
+                  className="flex items-center gap-2 py-1"
                 >
                   <VoiceOrbButton
                     id={voice.id}
                     playing={playingId === voice.id}
                     onToggle={() => togglePreview(voice)}
                   />
-                  <span className="flex-1 truncate">{voice.label}</span>
-                  <Badge variant="outline" className="rounded-full px-2 text-xs font-normal">
+                  <span className="flex-1 truncate text-sm">{voice.label}</span>
+                  <Badge variant="outline" className="rounded-full px-1.5 py-0 text-[10px] font-normal">
                     {voice.language}
                   </Badge>
-                  {voice.id === value && <Check className="size-4 shrink-0 text-foreground" />}
+                  {voice.id === value && <Check className="size-3.5 shrink-0 text-foreground" />}
                 </CommandItem>
               ))}
             </CommandGroup>
