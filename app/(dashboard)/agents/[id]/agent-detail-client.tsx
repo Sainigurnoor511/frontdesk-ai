@@ -75,14 +75,21 @@ function SectionHeading({
   )
 }
 
+const TAB_VALUES = ['general', 'voices', 'rules', 'call-settings', 'advanced'] as const
+
 export function AgentDetailClient({
   agent,
   agents,
+  initialTab,
 }: {
   agent: AgentDetail
   agents: Agent[]
+  initialTab?: string
 }) {
   const router = useRouter()
+  const activeTab = TAB_VALUES.includes(initialTab as (typeof TAB_VALUES)[number])
+    ? (initialTab as (typeof TAB_VALUES)[number])
+    : 'general'
 
   // General tab state
   const [voiceId, setVoiceId] = useState(agent.voice_id ?? VOICE_OPTIONS[0].id)
@@ -204,7 +211,7 @@ export function AgentDetailClient({
         </div>
       </div>
 
-      <Tabs defaultValue="general">
+      <Tabs defaultValue={activeTab}>
         <TabsList className="border-b">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="voices">Voices</TabsTrigger>

@@ -13,7 +13,6 @@ import {
   UserCog,
   ChartColumn,
   UserCircle,
-  Store,
   Plug,
   BookMarked,
   Settings,
@@ -23,6 +22,18 @@ import {
   PinOff,
   MessageCircleMore,
   Lock,
+  Sparkles,
+  Receipt,
+  Wrench,
+  Box,
+  Package,
+  CalendarClock,
+  FileText,
+  CircleQuestionMark,
+  Bot,
+  AudioWaveform,
+  ListChecks,
+  SlidersHorizontal,
 } from 'lucide-react'
 import {
   Sidebar,
@@ -75,6 +86,7 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
       { title: 'Availability', url: '/availability', icon: Clock },
       { title: 'Clients', url: '/clients', icon: Users },
       { title: 'Staff', url: '/staff', icon: UserCog },
+      { title: 'Assistant', url: '/assistant', icon: Sparkles },
       { title: 'Conversations', url: '/conversations', icon: MessageCircleMore },
       { title: 'Analytics', url: '/analytics', icon: ChartColumn },
     ],
@@ -284,28 +296,80 @@ export function AppSidebar({
                         <DropdownMenuSeparator />
                       </>
                     )}
-                    {/* TODO: open the Assistant panel from here once it's lifted to shared layout state */}
-                    <DropdownMenuItem disabled>
-                      <MessageCircleMore />
-                      Assistant
-                    </DropdownMenuItem>
-                    <DropdownMenuItem render={<Link href="/business" />}>
-                      <Store />
-                      {agent ? agent.name : 'Business'}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem render={<Link href="/agents" />}>
-                      <UserCircle />
-                      Receptionists
-                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <House />
+                        {agent ? agent.name : 'Business'}
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem render={<Link href="/business?tab=info" />}>
+                          <Receipt />
+                          Info
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=services" />}>
+                          <Wrench />
+                          Services
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=assets" />}>
+                          <Box />
+                          Assets
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=products" />}>
+                          <Package />
+                          Products
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=scheduling" />}>
+                          <CalendarClock />
+                          Scheduling
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=knowledge" />}>
+                          <FileText />
+                          Knowledge Sources
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/business?tab=faq" />}>
+                          <CircleQuestionMark />
+                          FAQ
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <UserCircle />
+                        Receptionists
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {agent && (
+                          <>
+                            <DropdownMenuItem render={<Link href={`/agents/${agent.id}?tab=general`} />}>
+                              <Bot />
+                              General
+                            </DropdownMenuItem>
+                            <DropdownMenuItem render={<Link href={`/agents/${agent.id}?tab=voices`} />}>
+                              <AudioWaveform />
+                              Voice
+                            </DropdownMenuItem>
+                            <DropdownMenuItem render={<Link href={`/agents/${agent.id}?tab=rules`} />}>
+                              <ListChecks />
+                              Rules
+                            </DropdownMenuItem>
+                            <DropdownMenuItem render={<Link href={`/agents/${agent.id}?tab=call-settings`} />}>
+                              <Phone />
+                              Call settings
+                            </DropdownMenuItem>
+                            <DropdownMenuItem render={<Link href={`/agents/${agent.id}?tab=advanced`} />}>
+                              <SlidersHorizontal />
+                              Advanced settings
+                            </DropdownMenuItem>
+                          </>
+                        )}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <Settings />
                         Settings
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
-                        <DropdownMenuItem render={<Link href="/settings?tab=account" />}>
-                          Account
-                        </DropdownMenuItem>
                         <DropdownMenuItem render={<Link href="/settings?tab=billing" />}>
                           Billing
                         </DropdownMenuItem>
@@ -322,9 +386,13 @@ export function AppSidebar({
                     <DropdownMenuCheckboxItem
                       checked={lockLayout}
                       onCheckedChange={setLockLayout}
+                      className="items-start py-1.5"
                     >
-                      <Lock />
-                      Lock sidebar layout
+                      <Lock className="mt-0.5" />
+                      <div className="flex flex-col">
+                        <span>Lock sidebar layout</span>
+                        <span className="text-xs text-muted-foreground">Keep pinned items fixed</span>
+                      </div>
                     </DropdownMenuCheckboxItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

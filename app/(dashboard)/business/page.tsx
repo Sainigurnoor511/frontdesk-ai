@@ -10,9 +10,15 @@ import {
 } from '@/lib/data/business'
 import { BusinessClient } from './business-client'
 
-export default async function BusinessPage() {
+export default async function BusinessPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
   const context = await getCurrentOrgAndUser()
   if (!context) redirect('/login')
+
+  const { tab } = await searchParams
 
   const [profile, locations, services, assets, products, agents] = await Promise.all([
     getBusinessProfile(context.org.id),
@@ -34,6 +40,7 @@ export default async function BusinessPage() {
       assets={assets}
       products={products}
       contactPhoneNumber={contactPhoneNumber}
+      initialTab={tab}
     />
   )
 }

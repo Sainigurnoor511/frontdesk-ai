@@ -114,6 +114,16 @@ function formatDuration(minutes: number) {
   return rest ? `${hours}h ${rest}m` : `${hours}h`
 }
 
+const BUSINESS_TAB_VALUES = [
+  'info',
+  'services',
+  'assets',
+  'products',
+  'scheduling',
+  'knowledge',
+  'faq',
+] as const
+
 export function BusinessClient({
   profile,
   locations,
@@ -121,6 +131,7 @@ export function BusinessClient({
   assets,
   products,
   contactPhoneNumber,
+  initialTab,
 }: {
   profile: BusinessProfile
   locations: BusinessLocation[]
@@ -128,7 +139,14 @@ export function BusinessClient({
   assets: BusinessAsset[]
   products: BusinessProduct[]
   contactPhoneNumber: string | null
+  initialTab?: string
 }) {
+  const activeTab = BUSINESS_TAB_VALUES.includes(
+    initialTab as (typeof BUSINESS_TAB_VALUES)[number]
+  )
+    ? (initialTab as (typeof BUSINESS_TAB_VALUES)[number])
+    : 'info'
+
   return (
     <div className="space-y-6">
       <div>
@@ -138,7 +156,7 @@ export function BusinessClient({
         </p>
       </div>
 
-      <Tabs defaultValue="info">
+      <Tabs defaultValue={activeTab}>
         <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
           <TabsTrigger value="info">Info</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>

@@ -5,8 +5,10 @@ import { AgentDetailClient } from './agent-detail-client'
 
 export default async function AgentDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>
+  searchParams: Promise<{ tab?: string }>
 }) {
   const { id } = await params
   const agent = await getAgentById(id)
@@ -17,6 +19,7 @@ export default async function AgentDetailPage({
   if (!context) redirect('/login')
 
   const siblingAgents = await getAgentsForOrg(context.org.id)
+  const { tab } = await searchParams
 
-  return <AgentDetailClient agent={agent} agents={siblingAgents} />
+  return <AgentDetailClient agent={agent} agents={siblingAgents} initialTab={tab} />
 }
