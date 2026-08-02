@@ -20,6 +20,7 @@ import {
   Phone,
   Pin,
   PinOff,
+  LogOut,
   MessageCircleMore,
   Lock,
   Sparkles,
@@ -63,6 +64,7 @@ import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
+import { logOut } from '@/app/(auth)/actions'
 
 type NavItem = {
   title: string
@@ -394,6 +396,11 @@ export function AppSidebar({
                         <span className="text-xs text-muted-foreground">Keep pinned items fixed</span>
                       </div>
                     </DropdownMenuCheckboxItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => logOut()}>
+                      <LogOut />
+                      Log out
+                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </SidebarMenuItem>
