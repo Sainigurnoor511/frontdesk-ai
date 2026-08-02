@@ -5,10 +5,6 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
-  Mail,
-  ShieldCheck,
-  Languages,
-  LogOut,
   FileText,
   BellRing,
   Users,
@@ -22,7 +18,6 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
-import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -68,20 +63,21 @@ export function SettingsClient({
       <div className="flex h-svh flex-col">
         <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} />
         <div className="flex min-h-0 flex-1">
-          <aside className="flex w-64 shrink-0 flex-col gap-6 border-r bg-muted/20 p-4">
-            <div className="flex h-10 items-center gap-0 px-2">
+          <aside className="flex w-64 shrink-0 flex-col gap-4 border-r bg-muted/20 p-4">
+            <div className="flex h-8 items-center gap-0 px-2">
               <span className="text-base font-semibold">F</span>
               <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
             </div>
 
+            <Link
+              href="/"
+              className="flex items-center gap-2.5 px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ArrowLeft className="size-4 shrink-0" />
+              Back to app
+            </Link>
+
             <nav className="space-y-0.5">
-              <Link
-                href="/"
-                className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-              >
-                <ArrowLeft className="size-4 shrink-0" />
-                Back to app
-              </Link>
               {NAV_ITEMS.map((item) => (
                 <Link
                   key={item.value}
@@ -133,86 +129,73 @@ function AccountTab({ email }: { email: string }) {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="flex items-center gap-2">
-            <Mail className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Email & Password</h3>
-          </div>
-          <div className="space-y-1.5">
-            <Label>Email</Label>
+    <div>
+      <div className="flex items-start justify-between gap-6 border-b py-6 first:pt-0">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Email & Password</h3>
+          <p className="text-sm text-muted-foreground">Manage your email address and password.</p>
+        </div>
+        <div className="shrink-0 space-y-3 text-right">
+          <div className="space-y-0.5">
+            <p className="text-sm font-medium">Email Address</p>
             <p className="text-sm text-muted-foreground">{email}</p>
           </div>
-          <div>
-            {/* TODO: Supabase password reset flow is a separate feature - not wired up in this pass. */}
-            <Button type="button" variant="outline" size="sm">
-              Change Password
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          {/* TODO: Supabase password reset flow is a separate feature - not wired up in this pass. */}
+          <Button type="button" variant="outline" size="sm">
+            Change Password
+          </Button>
+        </div>
+      </div>
 
-      <Card>
-        <CardContent className="space-y-4 p-4">
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Two-Factor Authentication</h3>
-          </div>
-          <div className="flex items-center gap-2">
+            <h3 className="text-base font-semibold">Two-Factor Authentication</h3>
             <Badge variant="outline">Disabled</Badge>
           </div>
-          <div>
-            {/* TODO: real 2FA setup (enrollment, verification codes) is out of scope for this pass. */}
-            <Button type="button" variant="outline" size="sm">
-              Enable 2FA
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="flex items-center gap-2">
-            <Languages className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Application language</h3>
-          </div>
-          <div className="max-w-xs space-y-1.5">
-            <Select value={language} onValueChange={(v) => setLanguage(v ?? '')}>
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="en">English</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="flex items-center gap-2">
-            <LogOut className="size-4 text-muted-foreground" />
-            <h3 className="text-sm font-semibold">Sign Out All Devices</h3>
-          </div>
           <p className="text-sm text-muted-foreground">
-            This will sign you out of your current session. Full multi-device session
-            invalidation is not yet supported.
+            Add an extra layer of security to your account using an authenticator app.
           </p>
-          <div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleSignOutAllDevices}
-              disabled={isPending}
-            >
-              {isPending ? 'Signing out…' : 'Sign Out All Devices'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+        </div>
+        {/* TODO: real 2FA setup (enrollment, verification codes) is out of scope for this pass. */}
+        <Button type="button" variant="outline" size="sm" className="shrink-0">
+          Enable 2FA
+        </Button>
+      </div>
+
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Application language</h3>
+          <p className="text-sm text-muted-foreground">Choose the language for the application interface.</p>
+        </div>
+        <Select value={language} onValueChange={(v) => setLanguage(v ?? '')}>
+          <SelectTrigger className="w-40 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="en">English</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-start justify-between gap-6 py-6 last:border-0">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Sign Out All Devices</h3>
+          <p className="text-sm text-muted-foreground">
+            Sign out of all devices and sessions. You will need to sign in again.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="shrink-0"
+          onClick={handleSignOutAllDevices}
+          disabled={isPending}
+        >
+          {isPending ? 'Signing out…' : 'Sign Out All Devices'}
+        </Button>
+      </div>
     </div>
   )
 }
