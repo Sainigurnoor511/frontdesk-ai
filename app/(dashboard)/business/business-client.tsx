@@ -139,7 +139,7 @@ export function BusinessClient({
       </div>
 
       <Tabs defaultValue="info">
-        <TabsList>
+        <TabsList variant="line" className="w-full justify-start gap-1 border-b">
           <TabsTrigger value="info">Info</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
@@ -229,125 +229,129 @@ function InfoTab({
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="business-name">Business Name</Label>
-              <Input
-                id="business-name"
-                value={businessName}
-                onChange={(e) => setBusinessName(e.target.value)}
-              />
-            </div>
+    <div>
+      <div className="flex items-start justify-between gap-6 border-b py-6 first:pt-0">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Business Name</h3>
+          <p className="text-sm text-muted-foreground">The name of your business as shown to clients.</p>
+        </div>
+        <Input
+          value={businessName}
+          onChange={(e) => setBusinessName(e.target.value)}
+          className="w-72 shrink-0"
+        />
+      </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="country">Country</Label>
-              <Select value={country} onValueChange={(v) => setCountry(v ?? "")}>
-                <SelectTrigger id="country" className="w-full">
-                  <SelectValue placeholder="Select a country" />
-                </SelectTrigger>
-                <SelectContent>
-                  {countries.map((c) => (
-                    <SelectItem key={c.code} value={c.code}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Country</h3>
+          <p className="text-sm text-muted-foreground">The country where your business is based.</p>
+        </div>
+        <Select value={country} onValueChange={(v) => setCountry(v ?? '')}>
+          <SelectTrigger className="w-72 shrink-0">
+            <SelectValue placeholder="Select a country" />
+          </SelectTrigger>
+          <SelectContent>
+            {countries.map((c) => (
+              <SelectItem key={c.code} value={c.code}>
+                {c.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="timezone">Timezone</Label>
-              <Select value={timezone} onValueChange={(v) => setTimezone(v ?? "")}>
-                <SelectTrigger id="timezone" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {TIMEZONES.map((tz) => (
-                    <SelectItem key={tz} value={tz}>
-                      {tz}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Timezone</h3>
+          <p className="text-sm text-muted-foreground">All appointment times will be shown in this timezone.</p>
+        </div>
+        <Select value={timezone} onValueChange={(v) => setTimezone(v ?? '')}>
+          <SelectTrigger className="w-72 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TIMEZONES.map((tz) => (
+              <SelectItem key={tz} value={tz}>
+                {tz}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="currency">Currency</Label>
-              <Select value={currency} onValueChange={(v) => setCurrency(v ?? "")}>
-                <SelectTrigger id="currency" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {CURRENCIES.map((c) => (
-                    <SelectItem key={c} value={c}>
-                      {c}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Currency</h3>
+          <p className="text-sm text-muted-foreground">All prices will be displayed in this currency.</p>
+        </div>
+        <Select value={currency} onValueChange={(v) => setCurrency(v ?? '')}>
+          <SelectTrigger className="w-72 shrink-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CURRENCIES.map((c) => (
+              <SelectItem key={c} value={c}>
+                {c}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-      <Card>
-        <CardContent className="space-y-2 p-4">
-          <h3 className="text-sm font-semibold">Contact Info</h3>
+      <div className="flex items-start justify-between gap-6 border-b py-6">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Contact Info</h3>
           <p className="text-sm text-muted-foreground">
-            {contactPhoneNumber ? contactPhoneNumber : 'No phone number configured yet.'}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Manage in{' '}
+            Your assigned phone numbers. Manage them in{' '}
             <Link href="/agents" className="underline underline-offset-4">
-              Receptionists
-            </Link>{' '}
-            / Call settings.
+              Receptionists / Call Settings
+            </Link>
+            .
           </p>
-        </CardContent>
-      </Card>
+        </div>
+        <p className="shrink-0 text-sm font-medium">
+          {contactPhoneNumber ? contactPhoneNumber : 'No phone number configured yet.'}
+        </p>
+      </div>
 
-      <Card>
-        <CardContent className="space-y-4 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold">Locations and Hours</h3>
-              <p className="text-sm text-muted-foreground">
-                {locations.length} location{locations.length === 1 ? '' : 's'}
-              </p>
-            </div>
-            <Button size="sm" onClick={() => setLocationDialogOpen(true)}>
-              Add location
-            </Button>
-          </div>
+      <div className="flex items-start justify-between gap-6 py-6 last:border-0">
+        <div className="space-y-1">
+          <h3 className="text-base font-semibold">Locations and Hours</h3>
+          <p className="text-sm text-muted-foreground">
+            Physical places your business operates, their addresses and operating hours.
+          </p>
+        </div>
+        <div className="shrink-0 space-y-3 text-right">
+          <p className="text-sm text-muted-foreground">
+            {locations.length} location{locations.length === 1 ? '' : 's'}
+          </p>
+          <Button size="sm" onClick={() => setLocationDialogOpen(true)}>
+            Add location
+          </Button>
+        </div>
+      </div>
 
-          {locations.length > 0 && (
-            <ul className="divide-y rounded-lg border">
-              {locations.map((location) => (
-                <li
-                  key={location.id}
-                  className="flex items-center justify-between gap-4 px-4 py-3"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <MapPin className="size-4 shrink-0 text-muted-foreground" />
-                    <div className="min-w-0 space-y-0.5">
-                      <p className="font-medium">{location.name}</p>
-                      {location.address && (
-                        <p className="text-sm text-muted-foreground">{location.address}</p>
-                      )}
-                    </div>
-                  </div>
-                  <Badge variant={location.isActive ? 'default' : 'outline'}>
-                    {location.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
+      {locations.length > 0 && (
+        <ul className="divide-y rounded-lg border">
+          {locations.map((location) => (
+            <li key={location.id} className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <MapPin className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 space-y-0.5">
+                  <p className="font-medium">{location.name}</p>
+                  {location.address && (
+                    <p className="text-sm text-muted-foreground">{location.address}</p>
+                  )}
+                </div>
+              </div>
+              <Badge variant={location.isActive ? 'default' : 'outline'}>
+                {location.isActive ? 'Active' : 'Inactive'}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <AddLocationDialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen} />
 
