@@ -17,7 +17,6 @@ import {
   CreditCard,
   Bell,
   Eye,
-  Zap,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -60,7 +59,7 @@ export function SettingsClient({
 
   return (
     <div className="flex h-svh">
-      <aside className="flex w-64 shrink-0 flex-col justify-between border-r bg-muted/20 p-4">
+      <aside className="flex w-64 shrink-0 flex-col border-r bg-muted/20 p-4">
         <div className="space-y-6">
           <Link
             href="/"
@@ -86,14 +85,6 @@ export function SettingsClient({
               </Link>
             ))}
           </nav>
-        </div>
-
-        <div className="rounded-2xl border border-dashed border-border bg-[repeating-linear-gradient(135deg,transparent,transparent_6px,var(--muted)_6px,var(--muted)_7px)] p-4 text-center">
-          <div className="mx-auto flex size-8 items-center justify-center rounded-full bg-foreground text-background">
-            <Zap className="size-4" fill="currentColor" />
-          </div>
-          <p className="mt-2 text-sm font-semibold">Upgrade</p>
-          <p className="text-xs text-muted-foreground">Free trial · 14d left</p>
         </div>
       </aside>
 

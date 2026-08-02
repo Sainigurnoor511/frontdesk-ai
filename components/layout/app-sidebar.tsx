@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
 import {
   House,
   BookOpen,
@@ -42,6 +43,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
@@ -108,7 +112,7 @@ function CallReceptionistPill({
     <SidebarMenuItem>
       <SidebarMenuButton
         onClick={onClick}
-        className="rounded-[10px] border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
+        className="h-8 justify-center rounded-[10px] border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:shadow-none hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
         style={{
           borderColor: 'hsl(228.75deg 47.06% 86.67%)',
         }}
@@ -116,7 +120,7 @@ function CallReceptionistPill({
         <div className="size-4 shrink-0 overflow-hidden rounded-sm">
           <Orb seed={1} />
         </div>
-        <span>{phoneNumber}</span>
+        {state !== 'collapsed' && <span>{phoneNumber}</span>}
         {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto" />}
       </SidebarMenuButton>
     </SidebarMenuItem>
@@ -209,7 +213,10 @@ export function AppSidebar({
                     </SidebarMenuItem>
                   )}
                   {visibleItems.map((item) => (
-                    <SidebarMenuItem key={item.url} className="group/nav-item">
+                    <SidebarMenuItem
+                      key={item.url}
+                      className={cn('group/nav-item', item.title === 'Settings' && 'mt-2')}
+                    >
                       <SidebarMenuButton
                         isActive={pathname === item.url}
                         render={<Link href={item.url} />}
@@ -245,7 +252,7 @@ export function AppSidebar({
             </SidebarGroup>
           )
         })}
-        <SidebarGroup className="mt-auto">
+        <SidebarGroup className="mt-auto pt-3">
           <SidebarGroupContent>
             <SidebarMenu>
               {/* Conversations badge (unread count) intentionally omitted here — no
@@ -290,10 +297,26 @@ export function AppSidebar({
                       <UserCircle />
                       Receptionists
                     </DropdownMenuItem>
-                    <DropdownMenuItem render={<Link href="/settings" />}>
-                      <Settings />
-                      Settings
-                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Settings />
+                        Settings
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem render={<Link href="/settings?tab=account" />}>
+                          Account
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/settings?tab=billing" />}>
+                          Billing
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/settings?tab=notifications" />}>
+                          Notifications
+                        </DropdownMenuItem>
+                        <DropdownMenuItem render={<Link href="/settings?tab=features" />}>
+                          Features
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                     <DropdownMenuSeparator />
                     {/* TODO: persist this preference once a per-user settings table exists */}
                     <DropdownMenuCheckboxItem
