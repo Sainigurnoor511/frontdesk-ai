@@ -8,9 +8,12 @@ import {
   ListChecks,
   UsersThree,
   ShieldCheck,
+  ArrowRight,
+  Wrench,
+  Question,
 } from '@phosphor-icons/react/dist/ssr'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
@@ -41,7 +44,7 @@ const VOICE_OPTIONS = [
   { id: 'professional-calm', label: 'Professional — Calm' },
 ]
 
-const LANGUAGE_OPTIONS = ['English', 'Hindi']
+const LANGUAGE_OPTIONS = ['English', 'Hindi', 'Punjabi']
 
 const TONE_TRAITS = [
   'Professional',
@@ -55,6 +58,21 @@ const TONE_TRAITS = [
 ]
 
 const MAX_INSTRUCTIONS_LENGTH = 8000
+
+function SectionHeading({
+  title,
+  description,
+}: {
+  title: string
+  description?: string
+}) {
+  return (
+    <div className="space-y-1">
+      <h3 className="font-heading text-2xl font-semibold">{title}</h3>
+      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+    </div>
+  )
+}
 
 export function AgentDetailClient({
   agent,
@@ -123,14 +141,9 @@ export function AgentDetailClient({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-heading text-2xl font-semibold">{agent.business_name ?? agent.name}</h1>
-          <p className="mt-1 text-sm font-normal text-[#96989d]">
-            {agent.industry} · {agent.country} · {agent.language}
-          </p>
-        </div>
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-4">
+        <h1 className="font-heading text-2xl font-semibold">Receptionists</h1>
         <div className="flex items-center gap-2">
           {agents.length > 1 && (
             <Select
@@ -141,7 +154,7 @@ export function AgentDetailClient({
                 }
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-56">
                 <SelectValue placeholder="Select receptionist" />
               </SelectTrigger>
               <SelectContent>
@@ -161,7 +174,7 @@ export function AgentDetailClient({
       </div>
 
       <Tabs defaultValue="general">
-        <TabsList>
+        <TabsList className="border-b">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="voices">Voices</TabsTrigger>
           <TabsTrigger value="rules">Rules</TabsTrigger>
@@ -170,147 +183,157 @@ export function AgentDetailClient({
         </TabsList>
 
         {/* General tab */}
-        <TabsContent value="general" className="space-y-6 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Receptionist voice</CardTitle>
-              <CardDescription>Choose the voice your receptionist uses on calls.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex items-center justify-between gap-4">
-              <Select value={voiceId} onValueChange={(value) => setVoiceId(value as string)}>
-                <SelectTrigger className="w-64">
-                  <SelectValue placeholder="Select a voice" />
-                </SelectTrigger>
-                <SelectContent>
-                  {VOICE_OPTIONS.map((voice) => (
-                    <SelectItem key={voice.id} value={voice.id}>
-                      {voice.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {/* TODO: wire up real voice catalog (ElevenLabs/Fish Audio) browsing */}
-              <Button variant="ghost" size="sm">
-                Browse all voices
-              </Button>
-            </CardContent>
-          </Card>
+        <TabsContent value="general" className="pt-6">
+          <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px]">
+            <div className="space-y-8">
+              <div className="space-y-2">
+                <SectionHeading
+                  title="Additional Instructions"
+                  description={`Extra instructions for the receptionist. E.g. "If someone asks about parking, mention the free parking lot behind the building."`}
+                />
+                <div className="overflow-hidden rounded-2xl border border-border">
+                  <Textarea
+                    value={additionalInstructions}
+                    onChange={(e) =>
+                      setAdditionalInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))
+                    }
+                    maxLength={MAX_INSTRUCTIONS_LENGTH}
+                    rows={6}
+                    placeholder="e.g. If someone asks about parking, mention the free parking lot behind the building."
+                    className="resize-none rounded-none border-0 focus-visible:ring-0"
+                  />
+                  <div className="flex items-center justify-between border-t bg-muted/40 px-3 py-2">
+                    <span className="text-xs tabular-nums text-muted-foreground">
+                      {additionalInstructions.length} / {MAX_INSTRUCTIONS_LENGTH}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Languages</CardTitle>
-              <CardDescription>Set the default language and any additional languages.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Default language</Label>
-                <Select value={defaultLanguage} onValueChange={(value) => setDefaultLanguage(value as string)}>
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Select a language" />
+              <div className="space-y-2">
+                <SectionHeading
+                  title="Tone & personality"
+                  description="Pick the traits your receptionist should embody on calls. All optional."
+                />
+                <div className="flex flex-wrap gap-2">
+                  {TONE_TRAITS.map((trait) => {
+                    const active = toneTraits.includes(trait)
+                    return (
+                      <Badge
+                        key={trait}
+                        variant={active ? 'default' : 'outline'}
+                        render={<button type="button" onClick={() => toggleTrait(trait)} />}
+                        className="h-8 cursor-pointer rounded-lg px-2.5 text-sm"
+                      >
+                        {trait}
+                      </Badge>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <SectionHeading
+                  title="First message"
+                  description="The first message the receptionist will say. If empty, the receptionist waits for user."
+                />
+                <div className="overflow-hidden rounded-2xl border border-border">
+                  <Textarea
+                    value={firstMessage}
+                    onChange={(e) => setFirstMessage(e.target.value)}
+                    rows={3}
+                    placeholder="Enter the first message..."
+                    className="resize-none rounded-none border-0 focus-visible:ring-0"
+                  />
+                </div>
+              </div>
+
+              {generalError && <p className="text-sm text-destructive">{generalError}</p>}
+
+              <div className="flex justify-end">
+                <Button onClick={handleSaveGeneral} disabled={isSavingGeneral}>
+                  {isSavingGeneral ? 'Saving...' : 'Save changes'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-6">
+              <div className="space-y-2">
+                <SectionHeading
+                  title="Receptionist voice"
+                  description="Select the voice for the receptionist."
+                />
+                <Select value={voiceId} onValueChange={(value) => setVoiceId(value as string)}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a voice" />
                   </SelectTrigger>
                   <SelectContent>
-                    {LANGUAGE_OPTIONS.map((lang) => (
-                      <SelectItem key={lang} value={lang}>
-                        {lang}
+                    {VOICE_OPTIONS.map((voice) => (
+                      <SelectItem key={voice.id} value={voice.id}>
+                        {voice.label}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {/* TODO: wire up real voice catalog (ElevenLabs/Fish Audio) browsing */}
+                <button
+                  type="button"
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Browse all voices
+                  <ArrowRight className="size-3" />
+                </button>
               </div>
 
-              <div className="space-y-1.5">
-                <Label>Additional languages</Label>
-                {/* TODO: build real multi-language selection */}
-                <div>
-                  <Button variant="outline" size="sm" disabled>
+              <div className="space-y-2">
+                <SectionHeading
+                  title="Languages"
+                  description="Choose the default and additional languages the receptionist will communicate in."
+                />
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Default language</Label>
+                  <Select
+                    value={defaultLanguage}
+                    onValueChange={(value) => setDefaultLanguage(value as string)}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select a language" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGUAGE_OPTIONS.map((lang) => (
+                        <SelectItem key={lang} value={lang}>
+                          {lang}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Additional languages</Label>
+                  {/* TODO: build real multi-language selection */}
+                  <Button variant="outline" size="sm" disabled className="w-full justify-start">
                     Add additional languages
                   </Button>
                 </div>
-              </div>
 
-              <div className="flex items-center justify-between rounded-lg border p-3">
-                <div>
-                  <p className="text-sm font-medium">Detect language</p>
-                  <p className="text-sm text-muted-foreground">
-                    Automatically detect and respond in the caller&apos;s language.
-                  </p>
+                <div className="flex items-center gap-1.5 rounded-[10px] border border-border px-2.5 py-2">
+                  <Wrench className="size-4 shrink-0 text-foreground" />
+                  <span className="text-sm font-medium">Detect language</span>
+                  <Question className="size-3.5 shrink-0 text-muted-foreground" />
+                  <Switch
+                    checked={detectLanguage}
+                    onCheckedChange={setDetectLanguage}
+                    className="ml-auto"
+                  />
                 </div>
-                <Switch checked={detectLanguage} onCheckedChange={setDetectLanguage} />
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Additional Instructions</CardTitle>
-              <CardDescription>
-                Give your receptionist extra context or instructions to follow on every call.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-1.5">
-              <Textarea
-                value={additionalInstructions}
-                onChange={(e) => setAdditionalInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))}
-                maxLength={MAX_INSTRUCTIONS_LENGTH}
-                rows={5}
-                placeholder="Enter additional instructions..."
-              />
-              <p className="text-right text-xs text-muted-foreground">
-                {additionalInstructions.length} / {MAX_INSTRUCTIONS_LENGTH}
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Tone &amp; personality</CardTitle>
-              <CardDescription>Pick the traits that best describe how your receptionist should sound.</CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-wrap gap-2">
-              {TONE_TRAITS.map((trait) => {
-                const active = toneTraits.includes(trait)
-                return (
-                  <Badge
-                    key={trait}
-                    variant={active ? 'default' : 'outline'}
-                    render={<button type="button" onClick={() => toggleTrait(trait)} />}
-                    className="h-7 cursor-pointer px-3 text-sm"
-                  >
-                    {trait}
-                  </Badge>
-                )
-              })}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>First message</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1.5">
-              <Textarea
-                value={firstMessage}
-                onChange={(e) => setFirstMessage(e.target.value)}
-                rows={3}
-                placeholder="Enter the first message..."
-              />
-              <p className="text-sm text-muted-foreground">
-                The first message the receptionist will say. If empty, the receptionist waits for user.
-              </p>
-            </CardContent>
-          </Card>
-
-          {generalError && <p className="text-sm text-destructive">{generalError}</p>}
-
-          <div className="flex justify-end">
-            <Button onClick={handleSaveGeneral} disabled={isSavingGeneral}>
-              {isSavingGeneral ? 'Saving...' : 'Save changes'}
-            </Button>
+            </div>
           </div>
         </TabsContent>
 
         {/* Voices tab */}
-        <TabsContent value="voices" className="pt-4">
+        <TabsContent value="voices" className="pt-6">
           <Card>
             <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
               <SpeakerHigh className="h-8 w-8 text-muted-foreground" />
@@ -324,7 +347,7 @@ export function AgentDetailClient({
         </TabsContent>
 
         {/* Rules tab */}
-        <TabsContent value="rules" className="pt-4">
+        <TabsContent value="rules" className="pt-6">
           <Empty>
             <EmptyHeader>
               <EmptyMedia variant="icon">
@@ -373,79 +396,76 @@ export function AgentDetailClient({
         </TabsContent>
 
         {/* Call settings tab */}
-        <TabsContent value="call-settings" className="space-y-6 pt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Call routing</CardTitle>
-              <CardDescription>Control how incoming calls are answered and routed.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-1.5">
-                <Label>Answering mode</Label>
-                <Select
-                  value={answeringMode}
-                  onValueChange={(value) =>
-                    setAnsweringMode(value as 'staff_first' | 'agent_first')
-                  }
-                >
-                  <SelectTrigger className="w-64">
-                    <SelectValue placeholder="Select answering mode" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="staff_first">Staff first</SelectItem>
-                    <SelectItem value="agent_first">Receptionist first</SelectItem>
-                  </SelectContent>
-                </Select>
+        <TabsContent value="call-settings" className="pt-6">
+          <div className="max-w-md space-y-6">
+            <div className="space-y-2">
+              <SectionHeading title="Call routing" description="Control how incoming calls are answered and routed." />
+
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <Label>Answering mode</Label>
+                  <Select
+                    value={answeringMode}
+                    onValueChange={(value) =>
+                      setAnsweringMode(value as 'staff_first' | 'agent_first')
+                    }
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select answering mode" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="staff_first">Staff first</SelectItem>
+                      <SelectItem value="agent_first">Receptionist first</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="staff-phone">Staff phone number</Label>
+                  <Input
+                    id="staff-phone"
+                    value={staffPhoneNumber}
+                    onChange={(e) => setStaffPhoneNumber(e.target.value)}
+                    placeholder="+14155551234"
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="max-ring-seconds">Max ring seconds</Label>
+                  <Input
+                    id="max-ring-seconds"
+                    type="number"
+                    min={5}
+                    max={60}
+                    value={maxRingSeconds}
+                    onChange={(e) => setMaxRingSeconds(Number(e.target.value))}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="hold-music">Hold music</Label>
+                  <Input
+                    id="hold-music"
+                    value={holdMusic}
+                    onChange={(e) => setHoldMusic(e.target.value)}
+                    placeholder="Default"
+                  />
+                </div>
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <Label htmlFor="staff-phone">Staff phone number</Label>
-                <Input
-                  id="staff-phone"
-                  value={staffPhoneNumber}
-                  onChange={(e) => setStaffPhoneNumber(e.target.value)}
-                  placeholder="+14155551234"
-                  className="w-64"
-                />
-              </div>
+            {callSettingsError && <p className="text-sm text-destructive">{callSettingsError}</p>}
 
-              <div className="space-y-1.5">
-                <Label htmlFor="max-ring-seconds">Max ring seconds</Label>
-                <Input
-                  id="max-ring-seconds"
-                  type="number"
-                  min={5}
-                  max={60}
-                  value={maxRingSeconds}
-                  onChange={(e) => setMaxRingSeconds(Number(e.target.value))}
-                  className="w-64"
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="hold-music">Hold music</Label>
-                <Input
-                  id="hold-music"
-                  value={holdMusic}
-                  onChange={(e) => setHoldMusic(e.target.value)}
-                  placeholder="Default"
-                  className="w-64"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          {callSettingsError && <p className="text-sm text-destructive">{callSettingsError}</p>}
-
-          <div className="flex justify-end">
-            <Button onClick={handleSaveCallSettings} disabled={isSavingCallSettings}>
-              {isSavingCallSettings ? 'Saving...' : 'Save changes'}
-            </Button>
+            <div className="flex justify-end">
+              <Button onClick={handleSaveCallSettings} disabled={isSavingCallSettings}>
+                {isSavingCallSettings ? 'Saving...' : 'Save changes'}
+              </Button>
+            </div>
           </div>
         </TabsContent>
 
         {/* Advanced settings tab */}
-        <TabsContent value="advanced" className="pt-4">
+        <TabsContent value="advanced" className="pt-6">
           <Card>
             <CardContent className="py-8 text-center text-muted-foreground">
               Advanced configuration options are coming soon.

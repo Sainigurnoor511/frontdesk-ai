@@ -36,7 +36,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           orgName={context.org.name}
           avatarUrl={context.user.avatarUrl}
         />
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden p-8">{children}</main>
+        <main className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto p-8">
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   )

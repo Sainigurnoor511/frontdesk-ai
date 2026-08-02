@@ -157,7 +157,7 @@ export function CalendarClient({
   }, [initialTimeOff, weekDates]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-6">
+    <div className="flex h-[calc(100svh-50px-4rem)] min-h-0 flex-col gap-6">
       <div className="shrink-0">
         <h1 className="font-heading text-2xl font-semibold">Calendar</h1>
         <p className="mt-1 text-sm font-normal text-[#96989d]">
