@@ -2,8 +2,7 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 import * as agents from '@livekit/agents'
-import { LLM as OpenAILLM } from '@livekit/agents-plugin-openai'
-import { FishAudioSTT } from '@/lib/voice/adapters/fish-audio-stt'
+import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-openai'
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildSystemPrompt } from '@/lib/voice/agent-context'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
@@ -86,9 +85,9 @@ async function entrypoint(ctx: agents.JobContext) {
     }
 
     const session = new agents.AgentSession({
-      stt: new FishAudioSTT(),
+      stt: OpenAISTT.withGroq(),
       llm: OpenAILLM.withGroq({ model: 'llama-3.3-70b-versatile' }),
-      tts: new FishAudioTTS(),
+      tts: new FishAudioTTS(agentDetail.voice_id ?? undefined),
     })
 
     ctx.room.on('disconnected', () => {
