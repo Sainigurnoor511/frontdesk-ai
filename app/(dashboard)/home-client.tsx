@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   PlayCircle,
   Phone,
@@ -17,6 +18,14 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from '@/components/ui/table'
 import { CallDialog } from '@/components/voice/call-dialog'
 import type { Agent } from '@/lib/data/agents'
 import type { Conversation } from '@/lib/data/conversations'
@@ -85,6 +94,7 @@ export function HomeClient({
 }) {
   const [dismissed, setDismissed] = useState(false)
   const [callOpen, setCallOpen] = useState(false)
+  const router = useRouter()
 
   return (
     <div className="space-y-6">
@@ -252,30 +262,36 @@ export function HomeClient({
                 </Link>
               </>
             ) : (
-              <ul className="divide-y">
-                {latestCalls.map((call) => (
-                  <li key={call.id}>
-                    <Link
-                      href="/conversations"
-                      className="flex items-center justify-between gap-3 rounded-md py-2.5 transition-colors hover:bg-accent"
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead className="text-right">Outcome</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {latestCalls.map((call) => (
+                    <TableRow
+                      key={call.id}
+                      onClick={() => router.push('/conversations')}
+                      className="cursor-pointer"
                     >
-                      <div className="min-w-0">
-                        <p className="text-sm text-muted-foreground">
-                          {formatRelativeDate(call.createdAt)}
-                        </p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDuration(call.durationSeconds)}
-                        </span>
+                      <TableCell className="text-muted-foreground">
+                        {formatRelativeDate(call.createdAt)}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {formatDuration(call.durationSeconds)}
+                      </TableCell>
+                      <TableCell className="text-right">
                         <Badge variant={call.outcome === 'successful' ? 'secondary' : 'destructive'}>
                           {call.outcome === 'successful' ? 'Successful' : 'Failed'}
                         </Badge>
-                      </div>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             )}
           </CardContent>
         </Card>
