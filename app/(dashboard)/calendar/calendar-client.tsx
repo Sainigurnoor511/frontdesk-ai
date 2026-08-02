@@ -157,8 +157,8 @@ export function CalendarClient({
   }, [initialTimeOff, weekDates]);
 
   return (
-    <div className="space-y-6">
-      <div>
+    <div className="flex h-full min-h-0 flex-col gap-6">
+      <div className="shrink-0">
         <h1 className="text-2xl font-semibold">Calendar</h1>
         <p className="mt-1 text-sm font-normal text-[#96989d]">
           View and manage appointments and time off.
@@ -166,7 +166,7 @@ export function CalendarClient({
       </div>
 
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -248,8 +248,8 @@ export function CalendarClient({
       </div>
 
       {/* Week grid */}
-      <div className="overflow-hidden rounded-lg border">
-        <div className="max-h-[calc(100vh-320px)] overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border">
+        <div className="scrollbar-thin h-full overflow-y-auto">
           <div className="grid grid-cols-[64px_repeat(7,1fr)]">
             {/* Header row */}
             <div className="sticky top-0 z-20 flex items-end justify-start border-b border-r bg-background p-2 text-[11px] text-muted-foreground">

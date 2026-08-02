@@ -16,6 +16,7 @@ import type { Icon } from '@phosphor-icons/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Orb } from '@/components/ui/orb'
 import type { Agent } from '@/lib/data/agents'
 import type { Conversation } from '@/lib/data/conversations'
 import type { AppointmentRow } from '@/lib/data/calendar'
@@ -124,39 +125,57 @@ export function HomeClient({
       )}
 
       <Card>
-        <CardContent className="flex items-center justify-between gap-4 py-5">
-          <div className="min-w-0 space-y-1">
-            <h2 className="text-base font-semibold">
-              {agent ? (agent.business_name ?? agent.name) : 'Your Business'}
-            </h2>
-            {agent?.staff_phone_number ? (
-              <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-                <Phone className="size-3.5" />
-                {agent.staff_phone_number}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                <Link
-                  href="/phone-numbers"
-                  className="text-foreground underline underline-offset-4"
-                >
-                  Add a phone number
-                </Link>{' '}
-                to start taking calls.
-              </p>
-            )}
+        <CardContent className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="size-9 shrink-0 overflow-hidden rounded-full border border-foreground/10 sm:size-11">
+              <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
+            </div>
+            <div className="min-w-0 space-y-1">
+              <h2 className="text-base font-semibold">
+                {agent ? (agent.business_name ?? agent.name) : 'Your Business'}
+              </h2>
+              {agent?.staff_phone_number ? (
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Phone className="size-3.5" />
+                  {agent.staff_phone_number}
+                </p>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  <Link
+                    href="/phone-numbers"
+                    className="text-foreground underline underline-offset-4"
+                  >
+                    Add a phone number
+                  </Link>{' '}
+                  to start taking calls.
+                </p>
+              )}
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {agent && (
-              <Badge variant="secondary" className="gap-1.5">
-                <span className="size-1.5 rounded-full bg-emerald-500" />
-                Receptionist live
-              </Badge>
+            {agent ? (
+              <button
+                type="button"
+                aria-label="Test your receptionist"
+                className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <span className="relative flex size-2" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />
+                  <span className="relative inline-flex size-2 rounded-full bg-emerald-500" />
+                </span>
+                <p className="text-sm font-medium text-foreground">Receptionist live</p>
+                <span aria-hidden="true" className="mx-1 h-4 w-px bg-border" />
+                <span className="flex items-center gap-1.5">
+                  <Phone className="size-3.5" />
+                  <p className="text-sm font-medium text-foreground">Test it</p>
+                </span>
+              </button>
+            ) : (
+              <Button size="sm" variant="outline" disabled className="gap-1.5">
+                <Phone />
+                Test it
+              </Button>
             )}
-            <Button size="sm" variant="outline" disabled={!agent} className="gap-1.5">
-              <Phone />
-              Test it
-            </Button>
           </div>
         </CardContent>
       </Card>
