@@ -54,14 +54,14 @@ export function CallDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-[512px] gap-0 rounded-3xl p-6 sm:max-w-[512px]">
-        <DialogHeader className="items-center text-center">
+      <DialogContent className="max-w-[512px] gap-0 rounded-3xl pt-6 pr-2 pb-2 pl-2 sm:max-w-[512px]">
+        <DialogHeader className="items-center px-4 text-center">
           <DialogTitle className="text-lg font-semibold">{agentName}</DialogTitle>
           <DialogDescription>Start a call or chat to your receptionist</DialogDescription>
         </DialogHeader>
 
         {isConnected ? (
-          <div className="mt-4 flex flex-col">
+          <div className="mt-4 flex flex-col px-4">
             <div className="flex h-72 flex-col gap-3 overflow-y-auto scrollbar-thin pr-1">
               {transcript.length === 0 ? (
                 <p className="m-auto text-sm text-muted-foreground">Listening…</p>
@@ -108,7 +108,7 @@ export function CallDialog({
             </button>
           </div>
         ) : (
-          <div className="mt-6 flex flex-col items-center">
+          <div className="mt-6 flex flex-col items-center px-4">
             <div className="relative">
               <div className="size-44 overflow-hidden rounded-full">
                 <Orb agentState={agentState} seed={1} />
@@ -141,7 +141,7 @@ export function CallDialog({
           </div>
         )}
 
-        <div className="mt-6 flex h-[124.4px] w-full max-w-[496px] flex-col gap-2 rounded-3xl border border-border bg-background p-3">
+        <div className="mt-6 flex h-[124.4px] w-full max-w-[496px] flex-col gap-2 rounded-3xl border border-border bg-background p-3 shadow-[0px_4px_12px_0px_rgba(0,0,0,0.06),0px_0px_1px_0px_rgba(0,0,0,0.30)]">
           <textarea
             placeholder="Send a message..."
             disabled
