@@ -28,7 +28,18 @@ import {
 import { toast } from 'sonner'
 import { logOut } from '@/app/(auth)/actions'
 import { AppHeader } from '@/components/layout/app-header'
-import { SidebarProvider } from '@/components/ui/sidebar'
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from '@/components/ui/sidebar'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import { updateNotificationSettings, updateFeatureSettings } from './actions'
 
@@ -60,53 +71,63 @@ export function SettingsClient({
 
   return (
     <SidebarProvider>
-      <div className="flex h-svh w-full">
-        <aside className="flex w-64 shrink-0 flex-col gap-4 border-r bg-muted/20 p-4">
-          <div className="flex h-8 items-center gap-0 px-2">
-            <span className="text-base font-semibold">F</span>
-            <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
-          </div>
+      <Sidebar collapsible="none">
+        <SidebarHeader className="gap-2 py-2">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton className="h-10 gap-0 hover:bg-transparent" render={<Link href="/" />}>
+                <span className="text-base font-semibold">F</span>
+                <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+        <SidebarContent className="gap-0 py-1">
+          <SidebarGroup className="py-1">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton render={<Link href="/" />}>
+                    <ArrowLeft strokeWidth={2.5} />
+                    <span>Back to app</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+          <SidebarGroup className="py-1">
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {NAV_ITEMS.map((item) => (
+                  <SidebarMenuItem key={item.value}>
+                    <SidebarMenuButton
+                      isActive={activeTab === item.value}
+                      render={<Link href={`/settings?tab=${item.value}`} />}
+                    >
+                      <item.icon strokeWidth={2.5} />
+                      <span>{item.label}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
 
-          <Link
-            href="/"
-            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-          >
-            <ArrowLeft className="size-4 shrink-0" />
-            Back to app
-          </Link>
+      <SidebarInset className="h-svh overflow-hidden">
+        <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} />
+        <div className="min-h-0 flex-1 overflow-y-auto p-8">
+          <div className="mx-auto max-w-3xl space-y-6">
+            <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
 
-          <nav className="space-y-0.5">
-            {NAV_ITEMS.map((item) => (
-              <Link
-                key={item.value}
-                href={`/settings?tab=${item.value}`}
-                className={`flex items-center gap-2.5 rounded-[10px] px-3 py-2 text-sm font-medium transition-colors ${
-                  activeTab === item.value
-                    ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                }`}
-              >
-                <item.icon className="size-4 shrink-0" />
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-        </aside>
-
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-          <AppHeader email={email} orgName={orgName} avatarUrl={avatarUrl} />
-          <div className="min-h-0 flex-1 overflow-y-auto p-8">
-            <div className="mx-auto max-w-3xl space-y-6">
-              <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
-
-              {activeTab === 'account' && <AccountTab email={email} />}
-              {activeTab === 'billing' && <BillingTab />}
-              {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
-              {activeTab === 'features' && <FeaturesTab settings={settings} />}
-            </div>
+            {activeTab === 'account' && <AccountTab email={email} />}
+            {activeTab === 'billing' && <BillingTab />}
+            {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
+            {activeTab === 'features' && <FeaturesTab settings={settings} />}
           </div>
         </div>
-      </div>
+      </SidebarInset>
     </SidebarProvider>
   )
 }
