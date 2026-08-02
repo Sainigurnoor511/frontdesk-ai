@@ -20,7 +20,7 @@ export default async function PublicBookingPage({
     getAgentsForOrg(org.id),
   ])
 
-  if (!settings.bookingPageEnabled) notFound()
+  if (!settings.id || !settings.bookingPageEnabled) notFound()
 
   const agent = agents[0] ?? null
 
