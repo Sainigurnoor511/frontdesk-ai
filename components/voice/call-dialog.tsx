@@ -54,7 +54,7 @@ export function CallDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-sm gap-0 p-6">
+      <DialogContent className="max-w-[512px] gap-0 p-6">
         <DialogHeader className="items-center text-center">
           <DialogTitle className="text-lg font-semibold">{agentName}</DialogTitle>
           <DialogDescription>Start a call or chat to your receptionist</DialogDescription>
@@ -76,7 +76,7 @@ export function CallDialog({
                   >
                     {message.speaker === 'agent' ? (
                       <div className="size-7 shrink-0 overflow-hidden rounded-full">
-                        <Orb agentState={null} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+                        <Orb agentState={null} seed={1} />
                       </div>
                     ) : (
                       <UserCircle weight="fill" className="size-7 shrink-0 text-muted-foreground" />
@@ -102,7 +102,7 @@ export function CallDialog({
               type="button"
               onClick={disconnect}
               aria-label="End call"
-              className="mx-auto mt-4 flex size-12 items-center justify-center rounded-full bg-red-500 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+              className="mx-auto mt-4 flex size-14 items-center justify-center rounded-full border-4 border-background bg-red-500 text-white transition-transform hover:scale-105 active:scale-95"
             >
               <PhoneX weight="fill" className="size-5" />
             </button>
@@ -111,16 +111,16 @@ export function CallDialog({
           <div className="mt-6 flex flex-col items-center">
             <div className="relative">
               <div className="size-44 overflow-hidden rounded-full">
-                <Orb agentState={agentState} colors={['#3B82F6', '#5EEAD4']} seed={1} />
+                <Orb agentState={agentState} seed={1} />
               </div>
               <button
                 type="button"
                 onClick={connect}
                 disabled={isConnecting}
                 aria-label="Start call"
-                className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full bg-foreground text-white shadow-lg transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
+                className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-foreground text-white transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
               >
-                <Phone weight="fill" className="size-6" />
+                <Phone weight="fill" className="size-5" />
               </button>
             </div>
 
@@ -131,9 +131,9 @@ export function CallDialog({
             {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
 
             {staffPhoneNumber && (
-              <div className="mt-4 flex flex-col items-center gap-2">
+              <div className="mt-5 flex flex-col items-center gap-2">
                 <p className="text-sm text-muted-foreground">Or call</p>
-                <span className="rounded-full border border-border bg-background px-4 py-1.5 text-sm font-medium">
+                <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
                   {staffPhoneNumber}
                 </span>
               </div>
@@ -141,21 +141,23 @@ export function CallDialog({
           </div>
         )}
 
-        <div className="mt-6 flex items-center gap-2 rounded-2xl border border-border bg-background px-4 py-3">
-          <input
-            type="text"
+        <div className="mt-6 flex h-[124.4px] w-full max-w-[496px] flex-col gap-2 rounded-3xl border border-border bg-background p-3">
+          <textarea
             placeholder="Send a message..."
             disabled
-            className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
+            rows={2}
+            className="flex-1 resize-none bg-transparent px-1.5 pt-1 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
           />
-          <button
-            type="button"
-            disabled
-            aria-label="Send message"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground disabled:cursor-not-allowed"
-          >
-            <ArrowUp className="size-4" />
-          </button>
+          <div className="flex items-center justify-end">
+            <button
+              type="button"
+              disabled
+              aria-label="Send message"
+              className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground disabled:cursor-not-allowed"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>

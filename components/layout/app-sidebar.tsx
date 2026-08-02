@@ -104,7 +104,7 @@ function CallReceptionistPill({
         }}
       >
         <div className="size-4 shrink-0 overflow-hidden rounded-sm">
-          <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
+          <Orb seed={1} />
         </div>
         <span>{phoneNumber}</span>
         {state !== 'collapsed' && <Phone weight="bold" className="ml-auto" />}

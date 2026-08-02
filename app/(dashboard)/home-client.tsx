@@ -130,7 +130,7 @@ export function HomeClient({
         <CardContent className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="size-9 shrink-0 overflow-hidden rounded-full border border-foreground/10 sm:size-11">
-              <Orb colors={['#DCE9FF', '#B9D3FF']} seed={1} />
+              <Orb seed={1} />
             </div>
             <div className="min-w-0 space-y-1">
               <h2 className="text-base font-semibold">
