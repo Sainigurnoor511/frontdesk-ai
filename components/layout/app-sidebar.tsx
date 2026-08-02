@@ -87,7 +87,6 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
     label: 'Setup',
     isSetup: true,
     items: [
-      { title: 'Business', url: '/business', icon: Store },
       { title: 'Integrations', url: '/integrations', icon: Plug, badge: 'Alpha' },
       { title: 'Bookings page', url: '/booking-page', icon: BookMarked },
       { title: 'Settings', url: '/settings', icon: Settings },
