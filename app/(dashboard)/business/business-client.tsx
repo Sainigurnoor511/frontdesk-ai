@@ -132,7 +132,7 @@ export function BusinessClient({
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-heading text-2xl font-semibold">Business</h1>
+        <h1 className="font-heading text-2xl font-semibold">{profile.businessName || 'Business'}</h1>
         <p className="mt-1 text-sm font-normal text-[#96989d]">
           Your business profile, services, and scheduling settings.
         </p>

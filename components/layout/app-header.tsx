@@ -20,7 +20,6 @@ const pageTitles: Record<string, string> = {
   '/conversations': 'Conversations',
   '/analytics': 'Analytics',
   '/agents': 'Receptionists',
-  '/organization': 'Organization',
   '/business': 'Business',
   '/integrations': 'Integrations',
   '/booking-page': 'Bookings page',
@@ -33,13 +32,16 @@ export function AppHeader({
   email,
   orgName,
   avatarUrl,
+  businessName,
 }: {
   email: string
   orgName: string
   avatarUrl: string | null
+  /** Overrides the header title on /business — the page name there is the business's own name, not a static label. */
+  businessName?: string
 }) {
   const pathname = usePathname()
-  const title = pageTitles[pathname] ?? ''
+  const title = pathname === '/business' && businessName ? businessName : (pageTitles[pathname] ?? '')
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   return (

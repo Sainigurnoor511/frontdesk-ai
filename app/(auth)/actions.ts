@@ -1,10 +1,8 @@
 'use server'
 
 import { redirect } from 'next/navigation'
-import { revalidatePath } from 'next/cache'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { signupSchema, loginSchema, type SignupInput, type LoginInput } from '@/lib/validations/auth'
-import { organizationNameSchema, type OrganizationNameInput } from '@/lib/validations/organization'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 
 function friendlyAuthError(message: string): string {
@@ -103,27 +101,4 @@ export async function signInWithGoogle(): Promise<{ error: string } | void> {
   if (data.url) {
     redirect(data.url)
   }
-}
-
-export async function updateOrganizationName(
-  orgId: string,
-  input: OrganizationNameInput
-): Promise<{ error: string } | { success: true }> {
-  const parsed = organizationNameSchema.safeParse(input)
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0].message }
-  }
-
-  const supabase = await createClient()
-  const { error } = await supabase
-    .from('organizations')
-    .update({ name: parsed.data.name })
-    .eq('id', orgId)
-
-  if (error) {
-    return { error: 'Could not update organization name. Only owners can make changes.' }
-  }
-
-  revalidatePath('/organization')
-  return { success: true }
 }

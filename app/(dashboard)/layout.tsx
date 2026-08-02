@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
+import { DashboardMain } from '@/components/layout/dashboard-main'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 import { getHiddenSidebarItems } from '@/lib/data/sidebar-preferences'
@@ -24,7 +25,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
   return (
     <SidebarProvider>
       <AppSidebar
-        orgName={context.org.name}
         agent={{
           id: agent.id,
           organizationId: agent.organization_id,
@@ -38,10 +38,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
           email={context.user.email}
           orgName={context.org.name}
           avatarUrl={context.user.avatarUrl}
+          businessName={agent.business_name ?? agent.name}
         />
-        <main className="scrollbar-thin flex min-h-0 flex-1 flex-col overflow-y-auto p-8">
-          {children}
-        </main>
+        <DashboardMain>{children}</DashboardMain>
       </SidebarInset>
     </SidebarProvider>
   )

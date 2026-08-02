@@ -128,11 +128,9 @@ function CallReceptionistPill({
 }
 
 export function AppSidebar({
-  orgName,
   agent,
   hiddenItems,
 }: {
-  orgName: string
   agent: {
     id: string
     organizationId: string
@@ -207,11 +205,11 @@ export function AppSidebar({
               {section.label && <SidebarGroupLabel>{section.label}</SidebarGroupLabel>}
               <SidebarGroupContent>
                 <SidebarMenu>
-                  {'isSetup' in section && section.isSetup && (
+                  {'isSetup' in section && section.isSetup && agent && (
                     <SidebarMenuItem>
-                      <SidebarMenuButton isActive={pathname === '/organization'} render={<Link href="/organization" />}>
+                      <SidebarMenuButton isActive={pathname === '/business'} render={<Link href="/business" />}>
                         <House strokeWidth={2.5} />
-                        <span>{orgName}</span>
+                        <span>{agent.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}

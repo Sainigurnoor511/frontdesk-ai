@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { signUp, updateOrganizationName } from './actions'
+import { signUp } from './actions'
 
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
@@ -13,12 +13,5 @@ describe('signUp', () => {
       password: 'password123',
     })
     expect(result).toEqual({ error: 'Enter a valid email address' })
-  })
-})
-
-describe('updateOrganizationName', () => {
-  it('returns validation error for empty name', async () => {
-    const result = await updateOrganizationName('org-id', { name: '' })
-    expect(result).toEqual({ error: 'Organization name is required' })
   })
 })
