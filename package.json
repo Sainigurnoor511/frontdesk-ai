@@ -15,6 +15,8 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@hookform/resolvers": "^3.9.0",
+    "@livekit/agents": "^1.6.1",
+    "@livekit/agents-plugin-openai": "^1.6.1",
     "@phosphor-icons/react": "^2.1.10",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.7.0",
