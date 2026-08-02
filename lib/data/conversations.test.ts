@@ -281,3 +281,52 @@ describe('createConversation', () => {
     expect(result.id).toBe('conv-1')
   })
 })
+
+describe('updateConversationStatus', () => {
+  it('guards the write with .eq("status", "active") when transitioning to completed', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { updateConversationStatus } = await import('./conversations-service')
+
+    const statusEq = vi.fn().mockResolvedValue({ error: null })
+    const idEq = vi.fn().mockReturnValue({ eq: statusEq })
+    const update = vi.fn().mockReturnValue({ eq: idEq })
+    const from = vi.fn().mockReturnValue({ update })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+
+    await updateConversationStatus('conv-1', { status: 'completed', outcome: 'successful' })
+
+    expect(idEq).toHaveBeenCalledWith('id', 'conv-1')
+    expect(statusEq).toHaveBeenCalledWith('status', 'active')
+  })
+
+  it('guards the write with .eq("status", "active") when transitioning to failed', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { updateConversationStatus } = await import('./conversations-service')
+
+    const statusEq = vi.fn().mockResolvedValue({ error: null })
+    const idEq = vi.fn().mockReturnValue({ eq: statusEq })
+    const update = vi.fn().mockReturnValue({ eq: idEq })
+    const from = vi.fn().mockReturnValue({ update })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+
+    await updateConversationStatus('conv-1', { status: 'failed', endedReason: 'session_error' })
+
+    expect(idEq).toHaveBeenCalledWith('id', 'conv-1')
+    expect(statusEq).toHaveBeenCalledWith('status', 'active')
+  })
+
+  it('does not apply the active-status guard for non-terminal patches', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { updateConversationStatus } = await import('./conversations-service')
+
+    const idEq = vi.fn().mockResolvedValue({ error: null })
+    const update = vi.fn().mockReturnValue({ eq: idEq })
+    const from = vi.fn().mockReturnValue({ update })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+
+    await updateConversationStatus('conv-1', { summary: 'Caller asked about hours' })
+
+    expect(idEq).toHaveBeenCalledWith('id', 'conv-1')
+    expect(idEq).not.toHaveBeenCalledWith('status', 'active')
+  })
+})

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import { slugify } from './organization-slug'
 
 describe('slugify', () => {
@@ -6,8 +6,12 @@ describe('slugify', () => {
     expect(slugify('Acme Dental Care')).toBe('acme-dental-care')
   })
 
-  it('strips non-alphanumeric characters', () => {
-    expect(slugify("Joe's Pizza & Subs!")).toBe('joes-pizza-subs')
+  it('dashes runs of non-alphanumeric characters', () => {
+    expect(slugify("Joe's Pizza & Subs!")).toBe('joe-s-pizza-subs')
+  })
+
+  it('collapses adjacent separators into a single dash', () => {
+    expect(slugify('Smith-Jones LLC')).toBe('smith-jones-llc')
   })
 
   it('trims leading/trailing dashes', () => {

@@ -20,6 +20,8 @@ type RoomMetadata = {
   conversationId: string
 }
 
+const MAX_CALL_SECONDS = 300
+
 function parseRoomMetadata(raw: string | undefined): RoomMetadata | null {
   if (!raw) return null
   try {
@@ -52,9 +54,14 @@ async function entrypoint(ctx: agents.JobContext) {
 
   const startedAt = Date.now()
   let finished = false
+  let maxDurationTimer: NodeJS.Timeout | undefined
   const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
     if (finished) return
     finished = true
+    if (maxDurationTimer) {
+      clearTimeout(maxDurationTimer)
+      maxDurationTimer = undefined
+    }
     const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
     try {
       await updateConversationStatus(conversationId, {
@@ -92,6 +99,17 @@ async function entrypoint(ctx: agents.JobContext) {
       void finalizeConversation('failed', 'session_error')
     })
 
+    // Some session failures only surface as a Close event carrying an error;
+    // without this they'd be miscategorised as a normal `completed` call by the
+    // disconnect/shutdown paths below. `CloseEvent.error` is nullable — a null
+    // error means an ordinary shutdown, which those paths already handle.
+    session.on(agents.AgentSessionEventTypes.Close, (ev) => {
+      if (ev.error) {
+        console.error(`[voice-agent] session closed with error for conversation ${conversationId}:`, ev.error)
+        void finalizeConversation('failed', 'session_closed_with_error')
+      }
+    })
+
     ctx.addShutdownCallback(async () => {
       await finalizeConversation('completed')
     })
@@ -100,6 +118,14 @@ async function entrypoint(ctx: agents.JobContext) {
       room: ctx.room,
       agent: new agents.Agent({ instructions: buildSystemPrompt(agentDetail) }),
     })
+
+    // Hard cap enforced worker-side regardless of client behavior — an
+    // AccessToken's ttl only bounds when a token can be used to *join*, not
+    // how long an already-connected call may run.
+    maxDurationTimer = setTimeout(() => {
+      void finalizeConversation('completed', 'max_duration')
+      void ctx.room.disconnect()
+    }, MAX_CALL_SECONDS * 1000)
   } catch (error) {
     // Full error detail (which may include sensitive internals like API error
     // bodies) stays in worker logs only; the DB column gets a generic reason.
