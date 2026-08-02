@@ -57,11 +57,18 @@ export type PublicAgent = {
  */
 export async function getPublicAgentsForOrg(organizationId: string): Promise<PublicAgent[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('agents')
     .select('id, organization_id, name, business_name')
     .eq('organization_id', organizationId)
-    .order('created_at', { ascending: false })
+    // Order by a column the `anon` role is granted — Postgres checks
+    // column-level SELECT privilege against every column a query
+    // references, including ORDER BY, not just the output list.
+    .order('name', { ascending: true })
+
+  if (error) {
+    console.error('getPublicAgentsForOrg failed:', error)
+  }
 
   return (data ?? []).map((row) => ({
     id: row.id,
