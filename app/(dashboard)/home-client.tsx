@@ -228,7 +228,7 @@ export function HomeClient({
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-semibold">Latest Calls</h2>
+              <h2 className="font-heading text-2xl font-semibold">Latest Calls</h2>
               {latestCalls.length > 0 && (
                 <Link
                   href="/conversations"
@@ -283,7 +283,7 @@ export function HomeClient({
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-base font-semibold">Upcoming Events</h2>
+              <h2 className="font-heading text-2xl font-semibold">Upcoming Events</h2>
               {upcomingAppointments.length > 0 && (
                 <Link
                   href="/calendar"
