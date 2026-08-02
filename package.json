@@ -71,5 +71,14 @@
     "tsx": "^4.23.1",
     "typescript": "^5",
     "vitest": "latest"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@livekit/local-inference",
+      "esbuild",
+      "msgpackr-extract",
+      "sharp",
+      "unrs-resolver"
+    ]
   }
 }
