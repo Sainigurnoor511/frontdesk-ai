@@ -139,7 +139,7 @@ export function BusinessClient({
       </div>
 
       <Tabs defaultValue="info">
-        <TabsList variant="line" className="w-full justify-start gap-1 border-b">
+        <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
           <TabsTrigger value="info">Info</TabsTrigger>
           <TabsTrigger value="services">Services</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>

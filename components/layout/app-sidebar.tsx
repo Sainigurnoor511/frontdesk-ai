@@ -291,7 +291,7 @@ export function AppSidebar({
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/business" />}>
                       <Store />
-                      Business
+                      {agent ? agent.name : 'Business'}
                     </DropdownMenuItem>
                     <DropdownMenuItem render={<Link href="/agents" />}>
                       <UserCircle />
