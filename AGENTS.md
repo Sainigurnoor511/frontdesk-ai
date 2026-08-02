@@ -4,7 +4,7 @@
 This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
 <!-- END:nextjs-agent-rules -->
 
-# FrontDesk.ai
+# Frontdesk.ai
 
 Open-source, self-hostable AI receptionist SaaS. Original implementation inspired by products like ElevenLabs' Reception.ai — never copy their literal source, copy text, or design assets. Live reference crawls of comparable products are for UX/structure reference only.
 
@@ -15,7 +15,7 @@ Open-source, self-hostable AI receptionist SaaS. Original implementation inspire
 - BullMQ + Redis for background jobs (standalone workers in `workers/`, run via `npm run worker`)
 - Groq for LLM extraction/generation, Fish Audio for TTS
 - Tailwind v4 + shadcn/ui on `@base-ui/react` (not Radix — composition uses `render={<Component />}`, not `asChild`)
-- `@phosphor-icons/react/dist/ssr` for all app-level icons (vendored shadcn internals may still use lucide-react — leave those)
+- `lucide-react` for all app-level icons (also the icon library vendored shadcn internals already use, so this is consistent throughout)
 
 ## Conventions
 
