@@ -35,6 +35,7 @@ import {
   EmptyContent,
 } from '@/components/ui/empty'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
 import { updateAgentGeneral, updateAgentCallSettings } from './actions'
 
@@ -107,6 +108,36 @@ export function AgentDetailClient({
     setToneTraits((prev) =>
       prev.includes(trait) ? prev.filter((t) => t !== trait) : [...prev, trait]
     )
+  }
+
+  const originalToneTraits = agent.tone_traits ?? []
+  const generalDirty =
+    voiceId !== (agent.voice_id ?? VOICE_OPTIONS[0].id) ||
+    defaultLanguage !== (agent.language ?? LANGUAGE_OPTIONS[0]) ||
+    additionalInstructions !== (agent.additional_instructions ?? '') ||
+    firstMessage !== (agent.first_message ?? '') ||
+    toneTraits.length !== originalToneTraits.length ||
+    toneTraits.some((trait) => !originalToneTraits.includes(trait))
+
+  function handleCancelGeneral() {
+    setVoiceId(agent.voice_id ?? VOICE_OPTIONS[0].id)
+    setDefaultLanguage(agent.language ?? LANGUAGE_OPTIONS[0])
+    setAdditionalInstructions(agent.additional_instructions ?? '')
+    setToneTraits(agent.tone_traits ?? [])
+    setFirstMessage(agent.first_message ?? '')
+  }
+
+  const callSettingsDirty =
+    answeringMode !== (agent.answering_mode ?? 'staff_first') ||
+    staffPhoneNumber !== (agent.staff_phone_number ?? '') ||
+    maxRingSeconds !== agent.max_ring_seconds ||
+    holdMusic !== (agent.hold_music ?? '')
+
+  function handleCancelCallSettings() {
+    setAnsweringMode(agent.answering_mode ?? 'staff_first')
+    setStaffPhoneNumber(agent.staff_phone_number ?? '')
+    setMaxRingSeconds(agent.max_ring_seconds)
+    setHoldMusic(agent.hold_music ?? '')
   }
 
   function handleSaveGeneral() {
@@ -250,11 +281,12 @@ export function AgentDetailClient({
 
               {generalError && <p className="text-sm text-destructive">{generalError}</p>}
 
-              <div className="flex justify-end">
-                <Button onClick={handleSaveGeneral} disabled={isSavingGeneral}>
-                  {isSavingGeneral ? 'Saving...' : 'Save changes'}
-                </Button>
-              </div>
+              <UnsavedChangesBar
+                show={generalDirty}
+                saving={isSavingGeneral}
+                onSave={handleSaveGeneral}
+                onCancel={handleCancelGeneral}
+              />
             </div>
 
             <div className="space-y-6">
@@ -456,11 +488,12 @@ export function AgentDetailClient({
 
             {callSettingsError && <p className="text-sm text-destructive">{callSettingsError}</p>}
 
-            <div className="flex justify-end">
-              <Button onClick={handleSaveCallSettings} disabled={isSavingCallSettings}>
-                {isSavingCallSettings ? 'Saving...' : 'Save changes'}
-              </Button>
-            </div>
+            <UnsavedChangesBar
+              show={callSettingsDirty}
+              saving={isSavingCallSettings}
+              onSave={handleSaveCallSettings}
+              onCancel={handleCancelCallSettings}
+            />
           </div>
         </TabsContent>
 

@@ -64,6 +64,7 @@ import type {
   BusinessProduct,
 } from '@/lib/data/business'
 import { toast } from 'sonner'
+import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import {
   updateBusinessProfile,
   createLocation,
@@ -198,6 +199,19 @@ function InfoTab({
   const [isPending, startTransition] = useTransition()
   const [locationDialogOpen, setLocationDialogOpen] = useState(false)
 
+  const dirty =
+    businessName !== (profile.businessName ?? '') ||
+    country !== (profile.country ?? '') ||
+    timezone !== profile.timezone ||
+    currency !== profile.currency
+
+  function handleCancel() {
+    setBusinessName(profile.businessName ?? '')
+    setCountry(profile.country ?? '')
+    setTimezone(profile.timezone)
+    setCurrency(profile.currency)
+  }
+
   function handleSave() {
     startTransition(async () => {
       const result = await updateBusinessProfile({
@@ -276,10 +290,6 @@ function InfoTab({
               </Select>
             </div>
           </div>
-
-          <Button onClick={handleSave} disabled={isPending}>
-            {isPending ? 'Saving…' : 'Save changes'}
-          </Button>
         </CardContent>
       </Card>
 
@@ -340,6 +350,13 @@ function InfoTab({
       </Card>
 
       <AddLocationDialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen} />
+
+      <UnsavedChangesBar
+        show={dirty}
+        saving={isPending}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
     </div>
   )
 }
@@ -1296,6 +1313,19 @@ function SchedulingTab({ profile }: { profile: BusinessProfile }) {
   const [limitOverlapping, setLimitOverlapping] = useState(profile.limitOverlappingAppointments)
   const [isPending, startTransition] = useTransition()
 
+  const dirty =
+    slotInterval !== String(profile.bookingSlotIntervalMinutes) ||
+    advanceWindow !== String(profile.advanceBookingWindowDays) ||
+    minimumNotice !== String(profile.minimumBookingNoticeMinutes) ||
+    limitOverlapping !== profile.limitOverlappingAppointments
+
+  function handleCancel() {
+    setSlotInterval(String(profile.bookingSlotIntervalMinutes))
+    setAdvanceWindow(String(profile.advanceBookingWindowDays))
+    setMinimumNotice(String(profile.minimumBookingNoticeMinutes))
+    setLimitOverlapping(profile.limitOverlappingAppointments)
+  }
+
   function handleSave() {
     startTransition(async () => {
       const result = await updateSchedulingSettings({
@@ -1313,73 +1343,78 @@ function SchedulingTab({ profile }: { profile: BusinessProfile }) {
   }
 
   return (
-    <Card>
-      <CardContent className="space-y-6 p-4">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="slot-interval">Booking time slot interval</Label>
-            <Select value={slotInterval} onValueChange={(v) => setSlotInterval(v ?? "")}>
-              <SelectTrigger id="slot-interval" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {SLOT_INTERVALS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <div className="space-y-4">
+      <Card>
+        <CardContent className="space-y-6 p-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="slot-interval">Booking time slot interval</Label>
+              <Select value={slotInterval} onValueChange={(v) => setSlotInterval(v ?? "")}>
+                <SelectTrigger id="slot-interval" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SLOT_INTERVALS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="advance-window">Advance booking window</Label>
+              <Select value={advanceWindow} onValueChange={(v) => setAdvanceWindow(v ?? "")}>
+                <SelectTrigger id="advance-window" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {ADVANCE_WINDOWS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="minimum-notice">Minimum booking notice</Label>
+              <Select value={minimumNotice} onValueChange={(v) => setMinimumNotice(v ?? "")}>
+                <SelectTrigger id="minimum-notice" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {MINIMUM_NOTICES.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="advance-window">Advance booking window</Label>
-            <Select value={advanceWindow} onValueChange={(v) => setAdvanceWindow(v ?? "")}>
-              <SelectTrigger id="advance-window" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ADVANCE_WINDOWS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div className="space-y-0.5">
+              <p className="text-sm font-medium">Limit overlapping appointments</p>
+              <p className="text-sm text-muted-foreground">
+                Set a limit on overlapping appointments.
+              </p>
+            </div>
+            <Switch checked={limitOverlapping} onCheckedChange={setLimitOverlapping} />
           </div>
+        </CardContent>
+      </Card>
 
-          <div className="space-y-1.5">
-            <Label htmlFor="minimum-notice">Minimum booking notice</Label>
-            <Select value={minimumNotice} onValueChange={(v) => setMinimumNotice(v ?? "")}>
-              <SelectTrigger id="minimum-notice" className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {MINIMUM_NOTICES.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
-          <div className="space-y-0.5">
-            <p className="text-sm font-medium">Limit overlapping appointments</p>
-            <p className="text-sm text-muted-foreground">
-              Set a limit on overlapping appointments.
-            </p>
-          </div>
-          <Switch checked={limitOverlapping} onCheckedChange={setLimitOverlapping} />
-        </div>
-
-        <Button onClick={handleSave} disabled={isPending}>
-          {isPending ? 'Saving…' : 'Save changes'}
-        </Button>
-      </CardContent>
-    </Card>
+      <UnsavedChangesBar
+        show={dirty}
+        saving={isPending}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
+    </div>
   )
 }
 
