@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export type Agent = {
   id: string
+  organization_id: string
   name: string
   business_name: string | null
   industry: string | null
@@ -33,7 +34,7 @@ export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> 
   const supabase = await createClient()
   const { data } = await supabase
     .from('agents')
-    .select('id, name, business_name, industry, country, language, staff_phone_number')
+    .select('id, organization_id, name, business_name, industry, country, language, staff_phone_number')
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
 

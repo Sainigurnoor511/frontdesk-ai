@@ -16,6 +16,7 @@ import type { Icon } from '@phosphor-icons/react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { CallDialog } from '@/components/voice/call-dialog'
 import type { Agent } from '@/lib/data/agents'
 import type { Conversation } from '@/lib/data/conversations'
 import type { AppointmentRow } from '@/lib/data/calendar'
@@ -82,6 +83,7 @@ export function HomeClient({
   upcomingAppointments: AppointmentRow[]
 }) {
   const [dismissed, setDismissed] = useState(false)
+  const [callOpen, setCallOpen] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -153,13 +155,31 @@ export function HomeClient({
                 Receptionist live
               </Badge>
             )}
-            <Button size="sm" variant="outline" disabled={!agent} className="gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!agent}
+              className="gap-1.5"
+              onClick={() => setCallOpen(true)}
+            >
               <Phone />
               Test it
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {agent && (
+        <CallDialog
+          open={callOpen}
+          onOpenChange={setCallOpen}
+          organizationId={agent.organization_id}
+          agentId={agent.id}
+          agentName={agent.business_name ?? agent.name}
+          staffPhoneNumber={agent.staff_phone_number}
+          authenticated
+        />
+      )}
 
       <div className="flex flex-wrap gap-4">
         <StatTile
