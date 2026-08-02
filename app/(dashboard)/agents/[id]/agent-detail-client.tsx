@@ -256,7 +256,7 @@ export function AgentDetailClient({
                     maxLength={MAX_INSTRUCTIONS_LENGTH}
                     rows={12}
                     placeholder="e.g. If someone asks about parking, mention the free parking lot behind the building."
-                    className="min-h-64 resize-none rounded-none border-0 focus-visible:ring-0"
+                    className="min-h-48 resize-none rounded-none border-0 focus-visible:ring-0"
                   />
                   <div className="flex items-center justify-between border-t bg-muted/40 px-3 py-2">
                     <span className="text-xs tabular-nums text-muted-foreground">

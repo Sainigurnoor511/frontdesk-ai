@@ -10,7 +10,6 @@ import {
   Users,
   UserCog,
   User,
-  CreditCard,
   Bell,
   Eye,
 } from 'lucide-react'
@@ -44,11 +43,10 @@ import {
 import type { OrganizationSettings } from '@/lib/data/settings'
 import { updateNotificationSettings, updateFeatureSettings, updateLanguage } from './actions'
 
-type Tab = 'account' | 'billing' | 'notifications' | 'features'
+type Tab = 'account' | 'notifications' | 'features'
 
 const NAV_ITEMS: { value: Tab; label: string; icon: typeof User }[] = [
   { value: 'account', label: 'Account', icon: User },
-  { value: 'billing', label: 'Billing', icon: CreditCard },
   { value: 'notifications', label: 'Notifications', icon: Bell },
   { value: 'features', label: 'Features', icon: Eye },
 ]
@@ -120,7 +118,6 @@ export function SettingsClient({
             <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
 
             {activeTab === 'account' && <AccountTab email={email} settings={settings} />}
-            {activeTab === 'billing' && <BillingTab />}
             {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
             {activeTab === 'features' && <FeaturesTab settings={settings} />}
           </div>
@@ -243,22 +240,6 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
         onCancel={handleCancel}
       />
     </div>
-  )
-}
-
-// ---------------- Billing Tab ----------------
-
-function BillingTab() {
-  return (
-    <Card>
-      <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-        <CreditCard className="size-8 text-muted-foreground" />
-        <p className="font-medium">Billing is coming soon</p>
-        <p className="max-w-sm text-sm text-muted-foreground">
-          Plan management and invoices will show up here once billing is wired up.
-        </p>
-      </CardContent>
-    </Card>
   )
 }
 

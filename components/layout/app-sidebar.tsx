@@ -372,9 +372,6 @@ export function AppSidebar({
                         Settings
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
-                        <DropdownMenuItem render={<Link href="/settings?tab=billing" />}>
-                          Billing
-                        </DropdownMenuItem>
                         <DropdownMenuItem render={<Link href="/settings?tab=notifications" />}>
                           Notifications
                         </DropdownMenuItem>
