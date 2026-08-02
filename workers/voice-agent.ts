@@ -99,15 +99,22 @@ async function entrypoint(ctx: agents.JobContext) {
       void finalizeConversation('failed', 'session_error')
     })
 
-    // Some session failures only surface as a Close event carrying an error;
-    // without this they'd be miscategorised as a normal `completed` call by the
-    // disconnect/shutdown paths below. `CloseEvent.error` is nullable — a null
-    // error means an ordinary shutdown, which those paths already handle.
+    // The session closes (e.g. CloseReason.PARTICIPANT_DISCONNECTED when the
+    // caller hangs up) independently of the worker's own connection to the
+    // room — `AgentSession`'s built-in `closeOnDisconnect` behavior tears
+    // down the session but does not disconnect `ctx.room` itself, so
+    // `ctx.room.on('disconnected')` above never fires on its own and the
+    // conversation would otherwise stay stuck in `active` until LiveKit's
+    // `emptyTimeout` eventually reaps the room. Finalize and leave here
+    // instead of waiting on a room-level event that may never come.
     session.on(agents.AgentSessionEventTypes.Close, (ev) => {
       if (ev.error) {
         console.error(`[voice-agent] session closed with error for conversation ${conversationId}:`, ev.error)
         void finalizeConversation('failed', 'session_closed_with_error')
+      } else {
+        void finalizeConversation('completed')
       }
+      void ctx.room.disconnect()
     })
 
     ctx.addShutdownCallback(async () => {
