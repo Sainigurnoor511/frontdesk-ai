@@ -74,7 +74,7 @@
   --accent: oklch(0.97 0 0);
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
+  --border: #ececec;
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.87 0 0);
@@ -89,7 +89,7 @@
   --sidebar-primary-foreground: oklch(0.985 0 0);
   --sidebar-accent: hsl(0deg 0% 93.73%);
   --sidebar-accent-foreground: hsl(0deg 0% 0%);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: #ececec;
   --sidebar-ring: oklch(0.708 0 0);
 }
 
