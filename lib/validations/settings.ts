@@ -34,3 +34,8 @@ export const updateBookingPageSettingsSchema = z.object({
   bookingPageEnabled: z.boolean(),
 })
 export type UpdateBookingPageSettingsInput = z.infer<typeof updateBookingPageSettingsSchema>
+
+export const updateLanguageSchema = z.object({
+  language: z.string().min(2).max(10),
+})
+export type UpdateLanguageInput = z.infer<typeof updateLanguageSchema>

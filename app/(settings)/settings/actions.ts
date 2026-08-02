@@ -5,8 +5,10 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import {
   updateNotificationSettingsSchema,
   updateFeatureSettingsSchema,
+  updateLanguageSchema,
   type UpdateNotificationSettingsInput,
   type UpdateFeatureSettingsInput,
+  type UpdateLanguageInput,
 } from '@/lib/validations/settings'
 
 type ActionResult = { error: string } | { success: true }
@@ -70,6 +72,33 @@ export async function updateNotificationSettings(
 
   if (error) {
     return { error: 'Could not save notification settings. Please try again.' }
+  }
+
+  revalidatePath('/settings')
+  return { success: true }
+}
+
+export async function updateLanguage(input: UpdateLanguageInput): Promise<ActionResult> {
+  const parsed = updateLanguageSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const orgResult = await getOrgId(supabase)
+  if ('error' in orgResult) return orgResult
+
+  const { error } = await supabase.from('organization_settings').upsert(
+    {
+      organization_id: orgResult.organizationId,
+      language: parsed.data.language,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'organization_id' }
+  )
+
+  if (error) {
+    return { error: 'Could not save language. Please try again.' }
   }
 
   revalidatePath('/settings')

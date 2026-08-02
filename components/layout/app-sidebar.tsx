@@ -179,7 +179,10 @@ export function AppSidebar({
       <SidebarHeader className="gap-2 py-2">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="h-10 gap-0 hover:bg-transparent" render={<Link href="/" />}>
+            <SidebarMenuButton
+              className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
+              render={<Link href="/" />}
+            >
               <span className="text-base font-semibold">F</span>
               <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
             </SidebarMenuButton>

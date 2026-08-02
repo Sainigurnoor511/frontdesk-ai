@@ -28,6 +28,7 @@ import {
 import { toast } from 'sonner'
 import { logOut } from '@/app/(auth)/actions'
 import { AppHeader } from '@/components/layout/app-header'
+import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import {
   Sidebar,
   SidebarContent,
@@ -41,7 +42,7 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 import type { OrganizationSettings } from '@/lib/data/settings'
-import { updateNotificationSettings, updateFeatureSettings } from './actions'
+import { updateNotificationSettings, updateFeatureSettings, updateLanguage } from './actions'
 
 type Tab = 'account' | 'billing' | 'notifications' | 'features'
 
@@ -75,7 +76,10 @@ export function SettingsClient({
         <SidebarHeader className="gap-2 py-2">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton className="h-10 gap-0 hover:bg-transparent" render={<Link href="/" />}>
+              <SidebarMenuButton
+                className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
+                render={<Link href="/" />}
+              >
                 <span className="text-base font-semibold">F</span>
                 <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
               </SidebarMenuButton>
@@ -115,7 +119,7 @@ export function SettingsClient({
           <div className="mx-auto max-w-3xl space-y-6">
             <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
 
-            {activeTab === 'account' && <AccountTab email={email} />}
+            {activeTab === 'account' && <AccountTab email={email} settings={settings} />}
             {activeTab === 'billing' && <BillingTab />}
             {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
             {activeTab === 'features' && <FeaturesTab settings={settings} />}
@@ -128,10 +132,13 @@ export function SettingsClient({
 
 // ---------------- Account Tab ----------------
 
-function AccountTab({ email }: { email: string }) {
-  const [language, setLanguage] = useState('en')
+function AccountTab({ email, settings }: { email: string; settings: OrganizationSettings }) {
+  const [language, setLanguage] = useState(settings.language)
   const [isPending, startTransition] = useTransition()
+  const [saving, setSaving] = useState(false)
   const router = useRouter()
+
+  const dirty = language !== settings.language
 
   function handleSignOutAllDevices() {
     startTransition(async () => {
@@ -143,8 +150,25 @@ function AccountTab({ email }: { email: string }) {
     })
   }
 
+  function handleCancel() {
+    setLanguage(settings.language)
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    const result = await updateLanguage({ language })
+    setSaving(false)
+
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+
+    toast.success('Language saved.')
+  }
+
   return (
-    <div>
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-6 border-b py-6 first:pt-0">
         <div className="space-y-1">
           <h3 className="text-base font-semibold">Email & Password</h3>
@@ -211,6 +235,13 @@ function AccountTab({ email }: { email: string }) {
           {isPending ? 'Signing out…' : 'Sign Out All Devices'}
         </Button>
       </div>
+
+      <UnsavedChangesBar
+        show={dirty}
+        saving={saving}
+        onSave={handleSave}
+        onCancel={handleCancel}
+      />
     </div>
   )
 }
