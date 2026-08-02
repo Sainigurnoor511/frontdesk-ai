@@ -1,13 +1,13 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { MessageCircleMore, Bell } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
 import { SidebarToggleButton } from './sidebar-toggle-button'
-import { AssistantPanel } from './assistant-panel'
 import { FeedbackDialog } from './feedback-dialog'
 
 const pageTitles: Record<string, string> = {
@@ -26,6 +26,7 @@ const pageTitles: Record<string, string> = {
   '/booking-page': 'Bookings page',
   '/settings': 'Settings',
   '/phone-numbers': 'Phone numbers',
+  '/assistant': 'Assistant',
 }
 
 export function AppHeader({
@@ -41,7 +42,6 @@ export function AppHeader({
 }) {
   const pathname = usePathname()
   const title = pageTitles[pathname] ?? ''
-  const [assistantOpen, setAssistantOpen] = useState(false)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   return (
@@ -55,13 +55,12 @@ export function AppHeader({
           variant="outline"
           size="sm"
           className="gap-1.5"
-          aria-label="Assistant panel"
-          onClick={() => setAssistantOpen(true)}
+          nativeButton={false}
+          render={<Link href="/assistant" />}
         >
           <MessageCircleMore />
           Assistant
         </Button>
-        <AssistantPanel open={assistantOpen} onOpenChange={setAssistantOpen} />
         <Button variant="outline" size="sm" onClick={() => setFeedbackOpen(true)}>
           Help
         </Button>
