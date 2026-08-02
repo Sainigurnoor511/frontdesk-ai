@@ -88,6 +88,8 @@ export function HomeClient({
 
   return (
     <div className="space-y-6">
+      <h1 className="text-2xl font-semibold">Home</h1>
+
       {!agent && !dismissed && (
         <Card className="relative">
           <Button
