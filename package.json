@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "worker": "tsx watch workers/scan-website.ts",
     "worker:voice": "tsx watch workers/voice-agent.ts dev",
-    "worker:voice:start": "tsx workers/voice-agent.ts start"
+    "worker:voice:start": "tsx workers/voice-agent.ts start",
+    "worker:webhook": "tsx watch workers/webhook.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
