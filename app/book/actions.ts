@@ -5,9 +5,19 @@ import { headers } from 'next/headers'
 import { createConversation, updateConversationStatus } from '@/lib/data/conversations-service'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
 import { startPublicCallSchema, type StartPublicCallInput } from '@/lib/validations/voice'
+import { getAvailableSlots } from '@/lib/data/availability-engine'
+import { findOrCreateClientServiceRole, createAppointmentServiceRole } from '@/lib/data/booking-service'
+import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
+import {
+  getPublicAvailableSlotsSchema,
+  createPublicAppointmentSchema,
+  type GetPublicAvailableSlotsInput,
+  type CreatePublicAppointmentInput,
+} from '@/lib/validations/booking'
 
 const MAX_CALL_SECONDS = 300
 const MAX_CALLS_PER_HOUR_PER_IP = 5
+const MAX_BOOKINGS_PER_HOUR_PER_IP = 5
 
 export async function startPublicCall(
   input: StartPublicCallInput
@@ -118,4 +128,118 @@ export async function startPublicCall(
     }
     return { error: 'Could not start the call. Please try again.' }
   }
+}
+
+export async function getPublicAvailableSlots(
+  input: GetPublicAvailableSlotsInput
+): Promise<{ error: string } | { slots: { startsAt: string; endsAt: string }[] }> {
+  const parsed = getPublicAvailableSlotsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const days = await getAvailableSlots(parsed.data.organizationId, {
+    serviceId: parsed.data.serviceId,
+    staffId: parsed.data.staffId ?? null,
+    rangeStart: parsed.data.date,
+    rangeEnd: parsed.data.date,
+  })
+
+  return { slots: days[0]?.slots ?? [] }
+}
+
+export async function createPublicAppointment(
+  input: CreatePublicAppointmentInput
+): Promise<{ error: string } | { success: true; appointmentId: string }> {
+  const parsed = createPublicAppointmentSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const headersList = await headers()
+  const ip =
+    headersList.get('x-vercel-forwarded-for') ??
+    headersList.get('x-forwarded-for')?.split(',')[0]?.trim() ??
+    headersList.get('x-real-ip') ??
+    'unknown'
+
+  if (process.env.TURNSTILE_SECRET_KEY) {
+    if (!parsed.data.turnstileToken) {
+      return { error: 'Verification failed. Please refresh and try again.' }
+    }
+
+    const verifyForm = new URLSearchParams()
+    verifyForm.append('secret', process.env.TURNSTILE_SECRET_KEY)
+    verifyForm.append('response', parsed.data.turnstileToken)
+    if (ip && ip !== 'unknown') verifyForm.append('remoteip', ip)
+
+    const verifyResponse = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      body: verifyForm,
+    })
+
+    if (!verifyResponse.ok) {
+      return { error: 'Verification failed. Please try again.' }
+    }
+
+    const verifyData = (await verifyResponse.json()) as { success?: boolean }
+    if (!verifyData.success) {
+      return { error: 'Verification failed. Please try again.' }
+    }
+  }
+
+  const rateLimit = await checkAndConsumeRateLimit(`booking:${ip}`, {
+    max: MAX_BOOKINGS_PER_HOUR_PER_IP,
+    windowSeconds: 3600,
+  })
+
+  if (!rateLimit.allowed) {
+    return { error: 'Too many booking attempts from this network. Please try again later.' }
+  }
+
+  const date = parsed.data.startsAt.slice(0, 10)
+  const days = await getAvailableSlots(parsed.data.organizationId, {
+    serviceId: parsed.data.serviceId,
+    staffId: parsed.data.staffId ?? null,
+    rangeStart: date,
+    rangeEnd: date,
+  })
+  const stillOpen = (days[0]?.slots ?? []).some(
+    (slot) => slot.startsAt === parsed.data.startsAt && slot.endsAt === parsed.data.endsAt
+  )
+  if (!stillOpen) {
+    return { error: 'slot_taken' }
+  }
+
+  const clientPhone = parsed.data.clientPhone?.trim() || null
+  const client = await findOrCreateClientServiceRole(parsed.data.organizationId, {
+    name: parsed.data.clientName,
+    phoneNumber: clientPhone,
+    email: parsed.data.clientEmail,
+  })
+
+  const appointment = await createAppointmentServiceRole(parsed.data.organizationId, null, null, {
+    title: 'Online booking',
+    clientName: parsed.data.clientName,
+    clientPhone,
+    clientId: client.id,
+    startsAt: parsed.data.startsAt,
+    endsAt: parsed.data.endsAt,
+    serviceId: parsed.data.serviceId,
+    staffId: parsed.data.staffId ?? null,
+  })
+
+  try {
+    await sendAppointmentConfirmationEmail({
+      to: parsed.data.clientEmail,
+      clientName: parsed.data.clientName,
+      businessName: parsed.data.businessName ?? 'Our office',
+      startsAt: parsed.data.startsAt,
+      endsAt: parsed.data.endsAt,
+    })
+  } catch (emailError) {
+    console.error(`[book/actions] confirmation email failed for appointment ${appointment.id}:`, emailError)
+  }
+
+  return { success: true, appointmentId: appointment.id }
 }
