@@ -137,6 +137,65 @@ BullMQ + Redis is used elsewhere in the app (the website-scan worker, rate limit
 - `workers/` — standalone Node processes that run outside the Next.js request lifecycle: the BullMQ job consumer and the LiveKit voice agent
 - `supabase/migrations/` — SQL migrations, applied via the Supabase CLI
 
+## Running with Docker
+
+An alternative to the local setup above. Requires [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
+
+1. Clone the repo:
+
+   ```bash
+   git clone https://github.com/<your-org>/frontdesk-ai.git
+   cd frontdesk-ai
+   ```
+
+2. Copy the environment template and fill in your credentials:
+
+   ```bash
+   cp .env.example .env.local
+   ```
+
+3. Apply database migrations to your Supabase project:
+
+   ```bash
+   npx supabase db push
+   ```
+
+4. Build and start all services:
+
+   ```bash
+   docker compose --env-file .env.local up --build
+   ```
+
+   This starts:
+   | Service | Description |
+   | --- | --- |
+   | `nginx` | Reverse proxy on port **80** |
+   | `app` | Next.js production server |
+   | `redis` | Redis for BullMQ job queue |
+   | `worker-scan` | Background worker (website scans) |
+   | `worker-voice` | Voice agent worker (LiveKit rooms) |
+
+5. Open [http://localhost](http://localhost).
+
+To stop: `docker compose down`. To rebuild after code changes: `docker compose --env-file .env.local up --build`.
+
+## Knowledge Base
+
+For detailed architecture docs, conventions, and patterns, see the [Knowledge Base](./knowledge-base/knowledge-base.md):
+
+- [Architecture Overview](./knowledge-base/knowledge-base.md#architecture-overview) — directory layout, high-level structure
+- [Supabase & Database](./knowledge-base/knowledge-base.md#supabase--database) — client layers, auth flow, RLS, migrations
+- [Route Groups & Pages](./knowledge-base/knowledge-base.md#route-groups--pages) — App Router layout, server/client split
+- [Server Actions](./knowledge-base/knowledge-base.md#server-actions) — validation, org-scoping patterns
+- [Data Access Layer](./knowledge-base/knowledge-base.md#data-access-layer) — `lib/data/` modules and conventions
+- [Background Workers](./knowledge-base/knowledge-base.md#background-workers) — BullMQ, Redis, job lifecycle
+- [Voice Pipeline](./knowledge-base/knowledge-base.md#voice-pipeline) — LiveKit call flow, STT/LLM/TTS
+- [UI & Components](./knowledge-base/knowledge-base.md#ui--components) — shadcn/Base UI, Tailwind v4, Lucide
+- [Validation](./knowledge-base/knowledge-base.md#validation) — Zod schemas in `lib/validations/`
+- [Testing](./knowledge-base/knowledge-base.md#testing) — Vitest setup and conventions
+- [Docker Setup](./knowledge-base/knowledge-base.md#docker-setup) — Dockerfile, compose, nginx
+- [Environment Variables](./knowledge-base/knowledge-base.md#environment-variables) — complete env var reference
+
 ## Contributing
 
 Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for setup details, coding conventions, and how to submit changes.
