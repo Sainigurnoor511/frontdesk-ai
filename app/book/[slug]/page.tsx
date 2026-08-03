@@ -3,6 +3,7 @@ import { getOrganizationBySlug } from '@/lib/data/organization-slug'
 import { getOrganizationSettings } from '@/lib/data/settings'
 import { getServices } from '@/lib/data/business'
 import { getPublicAgentsForOrg } from '@/lib/data/agents'
+import { getStaffForBookingPage } from '@/lib/data/availability-engine'
 import { BookingPagePublicClient } from './booking-page-public-client'
 
 export default async function PublicBookingPage({
@@ -14,10 +15,11 @@ export default async function PublicBookingPage({
   const org = await getOrganizationBySlug(slug)
   if (!org) notFound()
 
-  const [settings, services, agents] = await Promise.all([
+  const [settings, services, agents, staff] = await Promise.all([
     getOrganizationSettings(org.id),
     getServices(org.id),
     getPublicAgentsForOrg(org.id),
+    getStaffForBookingPage(org.id),
   ])
 
   if (!settings.id || !settings.bookingPageEnabled) notFound()
@@ -29,6 +31,7 @@ export default async function PublicBookingPage({
       organizationId={org.id}
       organizationName={org.name}
       services={services.filter((s) => s.showOnBookingPage)}
+      staff={staff}
       agentId={agent?.id ?? null}
       agentName={agent ? (agent.businessName ?? agent.name) : org.name}
       theme={settings.bookingPageTheme}

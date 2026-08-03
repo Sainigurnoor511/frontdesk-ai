@@ -1,25 +1,23 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
+import type { BookingPageStaff } from '@/lib/data/availability-engine'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { Turnstile } from '@/components/voice/turnstile'
 import { bookingAccentText } from '@/lib/booking-theme'
+import { BookingFlow } from './booking-flow'
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
-
-function formatPrice(price: number) {
-  return `$${price.toFixed(2)}`
-}
 
 export function BookingPagePublicClient({
   organizationId,
   organizationName,
   services,
+  staff,
   agentId,
   agentName,
   theme = 'light',
@@ -28,6 +26,7 @@ export function BookingPagePublicClient({
   organizationId: string
   organizationName: string
   services: Service[]
+  staff: BookingPageStaff[]
   agentId: string | null
   agentName: string
   theme?: 'light' | 'dark'
@@ -72,24 +71,14 @@ export function BookingPagePublicClient({
         )}
 
         {services.length > 0 && (
-          <Card className={cn(isDark && 'border-zinc-800 bg-zinc-900')}>
-            <CardContent className="divide-y p-0">
-              {services.map((service) => (
-                <div
-                  key={service.id}
-                  className="flex items-center justify-between gap-4 px-4 py-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium">{service.name}</p>
-                    <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
-                      {service.durationMinutes} min
-                    </p>
-                  </div>
-                  <p className="text-sm font-medium">{formatPrice(service.price)}</p>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+          <BookingFlow
+            organizationId={organizationId}
+            organizationName={organizationName}
+            services={services}
+            staff={staff}
+            theme={theme}
+            accent={accent}
+          />
         )}
 
         {agentId && (
