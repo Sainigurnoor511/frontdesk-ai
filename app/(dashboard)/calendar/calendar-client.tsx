@@ -38,8 +38,9 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { createAppointment, createTimeOff } from "./actions";
+import { createAppointment, createTimeOff, cancelAppointment, updateAppointment } from "./actions";
 import type { AppointmentRow, TimeOffRow } from "@/lib/data/calendar";
+import type { CreateAppointmentInput } from "@/lib/validations/calendar";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const VIEWS = ["Week", "Day", "Month"] as const;
@@ -48,6 +49,15 @@ type ViewMode = (typeof VIEWS)[number];
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const BUSINESS_START = 9;
 const BUSINESS_END = 17;
+
+const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
+  const hours = Math.floor(i / 2);
+  const minutes = (i % 2) * 30;
+  const value = `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  const period = hours < 12 ? "AM" : "PM";
+  const displayHour = hours % 12 === 0 ? 12 : hours % 12;
+  return { value, label: `${displayHour}:${String(minutes).padStart(2, "0")} ${period}` };
+});
 
 function formatHourLabel(hour: number) {
   const period = hour < 12 ? "AM" : "PM";
@@ -79,6 +89,12 @@ function formatFullDate(date: Date) {
   });
 }
 
+function formatTimeRange(start: Date, end: Date) {
+  const fmt = (d: Date) =>
+    d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 function isSameDay(a: Date, b: Date) {
   return (
     a.getFullYear() === b.getFullYear() &&
@@ -108,6 +124,8 @@ export function CalendarClient({
   const [view, setView] = React.useState<ViewMode>("Week");
   const [newAppointmentOpen, setNewAppointmentOpen] = React.useState(false);
   const [newTimeOffOpen, setNewTimeOffOpen] = React.useState(false);
+  const [selectedAppointment, setSelectedAppointment] =
+    React.useState<AppointmentRow | null>(null);
 
   const [today, setToday] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -448,12 +466,22 @@ export function CalendarClient({
                           return (
                             <div
                               key={appointment.id}
-                              className="absolute inset-x-0.5 z-10 overflow-hidden rounded-md border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[11px] leading-tight"
+                              role="button"
+                              tabIndex={0}
+                              onClick={() => setSelectedAppointment(appointment)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  setSelectedAppointment(appointment);
+                                }
+                              }}
+                              className="absolute inset-x-0.5 z-10 cursor-pointer overflow-hidden rounded-md border border-primary/30 bg-primary/15 px-1.5 py-0.5 text-[11px] leading-tight hover:bg-primary/25 focus-visible:outline-2 focus-visible:outline-primary"
                               style={{
                                 top: `${startHourFraction * 100}%`,
                                 height: `${durationHours * 100}%`,
                               }}
                               title={`${appointment.title} — ${appointment.client_name}`}
+                              aria-label={`Open ${appointment.title} for ${appointment.client_name}`}
                             >
                               <p className="truncate font-medium text-foreground">
                                 {appointment.title}
@@ -473,6 +501,20 @@ export function CalendarClient({
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={selectedAppointment !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedAppointment(null);
+        }}
+      >
+        {selectedAppointment && (
+          <AppointmentDetailDialog
+            appointment={selectedAppointment}
+            onClose={() => setSelectedAppointment(null)}
+          />
+        )}
+      </Dialog>
     </div>
   );
 }
@@ -489,6 +531,143 @@ function endOfDay(date: Date) {
   return d;
 }
 
+type AppointmentFormState = {
+  title: string;
+  clientName: string;
+  clientPhone: string;
+  duration: number;
+  time: string;
+  notes: string;
+  internalNotes: string;
+};
+
+function buildAppointmentInput(
+  state: AppointmentFormState,
+  baseDate: Date
+): CreateAppointmentInput {
+  const [hours, minutes] = state.time.split(":").map(Number);
+  const startsAt = new Date(baseDate);
+  startsAt.setHours(hours, minutes, 0, 0);
+  const endsAt = new Date(startsAt.getTime() + state.duration * 60 * 1000);
+  return {
+    title: state.title,
+    clientName: state.clientName,
+    clientPhone: state.clientPhone || undefined,
+    startsAt: startsAt.toISOString(),
+    endsAt: endsAt.toISOString(),
+    notes: state.notes || undefined,
+    internalNotes: state.internalNotes || undefined,
+  };
+}
+
+function AppointmentFormFields({
+  state,
+  update,
+  baseDate,
+}: {
+  state: AppointmentFormState;
+  update: (patch: Partial<AppointmentFormState>) => void;
+  baseDate: Date;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Plain text inputs for now — becomes a real Select once Services/Clients pages share data with this page */}
+      <div className="space-y-1.5">
+        <Label>Service / title</Label>
+        <Input
+          placeholder="e.g., Consultation"
+          value={state.title}
+          onChange={(e) => update({ title: e.target.value })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Client name</Label>
+        <Input
+          placeholder="e.g., Jane Doe"
+          value={state.clientName}
+          onChange={(e) => update({ clientName: e.target.value })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Client phone</Label>
+        <Input
+          placeholder="e.g., +14155551234"
+          value={state.clientPhone}
+          onChange={(e) => update({ clientPhone: e.target.value })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Date</Label>
+        <Button variant="outline" className="w-full justify-start font-normal">
+          {formatFullDate(baseDate)}
+        </Button>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Duration in minutes</Label>
+        <Input
+          type="number"
+          value={state.duration}
+          min={0}
+          step={5}
+          onChange={(e) => update({ duration: Number(e.target.value) })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Time</Label>
+        <Select
+          value={state.time}
+          onValueChange={(value) => update({ time: value ?? "" })}
+        >
+          <SelectTrigger className="w-full">
+            <SelectValue placeholder="Select time..." />
+          </SelectTrigger>
+          <SelectContent>
+            {!TIME_OPTIONS.some((option) => option.value === state.time) && (
+              <SelectItem value={state.time}>{state.time}</SelectItem>
+            )}
+            {TIME_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <Label>Notes</Label>
+          <span className="text-xs text-muted-foreground">
+            Visible to the receptionist
+          </span>
+        </div>
+        <Textarea
+          placeholder="Add any notes for this appointment..."
+          value={state.notes}
+          onChange={(e) => update({ notes: e.target.value })}
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex items-baseline justify-between">
+          <Label>Internal notes</Label>
+          <span className="text-xs text-muted-foreground">Staff only</span>
+        </div>
+        <Textarea
+          placeholder="Add internal notes..."
+          value={state.internalNotes}
+          onChange={(e) => update({ internalNotes: e.target.value })}
+        />
+      </div>
+    </div>
+  );
+}
+
 function NewAppointmentDialog({
   onClose,
   defaultDate,
@@ -496,31 +675,20 @@ function NewAppointmentDialog({
   onClose: () => void;
   defaultDate: Date;
 }) {
-  const [title, setTitle] = React.useState("");
-  const [clientName, setClientName] = React.useState("");
-  const [clientPhone, setClientPhone] = React.useState("");
-  const [duration, setDuration] = React.useState(60);
-  const [time, setTime] = React.useState("09:00");
-  const [notes, setNotes] = React.useState("");
-  const [internalNotes, setInternalNotes] = React.useState("");
+  const [state, setState] = React.useState<AppointmentFormState>({
+    title: "",
+    clientName: "",
+    clientPhone: "",
+    duration: 60,
+    time: "09:00",
+    notes: "",
+    internalNotes: "",
+  });
   const [submitting, setSubmitting] = React.useState(false);
 
   const handleCreate = async () => {
-    const [hours, minutes] = time.split(":").map(Number);
-    const startsAt = new Date(defaultDate);
-    startsAt.setHours(hours, minutes, 0, 0);
-    const endsAt = new Date(startsAt.getTime() + duration * 60 * 1000);
-
     setSubmitting(true);
-    const result = await createAppointment({
-      title,
-      clientName,
-      clientPhone: clientPhone || undefined,
-      startsAt: startsAt.toISOString(),
-      endsAt: endsAt.toISOString(),
-      notes: notes || undefined,
-      internalNotes: internalNotes || undefined,
-    });
+    const result = await createAppointment(buildAppointmentInput(state, defaultDate));
     setSubmitting(false);
 
     if ("error" in result) {
@@ -540,99 +708,11 @@ function NewAppointmentDialog({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4">
-        {/* Plain text inputs for now — becomes a real Select once Services/Clients pages share data with this page */}
-        <div className="space-y-1.5">
-          <Label>Service / title</Label>
-          <Input
-            placeholder="e.g., Consultation"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Client name</Label>
-          <Input
-            placeholder="e.g., Jane Doe"
-            value={clientName}
-            onChange={(e) => setClientName(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Client phone</Label>
-          <Input
-            placeholder="e.g., +14155551234"
-            value={clientPhone}
-            onChange={(e) => setClientPhone(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Date</Label>
-          <Button variant="outline" className="w-full justify-start font-normal">
-            {formatFullDate(defaultDate)}
-          </Button>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Duration in minutes</Label>
-          <Input
-            type="number"
-            value={duration}
-            min={0}
-            step={5}
-            onChange={(e) => setDuration(Number(e.target.value))}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Time</Label>
-          <Select value={time} onValueChange={(value) => setTime(value as string)}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select time..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="09:00">09:00 AM</SelectItem>
-              <SelectItem value="09:30">09:30 AM</SelectItem>
-              <SelectItem value="10:00">10:00 AM</SelectItem>
-              <SelectItem value="10:30">10:30 AM</SelectItem>
-              <SelectItem value="11:00">11:00 AM</SelectItem>
-              <SelectItem value="13:00">01:00 PM</SelectItem>
-              <SelectItem value="14:00">02:00 PM</SelectItem>
-              <SelectItem value="15:00">03:00 PM</SelectItem>
-              <SelectItem value="16:00">04:00 PM</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between">
-            <Label>Notes</Label>
-            <span className="text-xs text-muted-foreground">
-              Visible to the receptionist
-            </span>
-          </div>
-          <Textarea
-            placeholder="Add any notes for this appointment..."
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </div>
-
-        <div className="space-y-1.5">
-          <div className="flex items-baseline justify-between">
-            <Label>Internal notes</Label>
-            <span className="text-xs text-muted-foreground">Staff only</span>
-          </div>
-          <Textarea
-            placeholder="Add internal notes..."
-            value={internalNotes}
-            onChange={(e) => setInternalNotes(e.target.value)}
-          />
-        </div>
-      </div>
+      <AppointmentFormFields
+        state={state}
+        update={(patch) => setState((s) => ({ ...s, ...patch }))}
+        baseDate={defaultDate}
+      />
 
       <DialogFooter>
         <Button variant="outline" onClick={onClose}>
@@ -640,6 +720,182 @@ function NewAppointmentDialog({
         </Button>
         <Button onClick={handleCreate} disabled={submitting}>
           Create appointment
+        </Button>
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex gap-3 text-sm">
+      <span className="w-28 shrink-0 text-muted-foreground">{label}</span>
+      <span className="min-w-0 break-words text-foreground">{value}</span>
+    </div>
+  );
+}
+
+function AppointmentDetailDialog({
+  appointment,
+  onClose,
+}: {
+  appointment: AppointmentRow;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [confirmingCancel, setConfirmingCancel] = React.useState(false);
+  const [cancelling, setCancelling] = React.useState(false);
+
+  const handleCancel = async () => {
+    setCancelling(true);
+    const result = await cancelAppointment(appointment.id);
+    setCancelling(false);
+
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
+    }
+
+    onClose();
+  };
+
+  if (editing) {
+    return (
+      <AppointmentEditContent
+        appointment={appointment}
+        onDone={onClose}
+        onBack={() => setEditing(false)}
+      />
+    );
+  }
+
+  const start = new Date(appointment.starts_at);
+  const end = new Date(appointment.ends_at);
+  const durationMinutes = Math.round(
+    (end.getTime() - start.getTime()) / (1000 * 60)
+  );
+  const status =
+    appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1);
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>{appointment.title}</DialogTitle>
+        <DialogDescription>
+          {formatFullDate(start)} · {formatTimeRange(start, end)}
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="space-y-3">
+        <DetailRow label="Client" value={appointment.client_name} />
+        {appointment.client_phone && (
+          <DetailRow label="Phone" value={appointment.client_phone} />
+        )}
+        <DetailRow label="Duration" value={`${durationMinutes} min`} />
+        {appointment.notes && (
+          <DetailRow label="Notes" value={appointment.notes} />
+        )}
+        {appointment.internal_notes && (
+          <DetailRow label="Internal notes" value={appointment.internal_notes} />
+        )}
+        <DetailRow label="Status" value={status} />
+      </div>
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          Close
+        </Button>
+        {confirmingCancel ? (
+          <>
+            <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+              Keep
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancel}
+              disabled={cancelling}
+            >
+              {cancelling ? "Cancelling…" : "Yes, cancel appointment"}
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="destructive" onClick={() => setConfirmingCancel(true)}>
+              Cancel appointment
+            </Button>
+            <Button onClick={() => setEditing(true)}>Edit</Button>
+          </>
+        )}
+      </DialogFooter>
+    </DialogContent>
+  );
+}
+
+function AppointmentEditContent({
+  appointment,
+  onDone,
+  onBack,
+}: {
+  appointment: AppointmentRow;
+  onDone: () => void;
+  onBack: () => void;
+}) {
+  const start = new Date(appointment.starts_at);
+  const [state, setState] = React.useState<AppointmentFormState>(() => ({
+    title: appointment.title,
+    clientName: appointment.client_name,
+    clientPhone: appointment.client_phone ?? "",
+    duration: Math.round(
+      (new Date(appointment.ends_at).getTime() - start.getTime()) / (1000 * 60)
+    ),
+    time: `${String(start.getHours()).padStart(2, "0")}:${String(
+      start.getMinutes()
+    ).padStart(2, "0")}`,
+    notes: appointment.notes ?? "",
+    internalNotes: appointment.internal_notes ?? "",
+  }));
+  const [submitting, setSubmitting] = React.useState(false);
+
+  const handleSave = async () => {
+    setSubmitting(true);
+    const result = await updateAppointment(
+      appointment.id,
+      buildAppointmentInput(state, start)
+    );
+    setSubmitting(false);
+
+    if ("error" in result) {
+      toast.error(result.error);
+      return;
+    }
+
+    onDone();
+  };
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>Edit appointment</DialogTitle>
+        <DialogDescription>
+          Update the details for {appointment.title}.
+        </DialogDescription>
+      </DialogHeader>
+
+      <AppointmentFormFields
+        state={state}
+        update={(patch) => setState((s) => ({ ...s, ...patch }))}
+        baseDate={start}
+      />
+
+      <DialogFooter>
+        <Button variant="outline" onClick={onBack}>
+          Back
+        </Button>
+        <Button variant="outline" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button onClick={handleSave} disabled={submitting}>
+          Save changes
         </Button>
       </DialogFooter>
     </DialogContent>

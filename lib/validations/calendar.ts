@@ -15,6 +15,9 @@ export const createAppointmentSchema = z.object({
 })
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>
 
+export const updateAppointmentSchema = createAppointmentSchema
+export type UpdateAppointmentInput = CreateAppointmentInput
+
 export const createTimeOffSchema = z.object({
   scope: z.enum(['company', 'staff', 'asset']),
   name: z.string().min(1, 'Name is required'),
