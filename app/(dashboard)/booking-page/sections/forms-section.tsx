@@ -1,0 +1,144 @@
+'use client'
+
+import { useState, useTransition } from 'react'
+import { Plus, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import type { BookingPageConfig, CustomField } from '@/lib/data/booking-page-config'
+import { updateForms } from '../actions'
+
+function newField(): CustomField {
+  return { id: crypto.randomUUID(), label: '', type: 'text', required: false }
+}
+
+export function FormsSection({ config }: { config: BookingPageConfig }) {
+  const [, startTransition] = useTransition()
+  const [saving, setSaving] = useState(false)
+  const [fields, setFields] = useState<CustomField[]>(config.customFields)
+
+  const dirty = JSON.stringify(fields) !== JSON.stringify(config.customFields)
+
+  function updateField(id: string, patch: Partial<CustomField>) {
+    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+  }
+
+  function removeField(id: string) {
+    setFields((prev) => prev.filter((f) => f.id !== id))
+  }
+
+  function handleSave() {
+    setSaving(true)
+    startTransition(async () => {
+      const result = await updateForms({ customFields: fields })
+      setSaving(false)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Form fields saved.')
+    })
+  }
+
+  function handleCancel() {
+    setFields(config.customFields)
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Forms</h2>
+        <p className="text-sm text-muted-foreground">
+          Extra fields shown on the contact step, beyond name, email, and phone.
+        </p>
+      </div>
+
+      <Card>
+        <CardContent className="space-y-4 p-4">
+          {fields.length === 0 && (
+            <p className="text-sm text-muted-foreground">No custom fields yet.</p>
+          )}
+
+          {fields.map((field) => (
+            <div key={field.id} className="space-y-3 rounded-md border p-3">
+              <div className="flex items-center gap-2">
+                <Input
+                  value={field.label}
+                  onChange={(e) => updateField(field.id, { label: e.target.value })}
+                  placeholder="Field label"
+                  className="flex-1"
+                />
+                <Select
+                  value={field.type}
+                  onValueChange={(value) => updateField(field.id, { type: value as CustomField['type'] })}
+                >
+                  <SelectTrigger className="w-32">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="text">Text</SelectItem>
+                    <SelectItem value="dropdown">Dropdown</SelectItem>
+                    <SelectItem value="checkbox">Checkbox</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeField(field.id)}
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+
+              {field.type === 'dropdown' && (
+                <Input
+                  value={(field.options ?? []).join(', ')}
+                  onChange={(e) =>
+                    updateField(field.id, {
+                      options: e.target.value
+                        .split(',')
+                        .map((o) => o.trim())
+                        .filter(Boolean),
+                    })
+                  }
+                  placeholder="Options, comma separated"
+                />
+              )}
+
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Required</p>
+                <Switch
+                  checked={field.required}
+                  onCheckedChange={(checked) => updateField(field.id, { required: checked })}
+                />
+              </div>
+            </div>
+          ))}
+
+          <Button
+            type="button"
+            variant="outline"
+            className="gap-1.5"
+            onClick={() => setFields((prev) => [...prev, newField()])}
+          >
+            <Plus className="size-4" />
+            Add field
+          </Button>
+        </CardContent>
+      </Card>
+
+      <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
+    </div>
+  )
+}
