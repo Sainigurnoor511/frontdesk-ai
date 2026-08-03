@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import Image from 'next/image'
+import { LogOut } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,11 +11,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { logOut } from '@/app/(auth)/actions'
-
-const INCLUDED_MINUTES = 30
-const USED_MINUTES = 0
-const remainingMinutes = INCLUDED_MINUTES - USED_MINUTES
-const usedPercent = Math.round((USED_MINUTES / INCLUDED_MINUTES) * 100)
 
 function UsageRing({ percent, avatarUrl }: { percent: number; avatarUrl: string | null }) {
   const radius = 15
@@ -72,7 +68,7 @@ export function NavUser({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="outline-none">
-        <UsageRing percent={usedPercent} avatarUrl={avatarUrl} />
+        <UsageRing percent={0} avatarUrl={avatarUrl} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <div className="px-2 py-1.5">
@@ -80,22 +76,13 @@ export function NavUser({
           <p className="text-xs text-muted-foreground">{orgName}</p>
         </div>
         <DropdownMenuSeparator />
-        <div className="space-y-2 px-2 py-2">
-          <p className="text-sm font-medium">Balance</p>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Included usage</span>
-            <span>{INCLUDED_MINUTES} min</span>
-          </div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Remaining</span>
-            <span>{remainingMinutes} min</span>
-          </div>
-        </div>
-        <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/settings" />}>Settings</DropdownMenuItem>
         <DropdownMenuItem disabled>Dark mode (coming soon)</DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => logOut()}>Log out</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
+          <LogOut />
+          Log out
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
