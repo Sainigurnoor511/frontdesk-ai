@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Inter, Geist, Geist_Mono, Roboto_Condensed, Bitcount_Prop_Single } from "next/font/google";
+import localFont from "next/font/local";
+import { Inter, Geist, Geist_Mono, Roboto_Condensed } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -23,9 +24,11 @@ const robotoCondensed = Roboto_Condensed({
   subsets: ["latin"],
 });
 
-const bitcountPropSingle = Bitcount_Prop_Single({
+const bitcountPropSingle = localFont({
+  src: "./fonts/bitcount-prop-single-latin.woff2",
+  weight: "100 900",
   variable: "--font-bitcount",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
