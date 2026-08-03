@@ -1,5 +1,6 @@
 'use client'
 
+import Image from 'next/image'
 import { useMemo, useState, useTransition } from 'react'
 import {
   Plug,
@@ -8,6 +9,8 @@ import {
   PhoneCall,
   PlugZap,
   Bot,
+  Webhook,
+  PhoneForwarded,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -32,12 +35,43 @@ import { cn } from '@/lib/utils'
 import {
   integrationCatalog,
   integrationCategories,
+  getIntegrationIconPath,
   type Integration,
   type IntegrationCategory,
 } from '@/lib/data/integration-catalog'
 import { enableIntegration, disableIntegration } from './actions'
 
 const CATEGORY_ALL = 'All integrations'
+
+const fallbackIcons: Record<string, typeof Bot> = {
+  'webhook-tool': Webhook,
+  'sip-trunk': PhoneForwarded,
+}
+
+function IntegrationIcon({
+  slug,
+  className,
+}: {
+  slug: string
+  className?: string
+}) {
+  const iconPath = getIntegrationIconPath(slug)
+  if (!iconPath) {
+    const FallbackIcon = fallbackIcons[slug] ?? Bot
+    return <FallbackIcon className={cn('text-muted-foreground', className)} />
+  }
+  return (
+    <Image
+      src={iconPath}
+      alt=""
+      aria-hidden="true"
+      width={24}
+      height={24}
+      unoptimized
+      className={cn('object-contain', className)}
+    />
+  )
+}
 
 export function IntegrationsClient({
   enabledIntegrationSlugs,
@@ -209,7 +243,7 @@ export function IntegrationsClient({
             <Card key={integration.slug}>
               <CardContent className="flex items-start gap-3">
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted">
-                  <Bot className="h-4 w-4 text-muted-foreground" />
+                  <IntegrationIcon slug={integration.slug} className="h-4 w-4" />
                 </div>
                 <div className="min-w-0 flex-1 space-y-0.5">
                   <p className="font-medium">{integration.name}</p>
@@ -290,7 +324,7 @@ export function IntegrationsClient({
                       className="flex items-start gap-3 rounded-lg border p-3 text-left transition-colors hover:bg-muted/50"
                     >
                       <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                        <Bot className="h-4 w-4 text-muted-foreground" />
+                        <IntegrationIcon slug={integration.slug} className="h-4 w-4" />
                       </div>
                       <div className="min-w-0 flex-1 space-y-0.5">
                         <div className="flex items-center gap-1.5">
@@ -332,7 +366,10 @@ export function IntegrationsClient({
               <DialogHeader>
                 <div className="flex items-center gap-3">
                   <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-                    <Bot className="h-5 w-5 text-muted-foreground" />
+                    <IntegrationIcon
+                      slug={selectedIntegration.slug}
+                      className="h-5 w-5"
+                    />
                   </div>
                   <div className="min-w-0">
                     <DialogTitle>{selectedIntegration.name}</DialogTitle>

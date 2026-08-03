@@ -195,6 +195,31 @@ export const integrationCatalog: Integration[] = [
   },
 ]
 
+const integrationIconPaths: Record<string, string> = {
+  calendly: '/integrations/calendly.svg',
+  'google-calendar': '/integrations/google-calendar.svg',
+  hubspot: '/integrations/hubspot.svg',
+  jotform: '/integrations/jotform.svg',
+  mailgun: '/integrations/mailgun.svg',
+  make: '/integrations/make.svg',
+  'mcp-server': '/integrations/mcp.svg',
+  'microsoft-calendar': '/integrations/microsoft-calendar.svg',
+  ringcentral: '/integrations/ringcentral.svg',
+  salesforce: '/integrations/salesforce.svg',
+  sendgrid: '/integrations/sendgrid.svg',
+  slack: '/integrations/slack.svg',
+  stripe: '/integrations/stripe.svg',
+  twilio: '/integrations/twilio.svg',
+  typeform: '/integrations/typeform.svg',
+  zapier: '/integrations/zapier.svg',
+  zendesk: '/integrations/zendesk.svg',
+  'zoho-crm': '/integrations/zoho-crm.svg',
+}
+
+export function getIntegrationIconPath(slug: string): string | undefined {
+  return integrationIconPaths[slug]
+}
+
 export function getIntegrationBySlug(slug: string): Integration | undefined {
   return integrationCatalog.find((integration) => integration.slug === slug)
 }

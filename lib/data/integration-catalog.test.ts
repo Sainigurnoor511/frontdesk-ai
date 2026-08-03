@@ -1,5 +1,11 @@
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { integrationCatalog, getIntegrationBySlug } from './integration-catalog'
+import {
+  integrationCatalog,
+  getIntegrationBySlug,
+  getIntegrationIconPath,
+} from './integration-catalog'
 
 describe('integration catalog data', () => {
   it('has at least 15 integrations', () => {
@@ -31,5 +37,25 @@ describe('integration catalog data', () => {
 
   it('getIntegrationBySlug returns undefined for an unknown slug', () => {
     expect(getIntegrationBySlug('does-not-exist')).toBeUndefined()
+  })
+
+  it('every integration with an icon path has an icon file in public/integrations', () => {
+    const brandedSlugs = integrationCatalog.filter(
+      (integration) => !['sip-trunk', 'webhook-tool'].includes(integration.slug)
+    )
+    expect(brandedSlugs.length).toBe(18)
+    for (const integration of brandedSlugs) {
+      const iconPath = getIntegrationIconPath(integration.slug)
+      expect(iconPath).toBeDefined()
+      expect(
+        existsSync(join(process.cwd(), 'public', iconPath as string))
+      ).toBe(true)
+    }
+  })
+
+  it('tool integrations rendered with lucide icons have no icon path', () => {
+    for (const slug of ['sip-trunk', 'webhook-tool']) {
+      expect(getIntegrationIconPath(slug)).toBeUndefined()
+    }
   })
 })
