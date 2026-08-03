@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Star, Plus } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Star } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -26,14 +25,21 @@ import {
   updateAgentGeneral,
   type VoiceSearchResult,
 } from './actions'
-import type { AgentDetail, Agent } from '@/lib/data/agents'
+import type { AgentDetail } from '@/lib/data/agents'
 
 const GENDER_OPTIONS = ['male', 'female'] as const
 const AGE_OPTIONS = ['young', 'middle-aged', 'old'] as const
 const ALL_VALUE = '__all'
 
-export function VoicesTab({ agent, agents }: { agent: AgentDetail; agents: Agent[] }) {
-  const [selectedAgentId, setSelectedAgentId] = useState(agent.id)
+export function VoicesTab({
+  agent,
+  createOpen,
+  onCreateOpenChange,
+}: {
+  agent: AgentDetail
+  createOpen: boolean
+  onCreateOpenChange: (open: boolean) => void
+}) {
   const [currentVoiceId, setCurrentVoiceId] = useState(agent.voice_id ?? '')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VoiceSearchResult[]>([])
@@ -42,7 +48,6 @@ export function VoicesTab({ agent, agents }: { agent: AgentDetail; agents: Agent
   const [genderFilter, setGenderFilter] = useState<string | null>(null)
   const [ageFilter, setAgeFilter] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
-  const [createOpen, setCreateOpen] = useState(false)
   const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -87,7 +92,7 @@ export function VoicesTab({ agent, agents }: { agent: AgentDetail; agents: Agent
 
   async function handleSelectVoice(voiceId: string) {
     setCurrentVoiceId(voiceId)
-    await updateAgentGeneral(selectedAgentId, { voiceId })
+    await updateAgentGeneral(agent.id, { voiceId })
   }
 
   async function handleToggleFavorite(voiceId: string) {
@@ -101,30 +106,6 @@ export function VoicesTab({ agent, agents }: { agent: AgentDetail; agents: Agent
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <Select value={selectedAgentId} onValueChange={(v) => v && setSelectedAgentId(v)}>
-          <SelectTrigger className="w-56">
-            <SelectValue>
-              {(value: string) => {
-                const selected = agents.find((a) => a.id === value)
-                return selected ? (selected.business_name ?? selected.name) : ''
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {agents.map((a) => (
-              <SelectItem key={a.id} value={a.id}>
-                {a.business_name ?? a.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button type="button" onClick={() => setCreateOpen(true)}>
-          <Plus />
-          Create voice
-        </Button>
-      </div>
-
       <p className="text-sm text-muted-foreground">
         Pick how your receptionist sounds. Preview, favorite, and switch anytime.
       </p>
@@ -267,10 +248,10 @@ export function VoicesTab({ agent, agents }: { agent: AgentDetail; agents: Agent
 
       <CreateVoiceDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={onCreateOpenChange}
         onVoiceCreated={(voice) => {
           setCurrentVoiceId(voice.id)
-          void updateAgentGeneral(selectedAgentId, { voiceId: voice.id })
+          void updateAgentGeneral(agent.id, { voiceId: voice.id })
         }}
       />
     </div>

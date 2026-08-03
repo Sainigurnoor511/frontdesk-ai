@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Pencil,
+  Plus,
   ListChecks,
   Users,
   ShieldCheck,
@@ -87,9 +88,12 @@ export function AgentDetailClient({
   initialTab?: string
 }) {
   const router = useRouter()
-  const activeTab = TAB_VALUES.includes(initialTab as (typeof TAB_VALUES)[number])
-    ? (initialTab as (typeof TAB_VALUES)[number])
-    : 'general'
+  const [activeTab, setActiveTab] = useState<(typeof TAB_VALUES)[number]>(
+    TAB_VALUES.includes(initialTab as (typeof TAB_VALUES)[number])
+      ? (initialTab as (typeof TAB_VALUES)[number])
+      : 'general'
+  )
+  const [createVoiceOpen, setCreateVoiceOpen] = useState(false)
 
   // General tab state
   const [voiceId, setVoiceId] = useState(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
@@ -226,10 +230,16 @@ export function AgentDetailClient({
           <Button variant="outline" size="icon" aria-label="Edit receptionist">
             <Pencil />
           </Button>
+          {activeTab === 'voices' && (
+            <Button type="button" onClick={() => setCreateVoiceOpen(true)}>
+              <Plus />
+              Create voice
+            </Button>
+          )}
         </div>
       </div>
 
-      <Tabs defaultValue={activeTab}>
+      <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as (typeof TAB_VALUES)[number])}>
         <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="voices">Voices</TabsTrigger>
@@ -408,7 +418,11 @@ export function AgentDetailClient({
 
         {/* Voices tab */}
         <TabsContent value="voices" className="pt-6">
-          <VoicesTab agent={agent} agents={agents} />
+          <VoicesTab
+            agent={agent}
+            createOpen={createVoiceOpen}
+            onCreateOpenChange={setCreateVoiceOpen}
+          />
         </TabsContent>
 
         {/* Rules tab */}
