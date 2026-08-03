@@ -4,8 +4,9 @@ config({ path: '.env.local' })
 import * as agents from '@livekit/agents'
 import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-openai'
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
-import { buildSystemPrompt } from '@/lib/voice/agent-context'
+import { buildSystemPrompt, buildToneTag } from '@/lib/voice/agent-context'
 import { buildBookingTools } from '@/lib/voice/booking-tools'
+import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { updateConversationStatus } from '@/lib/data/conversations-service'
 
@@ -85,10 +86,18 @@ async function entrypoint(ctx: agents.JobContext) {
       return
     }
 
+    // Newly created accounts have no `voice_id` yet. Falling back to a
+    // deterministic catalog voice (matched to the agent's language) keeps the
+    // caller hearing one consistent voice per call — without a `reference_id`,
+    // Fish Audio picks an unspecified/random voice per TTS request, which is
+    // why fresh default agents used to change voice on every response.
+    const voiceId = agentDetail.voice_id ?? defaultVoiceIdForLanguage(agentDetail.language)
+    const toneTag = buildToneTag(agentDetail.tone_traits)
+
     const session = new agents.AgentSession({
       stt: OpenAISTT.withGroq(),
       llm: OpenAILLM.withGroq({ model: 'llama-3.3-70b-versatile' }),
-      tts: new FishAudioTTS(agentDetail.voice_id ?? undefined),
+      tts: new FishAudioTTS(voiceId, { tag: toneTag }),
     })
 
     ctx.room.on('disconnected', () => {

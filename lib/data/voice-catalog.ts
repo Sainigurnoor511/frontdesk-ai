@@ -36,6 +36,24 @@ export function normalizeLanguageCode(value: string): string {
   return LEGACY_LABEL_TO_CODE[value.toLowerCase()] ?? value
 }
 
+/**
+ * Deterministic default TTS voice for agents that have no `voice_id` set yet
+ * (e.g. newly created accounts). Without a `reference_id`, Fish Audio falls
+ * back to an unspecified/random voice per request — which is why a fresh
+ * default agent sounds different on every turn. Resolve a fixed catalog voice
+ * (matched to the agent's language, falling back to English) instead.
+ */
+export function defaultVoiceIdForLanguage(
+  language: string | null | undefined
+): string {
+  const code = normalizeLanguageCode(language ?? 'en')
+  return (
+    voiceCatalog.find((voice) => voice.language === code)?.id ??
+    voiceCatalog.find((voice) => voice.language === 'en')?.id ??
+    voiceCatalog[0].id
+  )
+}
+
 export const languageOptions: LanguageOption[] = [
   { code: 'en', label: 'English', flag: '🇬🇧', countryCode: 'gb' },
   { code: 'es', label: 'Spanish', flag: '🇪🇸', countryCode: 'es' },

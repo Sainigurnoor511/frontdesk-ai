@@ -1,6 +1,19 @@
 import type { AgentDetail } from '@/lib/data/agents'
 
 /**
+ * Maps the agent's tone & personality traits to a Fish Audio S2 inline tag
+ * (e.g. `['Friendly', 'Warm']` → `[friendly, warm]`). S2 interprets the tag as
+ * natural-language delivery direction for everything that follows it, which is
+ * exactly the "what kind of receptionist is this" expressiveness we want — the
+ * LLM drives *what* is said, the tag drives *how* it sounds.
+ */
+export function buildToneTag(toneTraits: string[]): string | null {
+  const traits = toneTraits.map((trait) => trait.trim().toLowerCase()).filter(Boolean)
+  if (traits.length === 0) return null
+  return `[${traits.join(', ')}]`
+}
+
+/**
  * Builds the system prompt handed to the LLM for a voice session, from the
  * agent's configured persona fields. Field names match `AgentDetail` in
  * `lib/data/agents.ts` exactly (verified against that file, not guessed).

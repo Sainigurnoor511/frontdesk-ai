@@ -4,6 +4,7 @@ import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import { scanRequestSchema, createAgentSchema, type ScanRequestInput, type CreateAgentInput } from '@/lib/validations/agent'
 import { scanWebsiteQueue } from '@/lib/queue/queues/scan-website'
 import type { ExtractedBusinessInfo } from '@/lib/providers/llm/types'
+import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
 import { redirect } from 'next/navigation'
 
 export async function startWebsiteScan(
@@ -96,6 +97,7 @@ export async function createAgent(input: CreateAgentInput): Promise<{ error: str
       hold_music: parsed.data.holdMusic,
       greeting_prompt: parsed.data.greetingPrompt,
       personality_notes: parsed.data.personalityNotes,
+      voice_id: defaultVoiceIdForLanguage(parsed.data.language),
     })
     .select('id')
     .single()

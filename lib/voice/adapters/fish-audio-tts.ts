@@ -1,10 +1,53 @@
 import { AudioByteStream, shortuuid, tts, type APIConnectOptions } from '@livekit/agents'
 
+const FISH_AUDIO_API_URL = 'https://api.fish.audio/v1/tts'
+const FISH_AUDIO_STREAM_URL = 'https://api.fish.audio/v1/tts/stream/with-timestamp'
+
+/**
+ * Decodes Fish Audio's SSE streaming response (`/v1/tts/stream/with-timestamp`)
+ * into raw audio bytes. Each `data:` event is JSON with an `audio_base64`
+ * field; base64-decode and enqueue so audio can play as soon as the first
+ * chunk is rendered, instead of waiting for the whole utterance.
+ *
+ * Enabled with `FISH_AUDIO_TTS_STREAMING=1` — this is the biggest lever for
+ * time-to-first-audio, but it's opt-in until the streaming endpoint's behavior
+ * with the free tier has been confirmed against a live account.
+ */
+function createSseAudioDecoder(): TransformStream<Uint8Array, Uint8Array> {
+  const decoder = new TextDecoder()
+  let buffer = ''
+  return new TransformStream({
+    transform(chunk, controller) {
+      buffer += decoder.decode(chunk, { stream: true })
+      const events = buffer.split('\n\n')
+      buffer = events.pop() ?? ''
+      for (const event of events) {
+        for (const line of event.split('\n')) {
+          if (!line.startsWith('data:')) continue
+          const payload = line.slice(5).trim()
+          if (!payload) continue
+          try {
+            const parsed = JSON.parse(payload) as { audio_base64?: string }
+            if (parsed.audio_base64) {
+              controller.enqueue(Buffer.from(parsed.audio_base64, 'base64'))
+            }
+          } catch {
+            // Malformed event; ignore and keep streaming.
+          }
+        }
+      }
+    },
+  })
+}
+
 export async function synthesizeSpeech(
   text: string,
-  voiceId?: string
+  voiceId?: string,
+  tag?: string | null,
+  signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const response = await fetch('https://api.fish.audio/v1/tts', {
+  const streaming = process.env.FISH_AUDIO_TTS_STREAMING === '1'
+  const response = await fetch(streaming ? FISH_AUDIO_STREAM_URL : FISH_AUDIO_API_URL, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}`,
@@ -12,18 +55,20 @@ export async function synthesizeSpeech(
       model: 's2.1-pro-free',
     },
     body: JSON.stringify({
-      text,
+      text: tag ? `${tag} ${text}` : text,
       format: 'pcm',
       sample_rate: 24000,
+      latency: 'balanced',
       ...(voiceId ? { reference_id: voiceId } : {}),
     }),
+    ...(signal ? { signal } : {}),
   })
 
   if (!response.ok || !response.body) {
     throw new Error(`Fish Audio TTS request failed: ${response.status}`)
   }
 
-  return response.body
+  return streaming ? response.body.pipeThrough(createSseAudioDecoder()) : response.body
 }
 
 const FISH_AUDIO_TTS_SAMPLE_RATE = 24000
@@ -50,7 +95,10 @@ export class FishAudioTTS extends tts.TTS {
     return 'fish.audio'
   }
 
-  constructor(private readonly voiceId?: string) {
+  constructor(
+    private readonly voiceId?: string,
+    private readonly options: { tag?: string | null } = {}
+  ) {
     super(FISH_AUDIO_TTS_SAMPLE_RATE, FISH_AUDIO_TTS_CHANNELS, { streaming: false })
   }
 
@@ -62,7 +110,14 @@ export class FishAudioTTS extends tts.TTS {
     const signal = abortSignal
       ? AbortSignal.any([abortSignal, this.abortController.signal])
       : this.abortController.signal
-    return new FishAudioChunkedStream(this, text, this.voiceId, connOptions, signal)
+    return new FishAudioChunkedStream(
+      this,
+      text,
+      this.voiceId,
+      this.options.tag,
+      connOptions,
+      signal
+    )
   }
 
   stream(): tts.SynthesizeStream {
@@ -81,6 +136,7 @@ class FishAudioChunkedStream extends tts.ChunkedStream {
     ttsInstance: FishAudioTTS,
     text: string,
     private readonly voiceId: string | undefined,
+    private readonly tag: string | null | undefined,
     connOptions?: APIConnectOptions,
     abortSignal?: AbortSignal
   ) {
@@ -89,7 +145,12 @@ class FishAudioChunkedStream extends tts.ChunkedStream {
 
   protected async run(): Promise<void> {
     try {
-      const stream = await synthesizeSpeech(this.inputText, this.voiceId)
+      const stream = await synthesizeSpeech(
+        this.inputText,
+        this.voiceId,
+        this.tag,
+        this.abortSignal
+      )
       const reader = stream.getReader()
       const requestId = shortuuid()
       const audioByteStream = new AudioByteStream(
