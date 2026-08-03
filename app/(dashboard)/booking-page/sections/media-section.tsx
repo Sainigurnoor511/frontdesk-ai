@@ -9,6 +9,7 @@ import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import { createClient } from '@/lib/supabase/client'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateMedia } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 export function MediaSection({
   organizationId,
@@ -17,6 +18,7 @@ export function MediaSection({
   organizationId: string
   config: BookingPageConfig
 }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [uploadingImage, setUploadingImage] = useState(false)
@@ -25,6 +27,15 @@ export function MediaSection({
   const [backgroundVideoUrl, setBackgroundVideoUrl] = useState(config.backgroundVideoUrl)
   const imageInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
+
+  function setBackgroundImageUrlDraft(url: string | null) {
+    setBackgroundImageUrl(url)
+    reportDraft({ config: { backgroundImageUrl: url } })
+  }
+  function setBackgroundVideoUrlDraft(url: string | null) {
+    setBackgroundVideoUrl(url)
+    reportDraft({ config: { backgroundVideoUrl: url } })
+  }
 
   const dirty =
     backgroundImageUrl !== config.backgroundImageUrl || backgroundVideoUrl !== config.backgroundVideoUrl
@@ -103,7 +114,7 @@ export function MediaSection({
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) void uploadFile(file, 'background-image', setBackgroundImageUrl, setUploadingImage)
+                  if (file) void uploadFile(file, 'background-image', setBackgroundImageUrlDraft, setUploadingImage)
                 }}
               />
               <Button
@@ -115,7 +126,7 @@ export function MediaSection({
                 {uploadingImage ? 'Uploading…' : 'Upload image'}
               </Button>
               {backgroundImageUrl && (
-                <Button type="button" variant="ghost" onClick={() => setBackgroundImageUrl(null)}>
+                <Button type="button" variant="ghost" onClick={() => setBackgroundImageUrlDraft(null)}>
                   Remove
                 </Button>
               )}
@@ -137,7 +148,7 @@ export function MediaSection({
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0]
-                  if (file) void uploadFile(file, 'background-video', setBackgroundVideoUrl, setUploadingVideo)
+                  if (file) void uploadFile(file, 'background-video', setBackgroundVideoUrlDraft, setUploadingVideo)
                 }}
               />
               <Button
@@ -149,7 +160,7 @@ export function MediaSection({
                 {uploadingVideo ? 'Uploading…' : 'Upload video'}
               </Button>
               {backgroundVideoUrl && (
-                <Button type="button" variant="ghost" onClick={() => setBackgroundVideoUrl(null)}>
+                <Button type="button" variant="ghost" onClick={() => setBackgroundVideoUrlDraft(null)}>
                   Remove
                 </Button>
               )}

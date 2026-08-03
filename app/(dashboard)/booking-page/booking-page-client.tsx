@@ -22,15 +22,9 @@ import { FormsSection } from './sections/forms-section'
 import { ChecklistSection } from './sections/checklist-section'
 import { SchedulingSection } from './sections/scheduling-section'
 import { HistorySection } from './sections/history-section'
+import { PreviewDraftProvider } from './preview-draft-context'
+import { PreviewPane } from './preview-pane'
 import { updateBookingPageEnabled, toggleServiceOnBookingPage } from './actions'
-
-function slugify(name: string) {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-}
 
 function formatPrice(price: number) {
   return `$${price.toFixed(2)}`
@@ -39,6 +33,7 @@ function formatPrice(price: number) {
 export function BookingPageClient({
   organizationId,
   organizationName,
+  organizationSlug,
   settings,
   services,
   businessProfile,
@@ -46,6 +41,7 @@ export function BookingPageClient({
 }: {
   organizationId: string
   organizationName: string
+  organizationSlug: string
   settings: OrganizationSettings
   services: Service[]
   businessProfile: BusinessProfile
@@ -65,12 +61,7 @@ export function BookingPageClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  // TODO: organizations table has no `slug` column yet. Using a lowercase-dashed
-  // display slug derived from the org name (falling back to the org id) as a
-  // stand-in. A real public `/book/[slug]` route with a persisted, unique slug
-  // is a follow-up feature.
-  const slug = slugify(organizationName) || organizationId
-  const bookingUrl = `yourapp.com/book/${slug}`
+  const bookingUrl = `yourapp.com/book/${organizationSlug}`
   const embedSnippet = `<iframe src="https://${bookingUrl}" width="100%" height="800" frameborder="0"></iframe>`
 
   function handleToggleEnabled(checked: boolean) {
@@ -105,63 +96,76 @@ export function BookingPageClient({
         </div>
       )}
 
-      <div className="flex gap-6">
-        <EditorSidebar active={section} onSelect={setSection} />
+      <PreviewDraftProvider>
+        <div className="flex gap-6">
+          <EditorSidebar active={section} onSelect={setSection} />
 
-        <div className="min-w-0 flex-1">
-          {section === 'global' && (
-            <div className="space-y-6">
-              <GlobalSection bookingUrl={bookingUrl} embedSnippet={embedSnippet} config={config} />
+          <div className="min-w-0 flex-1 basis-1/2">
+            {section === 'global' && (
+              <div className="space-y-6">
+                <GlobalSection bookingUrl={bookingUrl} embedSnippet={embedSnippet} config={config} />
 
-              <div className="space-y-3">
-                <div>
-                  <h3 className="text-sm font-semibold">Services shown on this page</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Choose which services clients can book from your public booking page.
-                  </p>
+                <div className="space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold">Services shown on this page</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Choose which services clients can book from your public booking page.
+                    </p>
+                  </div>
+
+                  {services.length === 0 ? (
+                    <Card>
+                      <CardContent className="p-4 text-sm text-muted-foreground">
+                        No services yet.{' '}
+                        <Link href="/business?tab=services" className="text-foreground underline">
+                          Add services in Business
+                        </Link>{' '}
+                        to make them bookable online.
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-0">
+                        <ul className="divide-y">
+                          {services.map((service) => (
+                            <ServiceRow key={service.id} service={service} />
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+                  )}
                 </div>
-
-                {services.length === 0 ? (
-                  <Card>
-                    <CardContent className="p-4 text-sm text-muted-foreground">
-                      No services yet.{' '}
-                      <Link href="/business?tab=services" className="text-foreground underline">
-                        Add services in Business
-                      </Link>{' '}
-                      to make them bookable online.
-                    </CardContent>
-                  </Card>
-                ) : (
-                  <Card>
-                    <CardContent className="p-0">
-                      <ul className="divide-y">
-                        {services.map((service) => (
-                          <ServiceRow key={service.id} service={service} />
-                        ))}
-                      </ul>
-                    </CardContent>
-                  </Card>
-                )}
               </div>
-            </div>
-          )}
+            )}
 
-          {section === 'theme' && (
-            <ThemeSection organizationName={organizationName} settings={settings} />
-          )}
-          {section === 'typography' && <TypographySection config={config} />}
-          {section === 'branding' && (
-            <BrandingSection organizationId={organizationId} config={config} />
-          )}
-          {section === 'calendar' && <CalendarSection businessProfile={businessProfile} />}
-          {section === 'layout' && <LayoutSection config={config} />}
-          {section === 'media' && <MediaSection organizationId={organizationId} config={config} />}
-          {section === 'forms' && <FormsSection config={config} />}
-          {section === 'checklist' && <ChecklistSection config={config} />}
-          {section === 'scheduling' && <SchedulingSection />}
-          {section === 'history' && <HistorySection />}
+            {section === 'theme' && (
+              <ThemeSection organizationName={organizationName} settings={settings} />
+            )}
+            {section === 'typography' && <TypographySection config={config} />}
+            {section === 'branding' && (
+              <BrandingSection organizationId={organizationId} config={config} />
+            )}
+            {section === 'calendar' && <CalendarSection businessProfile={businessProfile} />}
+            {section === 'layout' && <LayoutSection config={config} />}
+            {section === 'media' && <MediaSection organizationId={organizationId} config={config} />}
+            {section === 'forms' && <FormsSection config={config} />}
+            {section === 'checklist' && <ChecklistSection config={config} />}
+            {section === 'scheduling' && <SchedulingSection />}
+            {section === 'history' && <HistorySection />}
+          </div>
+
+          <div className="min-w-0 flex-1 basis-1/2">
+            <PreviewPane
+              slug={organizationSlug}
+              initialDraft={{
+                theme: settings.bookingPageTheme,
+                accent: settings.bookingPageAccent,
+                config,
+              }}
+            />
+          </div>
         </div>
-      </div>
+      </PreviewDraftProvider>
     </div>
   )
 }

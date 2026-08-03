@@ -23,6 +23,7 @@ import {
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateGlobalBookingFlow } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 export function GlobalSection({
   bookingUrl,
@@ -33,6 +34,7 @@ export function GlobalSection({
   embedSnippet: string
   config: BookingPageConfig
 }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [showStaffSelection, setShowStaffSelection] = useState(config.showStaffSelection)
@@ -41,6 +43,23 @@ export function GlobalSection({
   const [autoGreet, setAutoGreet] = useState(config.autoGreetOnLoad)
   const [showPhoneFallback, setShowPhoneFallback] = useState(config.showPhoneFallback)
   const [callWidgetPosition, setCallWidgetPosition] = useState(config.callWidgetPosition)
+
+  function setShowReceptionistDraft(value: boolean) {
+    setShowReceptionist(value)
+    reportDraft({ config: { showReceptionistOnBookingPage: value } })
+  }
+  function setReceptionistOnlyDraft(value: boolean) {
+    setReceptionistOnly(value)
+    reportDraft({ config: { receptionistOnly: value } })
+  }
+  function setShowPhoneFallbackDraft(value: boolean) {
+    setShowPhoneFallback(value)
+    reportDraft({ config: { showPhoneFallback: value } })
+  }
+  function setCallWidgetPositionDraft(value: typeof callWidgetPosition) {
+    setCallWidgetPosition(value)
+    reportDraft({ config: { callWidgetPosition: value } })
+  }
 
   const dirty =
     showStaffSelection !== config.showStaffSelection ||
@@ -167,7 +186,7 @@ export function GlobalSection({
                 AI receptionist column beside the booking flow.
               </p>
             </div>
-            <Switch checked={showReceptionist} onCheckedChange={setShowReceptionist} />
+            <Switch checked={showReceptionist} onCheckedChange={setShowReceptionistDraft} />
           </div>
 
           <div className="flex items-center justify-between gap-4">
@@ -177,7 +196,7 @@ export function GlobalSection({
                 Hide the booking flow and show only the receptionist.
               </p>
             </div>
-            <Switch checked={receptionistOnly} onCheckedChange={setReceptionistOnly} />
+            <Switch checked={receptionistOnly} onCheckedChange={setReceptionistOnlyDraft} />
           </div>
 
           <div className="flex items-center justify-between gap-4">
@@ -197,14 +216,14 @@ export function GlobalSection({
                 Display a direct phone number beside the call widget.
               </p>
             </div>
-            <Switch checked={showPhoneFallback} onCheckedChange={setShowPhoneFallback} />
+            <Switch checked={showPhoneFallback} onCheckedChange={setShowPhoneFallbackDraft} />
           </div>
 
           <div className="space-y-2">
             <Label htmlFor="call-widget-position">Call widget position</Label>
             <Select
               value={callWidgetPosition}
-              onValueChange={(value) => setCallWidgetPosition(value as typeof callWidgetPosition)}
+              onValueChange={(value) => setCallWidgetPositionDraft(value as typeof callWidgetPosition)}
             >
               <SelectTrigger id="call-widget-position" className="w-full">
                 <SelectValue />

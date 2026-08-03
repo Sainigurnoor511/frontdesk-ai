@@ -11,6 +11,7 @@ import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import { createClient } from '@/lib/supabase/client'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateBranding } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 export function BrandingSection({
   organizationId,
@@ -19,6 +20,7 @@ export function BrandingSection({
   organizationId: string
   config: BookingPageConfig
 }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -26,6 +28,15 @@ export function BrandingSection({
   const [tagline, setTagline] = useState(config.tagline ?? '')
   const [businessDescription, setBusinessDescription] = useState(config.businessDescription ?? '')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  function setTaglineDraft(value: string) {
+    setTagline(value)
+    reportDraft({ config: { tagline: value.trim() || null } })
+  }
+  function setBusinessDescriptionDraft(value: string) {
+    setBusinessDescription(value)
+    reportDraft({ config: { businessDescription: value.trim() || null } })
+  }
 
   const dirty =
     logoUrl !== config.logoUrl ||
@@ -48,6 +59,7 @@ export function BrandingSection({
 
     const { data } = supabase.storage.from('booking-page-media').getPublicUrl(path)
     setLogoUrl(data.publicUrl)
+    reportDraft({ config: { logoUrl: data.publicUrl } })
   }
 
   function handleSave() {
@@ -119,7 +131,7 @@ export function BrandingSection({
             <Input
               id="tagline"
               value={tagline}
-              onChange={(e) => setTagline(e.target.value)}
+              onChange={(e) => setTaglineDraft(e.target.value)}
               placeholder="Book an appointment or talk to our receptionist."
             />
           </div>
@@ -129,7 +141,7 @@ export function BrandingSection({
             <Textarea
               id="business-description"
               value={businessDescription}
-              onChange={(e) => setBusinessDescription(e.target.value)}
+              onChange={(e) => setBusinessDescriptionDraft(e.target.value)}
               rows={4}
             />
           </div>

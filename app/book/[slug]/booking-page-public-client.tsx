@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Phone } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -42,6 +42,16 @@ const LETTER_SPACING_CLASS: Record<BookingPageConfig['letterSpacing'], string> =
   wide: 'tracking-wide',
 }
 
+/** Posted by the editor's preview pane (see PreviewFrame) to reflect unsaved
+ * edits without a save round-trip. Only present when `previewMode` is true. */
+export const BOOKING_PAGE_PREVIEW_MESSAGE_TYPE = 'booking-page-preview-update'
+export type BookingPagePreviewMessage = {
+  type: typeof BOOKING_PAGE_PREVIEW_MESSAGE_TYPE
+  theme?: 'light' | 'dark'
+  accent?: string
+  config?: Partial<BookingPageConfig>
+}
+
 export function BookingPagePublicClient({
   organizationId,
   organizationName,
@@ -49,9 +59,10 @@ export function BookingPagePublicClient({
   staff,
   agentId,
   agentName,
-  theme = 'light',
-  accent = '#4F46E5',
-  config,
+  theme: initialTheme = 'light',
+  accent: initialAccent = '#4F46E5',
+  config: initialConfig,
+  previewMode = false,
 }: {
   organizationId: string
   organizationName: string
@@ -62,9 +73,32 @@ export function BookingPagePublicClient({
   theme?: 'light' | 'dark'
   accent?: string
   config: BookingPageConfig
+  previewMode?: boolean
 }) {
   const [callOpen, setCallOpen] = useState(false)
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [theme, setTheme] = useState(initialTheme)
+  const [accent, setAccent] = useState(initialAccent)
+  const [config, setConfig] = useState(initialConfig)
+
+  useEffect(() => {
+    if (!previewMode) return
+
+    function handleMessage(event: MessageEvent) {
+      const data = event.data as BookingPagePreviewMessage | undefined
+      if (!data || data.type !== BOOKING_PAGE_PREVIEW_MESSAGE_TYPE) return
+
+      if (data.theme) setTheme(data.theme)
+      if (data.accent) setAccent(data.accent)
+      if (data.config) setConfig((prev) => ({ ...prev, ...data.config }))
+    }
+
+    window.addEventListener('message', handleMessage)
+    // Tell the parent we're ready to receive the first draft snapshot —
+    // otherwise a message posted before this listener mounts is lost.
+    window.parent.postMessage({ type: 'booking-page-preview-ready' }, '*')
+    return () => window.removeEventListener('message', handleMessage)
+  }, [previewMode])
 
   const isDark = theme === 'dark'
   const requireChallenge = Boolean(TURNSTILE_SITE_KEY)

@@ -14,10 +14,12 @@ import {
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateTypography } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 const FONT_OPTIONS = ['system-ui', 'Georgia', 'Inter', 'Merriweather', 'Poppins'] as const
 
 export function TypographySection({ config }: { config: BookingPageConfig }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [headingFont, setHeadingFont] = useState(config.headingFont)
@@ -27,6 +29,35 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
   const [fontWeight, setFontWeight] = useState(config.fontWeight)
   const [lineHeight, setLineHeight] = useState(config.lineHeight)
   const [letterSpacing, setLetterSpacing] = useState(config.letterSpacing)
+
+  function setHeadingFontDraft(value: string) {
+    setHeadingFont(value)
+    reportDraft({ config: { headingFont: value } })
+  }
+  function setBodyFontDraft(value: string) {
+    setBodyFont(value)
+    reportDraft({ config: { bodyFont: value } })
+  }
+  function setHeadingSizeDraft(value: typeof headingSize) {
+    setHeadingSize(value)
+    reportDraft({ config: { headingSize: value } })
+  }
+  function setBodySizeDraft(value: typeof bodySize) {
+    setBodySize(value)
+    reportDraft({ config: { bodySize: value } })
+  }
+  function setFontWeightDraft(value: typeof fontWeight) {
+    setFontWeight(value)
+    reportDraft({ config: { fontWeight: value } })
+  }
+  function setLineHeightDraft(value: typeof lineHeight) {
+    setLineHeight(value)
+    reportDraft({ config: { lineHeight: value } })
+  }
+  function setLetterSpacingDraft(value: typeof letterSpacing) {
+    setLetterSpacing(value)
+    reportDraft({ config: { letterSpacing: value } })
+  }
 
   const dirty =
     headingFont !== config.headingFont ||
@@ -80,7 +111,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="heading-font">Heading font</Label>
-              <Select value={headingFont} onValueChange={(value) => setHeadingFont(value ?? headingFont)}>
+              <Select value={headingFont} onValueChange={(value) => setHeadingFontDraft(value ?? headingFont)}>
                 <SelectTrigger id="heading-font" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -95,7 +126,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="body-font">Body font</Label>
-              <Select value={bodyFont} onValueChange={(value) => setBodyFont(value ?? bodyFont)}>
+              <Select value={bodyFont} onValueChange={(value) => setBodyFontDraft(value ?? bodyFont)}>
                 <SelectTrigger id="body-font" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -113,7 +144,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="heading-size">Heading size</Label>
-              <Select value={headingSize} onValueChange={(v) => setHeadingSize(v as typeof headingSize)}>
+              <Select value={headingSize} onValueChange={(v) => setHeadingSizeDraft(v as typeof headingSize)}>
                 <SelectTrigger id="heading-size" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -127,7 +158,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="body-size">Body size</Label>
-              <Select value={bodySize} onValueChange={(v) => setBodySize(v as typeof bodySize)}>
+              <Select value={bodySize} onValueChange={(v) => setBodySizeDraft(v as typeof bodySize)}>
                 <SelectTrigger id="body-size" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -143,7 +174,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label htmlFor="font-weight">Weight</Label>
-              <Select value={fontWeight} onValueChange={(v) => setFontWeight(v as typeof fontWeight)}>
+              <Select value={fontWeight} onValueChange={(v) => setFontWeightDraft(v as typeof fontWeight)}>
                 <SelectTrigger id="font-weight" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -157,7 +188,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
             </div>
             <div className="space-y-2">
               <Label htmlFor="line-height">Line height</Label>
-              <Select value={lineHeight} onValueChange={(v) => setLineHeight(v as typeof lineHeight)}>
+              <Select value={lineHeight} onValueChange={(v) => setLineHeightDraft(v as typeof lineHeight)}>
                 <SelectTrigger id="line-height" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -172,7 +203,7 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
               <Label htmlFor="letter-spacing">Letter spacing</Label>
               <Select
                 value={letterSpacing}
-                onValueChange={(v) => setLetterSpacing(v as typeof letterSpacing)}
+                onValueChange={(v) => setLetterSpacingDraft(v as typeof letterSpacing)}
               >
                 <SelectTrigger id="letter-spacing" className="w-full">
                   <SelectValue />

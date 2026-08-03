@@ -8,14 +8,33 @@ import { cn } from '@/lib/utils'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateLayout } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 export function LayoutSection({ config }: { config: BookingPageConfig }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [receptionistPosition, setReceptionistPosition] = useState(config.receptionistPosition)
   const [showHeader, setShowHeader] = useState(config.showHeader)
   const [showServiceDescriptions, setShowServiceDescriptions] = useState(config.showServiceDescriptions)
   const [showPrices, setShowPrices] = useState(config.showPrices)
+
+  function setReceptionistPositionDraft(value: typeof receptionistPosition) {
+    setReceptionistPosition(value)
+    reportDraft({ config: { receptionistPosition: value } })
+  }
+  function setShowHeaderDraft(value: boolean) {
+    setShowHeader(value)
+    reportDraft({ config: { showHeader: value } })
+  }
+  function setShowServiceDescriptionsDraft(value: boolean) {
+    setShowServiceDescriptions(value)
+    reportDraft({ config: { showServiceDescriptions: value } })
+  }
+  function setShowPricesDraft(value: boolean) {
+    setShowPrices(value)
+    reportDraft({ config: { showPrices: value } })
+  }
 
   const dirty =
     receptionistPosition !== config.receptionistPosition ||
@@ -64,7 +83,7 @@ export function LayoutSection({ config }: { config: BookingPageConfig }) {
                 <button
                   key={side}
                   type="button"
-                  onClick={() => setReceptionistPosition(side)}
+                  onClick={() => setReceptionistPositionDraft(side)}
                   className={cn(
                     'rounded-md border px-3 py-1.5 text-sm font-medium capitalize transition-colors',
                     receptionistPosition === side
@@ -80,15 +99,15 @@ export function LayoutSection({ config }: { config: BookingPageConfig }) {
 
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium">Show header</p>
-            <Switch checked={showHeader} onCheckedChange={setShowHeader} />
+            <Switch checked={showHeader} onCheckedChange={setShowHeaderDraft} />
           </div>
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium">Show service descriptions</p>
-            <Switch checked={showServiceDescriptions} onCheckedChange={setShowServiceDescriptions} />
+            <Switch checked={showServiceDescriptions} onCheckedChange={setShowServiceDescriptionsDraft} />
           </div>
           <div className="flex items-center justify-between gap-4">
             <p className="text-sm font-medium">Show prices</p>
-            <Switch checked={showPrices} onCheckedChange={setShowPrices} />
+            <Switch checked={showPrices} onCheckedChange={setShowPricesDraft} />
           </div>
         </CardContent>
       </Card>

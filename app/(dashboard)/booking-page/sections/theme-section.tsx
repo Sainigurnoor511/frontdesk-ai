@@ -13,6 +13,7 @@ import {
 } from '@/lib/booking-theme'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import { updateBookingPageAppearance } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 export function ThemeSection({
   organizationName,
@@ -21,10 +22,21 @@ export function ThemeSection({
   organizationName: string
   settings: OrganizationSettings
 }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [theme, setTheme] = useState<'light' | 'dark'>(settings.bookingPageTheme)
   const [accent, setAccent] = useState(settings.bookingPageAccent)
   const [saving, setSaving] = useState(false)
+
+  function selectTheme(value: 'light' | 'dark') {
+    setTheme(value)
+    reportDraft({ theme: value })
+  }
+
+  function selectAccent(value: string) {
+    setAccent(value)
+    reportDraft({ accent: value })
+  }
 
   const dirty =
     theme !== settings.bookingPageTheme || accent.toLowerCase() !== settings.bookingPageAccent.toLowerCase()
@@ -66,7 +78,7 @@ export function ThemeSection({
                 <button
                   key={option.value}
                   type="button"
-                  onClick={() => setTheme(option.value)}
+                  onClick={() => selectTheme(option.value)}
                   className={cn(
                     'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
                     theme === option.value
@@ -88,7 +100,7 @@ export function ThemeSection({
                   key={color}
                   type="button"
                   aria-label={`Accent ${color}`}
-                  onClick={() => setAccent(color)}
+                  onClick={() => selectAccent(color)}
                   className={cn(
                     'size-7 rounded-full border-2 transition-transform hover:scale-110',
                     accent.toLowerCase() === color.toLowerCase()
@@ -105,7 +117,7 @@ export function ThemeSection({
                 <input
                   type="color"
                   value={accent}
-                  onChange={(e) => setAccent(e.target.value)}
+                  onChange={(e) => selectAccent(e.target.value)}
                   className="absolute inset-0 cursor-pointer opacity-0"
                 />
                 +

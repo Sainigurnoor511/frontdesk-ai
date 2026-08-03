@@ -17,24 +17,31 @@ import {
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig, CustomField } from '@/lib/data/booking-page-config'
 import { updateForms } from '../actions'
+import { usePreviewDraft } from '../preview-draft-context'
 
 function newField(): CustomField {
   return { id: crypto.randomUUID(), label: '', type: 'text', required: false }
 }
 
 export function FormsSection({ config }: { config: BookingPageConfig }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [fields, setFields] = useState<CustomField[]>(config.customFields)
 
   const dirty = JSON.stringify(fields) !== JSON.stringify(config.customFields)
 
+  function setFieldsDraft(next: CustomField[]) {
+    setFields(next)
+    reportDraft({ config: { customFields: next } })
+  }
+
   function updateField(id: string, patch: Partial<CustomField>) {
-    setFields((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)))
+    setFieldsDraft(fields.map((f) => (f.id === id ? { ...f, ...patch } : f)))
   }
 
   function removeField(id: string) {
-    setFields((prev) => prev.filter((f) => f.id !== id))
+    setFieldsDraft(fields.filter((f) => f.id !== id))
   }
 
   function handleSave() {
@@ -130,7 +137,7 @@ export function FormsSection({ config }: { config: BookingPageConfig }) {
             type="button"
             variant="outline"
             className="gap-1.5"
-            onClick={() => setFields((prev) => [...prev, newField()])}
+            onClick={() => setFieldsDraft([...fields, newField()])}
           >
             <Plus className="size-4" />
             Add field
