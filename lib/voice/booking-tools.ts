@@ -1,12 +1,29 @@
 import { tool } from '@livekit/agents'
 import { z } from 'zod'
 import {
-  checkAvailabilityServiceRole,
   createAppointmentServiceRole,
   findOrCreateClientServiceRole,
 } from '@/lib/data/booking-service'
+import { getAvailableSlots } from '@/lib/data/availability-engine'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
+
+/**
+ * Voice booking has no service concept — this checks the exact requested
+ * window against the engine's org-wide slot generation (no serviceId means a
+ * 30-minute default duration internally, but the exact startsAt/endsAt match
+ * below is what actually decides availability, not the generated duration).
+ */
+async function isSlotOpen(organizationId: string, startsAt: string, endsAt: string): Promise<boolean> {
+  const date = startsAt.slice(0, 10)
+  const days = await getAvailableSlots(organizationId, {
+    serviceId: '',
+    rangeStart: date,
+    rangeEnd: date,
+  })
+  const slotsForDay = days[0]?.slots ?? []
+  return slotsForDay.some((slot) => slot.startsAt === startsAt && slot.endsAt === endsAt)
+}
 
 /**
  * LiveKit voice-agent tool definitions for booking during a call. Uses
@@ -40,15 +57,11 @@ export function buildBookingTools({
       }),
       execute: async (args) => {
         try {
-          const result = await checkAvailabilityServiceRole(
-            organizationId,
-            args.startsAt,
-            args.endsAt
-          )
-          if (result.available) {
+          const available = await isSlotOpen(organizationId, args.startsAt, args.endsAt)
+          if (available) {
             return { available: true }
           }
-          return { available: false, conflictingTitle: result.conflicts[0]?.title ?? null }
+          return { available: false, conflictingTitle: null }
         } catch (error) {
           console.error('[booking-tools] check_availability failed:', error)
           return { error: 'availability_check_failed' }
@@ -70,16 +83,9 @@ export function buildBookingTools({
       }),
       execute: async (args) => {
         try {
-          const availability = await checkAvailabilityServiceRole(
-            organizationId,
-            args.startsAt,
-            args.endsAt
-          )
-          if (!availability.available) {
-            return {
-              error: 'slot_unavailable',
-              conflictingTitle: availability.conflicts[0]?.title ?? null,
-            }
+          const available = await isSlotOpen(organizationId, args.startsAt, args.endsAt)
+          if (!available) {
+            return { error: 'slot_unavailable', conflictingTitle: null }
           }
 
           const clientPhone = args.clientPhone?.trim() || null

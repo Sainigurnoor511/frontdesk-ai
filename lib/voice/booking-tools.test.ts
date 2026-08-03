@@ -6,9 +6,12 @@ vi.mock('@livekit/agents', () => ({
 }))
 
 vi.mock('@/lib/data/booking-service', () => ({
-  checkAvailabilityServiceRole: vi.fn(),
   findOrCreateClientServiceRole: vi.fn(),
   createAppointmentServiceRole: vi.fn(),
+}))
+
+vi.mock('@/lib/data/availability-engine', () => ({
+  getAvailableSlots: vi.fn(),
 }))
 
 vi.mock('@/lib/data/agents-service', () => ({
@@ -20,10 +23,10 @@ vi.mock('@/lib/email/send-appointment-confirmation', () => ({
 }))
 
 import {
-  checkAvailabilityServiceRole,
   findOrCreateClientServiceRole,
   createAppointmentServiceRole,
 } from '@/lib/data/booking-service'
+import { getAvailableSlots } from '@/lib/data/availability-engine'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 
@@ -43,10 +46,9 @@ describe('check_availability', () => {
   })
 
   it('returns available when the slot is free', async () => {
-    vi.mocked(checkAvailabilityServiceRole).mockResolvedValue({
-      available: true,
-      conflicts: [],
-    })
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      { date: '2026-08-03', slots: [{ startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' }] },
+    ])
 
     const result = await buildTools().check_availability.execute(
       { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
@@ -54,29 +56,21 @@ describe('check_availability', () => {
     )
 
     expect(result).toEqual({ available: true })
-    expect(checkAvailabilityServiceRole).toHaveBeenCalledWith(
-      'org-1',
-      '2026-08-03T14:00:00Z',
-      '2026-08-03T15:00:00Z'
-    )
   })
 
-  it('returns the conflicting appointment title when taken', async () => {
-    vi.mocked(checkAvailabilityServiceRole).mockResolvedValue({
-      available: false,
-      conflicts: [{ id: 'appt-1', title: 'Dentist visit', starts_at: 'x', ends_at: 'y', status: 'confirmed' }],
-    })
+  it('returns available: false when the slot is not open', async () => {
+    vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-03', slots: [] }])
 
     const result = await buildTools().check_availability.execute(
       { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
       executeOpts
     )
 
-    expect(result).toEqual({ available: false, conflictingTitle: 'Dentist visit' })
+    expect(result).toEqual({ available: false, conflictingTitle: null })
   })
 
   it('returns an error result instead of throwing when the check fails', async () => {
-    vi.mocked(checkAvailabilityServiceRole).mockRejectedValue(new Error('db down'))
+    vi.mocked(getAvailableSlots).mockRejectedValue(new Error('db down'))
 
     const result = await buildTools().check_availability.execute(
       { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
@@ -90,10 +84,9 @@ describe('check_availability', () => {
 describe('book_appointment', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(checkAvailabilityServiceRole).mockResolvedValue({
-      available: true,
-      conflicts: [],
-    })
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      { date: '2026-08-03', slots: [{ startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' }] },
+    ])
     vi.mocked(findOrCreateClientServiceRole).mockResolvedValue({ id: 'client-1', isNew: true })
     vi.mocked(createAppointmentServiceRole).mockResolvedValue({ id: 'appt-1' } as never)
     vi.mocked(getAgentByIdServiceRole).mockResolvedValue({
@@ -154,14 +147,11 @@ describe('book_appointment', () => {
   })
 
   it('hard-blocks when the slot is unavailable and never inserts', async () => {
-    vi.mocked(checkAvailabilityServiceRole).mockResolvedValue({
-      available: false,
-      conflicts: [{ id: 'appt-1', title: 'Dentist visit', starts_at: 'x', ends_at: 'y', status: 'confirmed' }],
-    })
+    vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-03', slots: [] }])
 
     const result = await buildTools().book_appointment.execute(args, executeOpts)
 
-    expect(result).toEqual({ error: 'slot_unavailable', conflictingTitle: 'Dentist visit' })
+    expect(result).toEqual({ error: 'slot_unavailable', conflictingTitle: null })
     expect(findOrCreateClientServiceRole).not.toHaveBeenCalled()
     expect(createAppointmentServiceRole).not.toHaveBeenCalled()
   })

@@ -9,35 +9,6 @@ import type { AppointmentRow } from './calendar'
 
 export type { AppointmentRow }
 
-type ConflictRow = Pick<AppointmentRow, 'id' | 'title' | 'starts_at' | 'ends_at' | 'status'>
-
-/**
- * Simple appointment-overlap check (no business-hours/staff/time-off awareness —
- * tracked as out of scope in TODO). Flags any non-cancelled appointment in the
- * org whose `[starts_at, ends_at)` overlaps the requested range.
- */
-export async function checkAvailabilityServiceRole(
-  organizationId: string,
-  startsAt: string,
-  endsAt: string
-): Promise<{ available: boolean; conflicts: ConflictRow[] }> {
-  const supabase = createServiceRoleClient()
-  const { data, error } = await supabase
-    .from('appointments')
-    .select('id, title, starts_at, ends_at, status')
-    .eq('organization_id', organizationId)
-    .neq('status', 'cancelled')
-    .lt('starts_at', endsAt)
-    .gt('ends_at', startsAt)
-
-  if (error) {
-    throw new Error(`Failed to check appointment availability: ${error.message}`)
-  }
-
-  const conflicts = (data ?? []) as unknown as ConflictRow[]
-  return { available: conflicts.length === 0, conflicts }
-}
-
 export type FindOrCreateClientInput = {
   name: string
   phoneNumber: string | null
@@ -48,8 +19,9 @@ export type FindOrCreateClientInput = {
  * Reuse an existing client within the org instead of spawning duplicates every
  * call — dedupes by phone number first (the primary key of a client), then by
  * email as a fallback so a repeat caller without a captured phone doesn't get a
- * fresh row. A new row is only inserted when a phone number is present
- * (`clients.phone_number` is NOT NULL); otherwise this throws.
+ * fresh row. `clients.phone_number` is NOT NULL, so a new row with no phone
+ * captured (e.g. the public booking page's phone-optional contact step) inserts
+ * with an `'unknown'` sentinel rather than failing.
  */
 export async function findOrCreateClientServiceRole(
   organizationId: string,
@@ -78,16 +50,14 @@ export async function findOrCreateClientServiceRole(
     if (existing) return { id: existing.id, isNew: false }
   }
 
-  if (!phone) {
-    throw new Error('A phone number is required to create a client')
-  }
-
   const { data: created, error } = await supabase
     .from('clients')
     .insert({
       organization_id: organizationId,
       name: input.name,
-      phone_number: phone,
+      // `clients.phone_number` is NOT NULL — a booking with no phone (e.g. the
+      // public booking page's phone-optional contact step) still needs a value.
+      phone_number: phone ?? 'unknown',
       email,
     })
     .select('id')
@@ -108,12 +78,14 @@ export type CreateAppointmentServiceInput = {
   startsAt: string
   endsAt: string
   notes?: string | null
+  serviceId?: string | null
+  staffId?: string | null
 }
 
 export async function createAppointmentServiceRole(
   organizationId: string,
-  agentId: string,
-  conversationId: string,
+  agentId: string | null,
+  conversationId: string | null,
   input: CreateAppointmentServiceInput
 ): Promise<AppointmentRow> {
   const supabase = createServiceRoleClient()
@@ -130,6 +102,8 @@ export async function createAppointmentServiceRole(
       starts_at: input.startsAt,
       ends_at: input.endsAt,
       notes: input.notes ?? null,
+      service_id: input.serviceId ?? null,
+      staff_id: input.staffId ?? null,
       status: 'confirmed',
     })
     .select('*')
