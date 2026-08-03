@@ -5,6 +5,7 @@ import * as agents from '@livekit/agents'
 import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-openai'
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildSystemPrompt } from '@/lib/voice/agent-context'
+import { buildBookingTools } from '@/lib/voice/booking-tools'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { updateConversationStatus } from '@/lib/data/conversations-service'
 
@@ -123,7 +124,14 @@ async function entrypoint(ctx: agents.JobContext) {
 
     await session.start({
       room: ctx.room,
-      agent: new agents.Agent({ instructions: buildSystemPrompt(agentDetail) }),
+      agent: new agents.Agent({
+        instructions: buildSystemPrompt(agentDetail),
+        tools: buildBookingTools({
+          organizationId: agentDetail.organization_id,
+          agentId,
+          conversationId,
+        }),
+      }),
     })
 
     // Hard cap enforced worker-side regardless of client behavior — an
