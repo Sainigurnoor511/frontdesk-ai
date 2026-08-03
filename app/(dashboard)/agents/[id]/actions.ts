@@ -130,7 +130,7 @@ If you are unable to fulfill a request, clearly state your limitations and offer
 }
 
 type FishAudioModelResult = {
-  id: string
+  _id: string
   title: string
   description?: string
   languages?: string[]
@@ -167,7 +167,7 @@ export async function searchVoices(
     const age = AGE_TAGS.find((a) => tags.includes(a))
 
     return {
-      id: item.id,
+      id: item._id,
       label: item.title,
       language: item.languages?.[0] ?? 'en',
       previewUrl: item.samples?.[0]?.audio ?? '',

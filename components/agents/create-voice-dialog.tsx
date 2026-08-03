@@ -119,7 +119,12 @@ export function CreateVoiceDialog({
           />
           <Select value={language} onValueChange={(value) => setLanguage(value ?? 'en')}>
             <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a language" />
+              <SelectValue placeholder="Select a language">
+                {(value: string) => {
+                  const lang = languageOptions.find((l) => l.code === value)
+                  return lang ? `${lang.flag} ${lang.label}` : 'Select a language'
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {languageOptions.map((lang) => (

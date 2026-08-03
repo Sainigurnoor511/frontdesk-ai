@@ -182,7 +182,7 @@ describe('searchVoices', () => {
       json: async () => ({
         items: [
           {
-            id: 'abc123',
+            _id: 'abc123',
             title: 'Test Voice',
             languages: ['en'],
             samples: [{ audio: 'https://example.com/sample.mp3' }],
@@ -209,8 +209,8 @@ describe('searchVoices', () => {
       ok: true,
       json: async () => ({
         items: [
-          { id: '1', title: 'A', languages: ['en'], samples: [{ audio: 'a.mp3' }] },
-          { id: '2', title: 'B', languages: ['hi'], samples: [{ audio: 'b.mp3' }] },
+          { _id: '1', title: 'A', languages: ['en'], samples: [{ audio: 'a.mp3' }] },
+          { _id: '2', title: 'B', languages: ['hi'], samples: [{ audio: 'b.mp3' }] },
         ],
       }),
     } as unknown as Response)
@@ -231,7 +231,7 @@ describe('searchVoices', () => {
       json: async () => ({
         items: [
           {
-            id: 'v1',
+            _id: 'v1',
             title: 'Test Voice',
             description: 'A warm narrator',
             languages: ['en'],
@@ -258,7 +258,7 @@ describe('searchVoices', () => {
       json: async () => ({
         items: [
           {
-            id: 'v2',
+            _id: 'v2',
             title: 'Untagged Voice',
             languages: ['en'],
             samples: [{ audio: 'b.mp3' }],

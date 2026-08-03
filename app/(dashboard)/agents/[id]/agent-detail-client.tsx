@@ -4,7 +4,6 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Pencil,
-  Speaker,
   ListChecks,
   Users,
   ShieldCheck,
@@ -46,6 +45,7 @@ import {
 import { VoicePicker } from '@/components/voice/voice-picker'
 import { InstructionsGeneratorPopover } from '@/components/agents/instructions-generator-popover'
 import { CopyButton } from '@/components/ui/copy-button'
+import { VoicesTab } from './voices-tab'
 
 const TONE_TRAITS = [
   'Professional',
@@ -408,16 +408,7 @@ export function AgentDetailClient({
 
         {/* Voices tab */}
         <TabsContent value="voices" className="pt-6">
-          <Card>
-            <CardContent className="flex flex-col items-center gap-2 py-12 text-center">
-              <Speaker className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">Voice library coming soon</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Manage and preview receptionist voices here once the voice catalog integration is
-                wired up. For now, choose a voice from the General tab.
-              </p>
-            </CardContent>
-          </Card>
+          <VoicesTab agent={agent} agents={agents} />
         </TabsContent>
 
         {/* Rules tab */}
