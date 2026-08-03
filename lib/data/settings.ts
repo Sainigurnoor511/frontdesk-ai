@@ -22,6 +22,8 @@ export type OrganizationSettings = {
   featureRentals: boolean
   featureGuides: boolean
   bookingPageEnabled: boolean
+  bookingPageTheme: 'light' | 'dark'
+  bookingPageAccent: string
   language: string
 }
 
@@ -48,6 +50,8 @@ function defaultOrganizationSettings(organizationId: string): OrganizationSettin
     featureRentals: true,
     featureGuides: true,
     bookingPageEnabled: true,
+    bookingPageTheme: 'light',
+    bookingPageAccent: '#4F46E5',
     language: 'en',
   }
 }
@@ -59,7 +63,7 @@ export async function getOrganizationSettings(
   const { data } = await supabase
     .from('organization_settings')
     .select(
-      'id, organization_id, notify_post_call_summary, notify_appointment_reminders, notify_client_bookings, notify_staff_bookings, feature_services, feature_staff, feature_assets, feature_products, feature_availability, feature_custom_timezones, feature_booking_page, feature_messages, feature_faq, feature_appointments, feature_home_mobile, feature_group_sessions, feature_rentals, feature_guides, booking_page_enabled, language'
+      'id, organization_id, notify_post_call_summary, notify_appointment_reminders, notify_client_bookings, notify_staff_bookings, feature_services, feature_staff, feature_assets, feature_products, feature_availability, feature_custom_timezones, feature_booking_page, feature_messages, feature_faq, feature_appointments, feature_home_mobile, feature_group_sessions, feature_rentals, feature_guides, booking_page_enabled, booking_page_theme, booking_page_accent, language'
     )
     .eq('organization_id', organizationId)
     .maybeSingle()
@@ -88,6 +92,9 @@ export async function getOrganizationSettings(
     featureRentals: data.feature_rentals,
     featureGuides: data.feature_guides,
     bookingPageEnabled: data.booking_page_enabled,
+    bookingPageTheme:
+      data.booking_page_theme === 'dark' ? 'dark' : 'light',
+    bookingPageAccent: data.booking_page_accent,
     language: data.language,
   }
 }

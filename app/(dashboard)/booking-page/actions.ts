@@ -4,7 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import {
   updateBookingPageSettingsSchema,
+  updateBookingPageAppearanceSchema,
   type UpdateBookingPageSettingsInput,
+  type UpdateBookingPageAppearanceInput,
 } from '@/lib/validations/settings'
 import { z } from 'zod'
 
@@ -57,6 +59,36 @@ export async function updateBookingPageEnabled(
 
   if (error) {
     return { error: 'Could not save booking page settings. Please try again.' }
+  }
+
+  revalidatePath('/booking-page')
+  return { success: true }
+}
+
+export async function updateBookingPageAppearance(
+  input: UpdateBookingPageAppearanceInput
+): Promise<ActionResult> {
+  const parsed = updateBookingPageAppearanceSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const orgResult = await getOrgId(supabase)
+  if ('error' in orgResult) return orgResult
+
+  const { error } = await supabase.from('organization_settings').upsert(
+    {
+      organization_id: orgResult.organizationId,
+      booking_page_theme: parsed.data.bookingPageTheme,
+      booking_page_accent: parsed.data.bookingPageAccent,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'organization_id' }
+  )
+
+  if (error) {
+    return { error: 'Could not save booking page appearance. Please try again.' }
   }
 
   revalidatePath('/booking-page')

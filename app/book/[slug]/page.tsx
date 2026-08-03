@@ -31,6 +31,8 @@ export default async function PublicBookingPage({
       services={services.filter((s) => s.showOnBookingPage)}
       agentId={agent?.id ?? null}
       agentName={agent ? (agent.businessName ?? agent.name) : org.name}
+      theme={settings.bookingPageTheme}
+      accent={settings.bookingPageAccent}
     />
   )
 }

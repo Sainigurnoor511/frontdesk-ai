@@ -30,6 +30,34 @@ export async function startPublicCall(
     headersList.get('x-real-ip') ??
     'unknown'
 
+  // Turnstile is only enforced when the secret key is configured (e.g.
+  // production). Without a configured secret, the widget is never rendered
+  // on the public page, so requiring a token here would break local dev.
+  if (process.env.TURNSTILE_SECRET_KEY) {
+    if (!parsed.data.turnstileToken) {
+      return { error: 'Verification failed. Please refresh and try again.' }
+    }
+
+    const verifyForm = new URLSearchParams()
+    verifyForm.append('secret', process.env.TURNSTILE_SECRET_KEY)
+    verifyForm.append('response', parsed.data.turnstileToken)
+    if (ip && ip !== 'unknown') verifyForm.append('remoteip', ip)
+
+    const verifyResponse = await fetch(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      { method: 'POST', body: verifyForm }
+    )
+
+    if (!verifyResponse.ok) {
+      return { error: 'Verification failed. Please try again.' }
+    }
+
+    const verifyData = (await verifyResponse.json()) as { success?: boolean }
+    if (!verifyData.success) {
+      return { error: 'Verification failed. Please try again.' }
+    }
+  }
+
   const rateLimit = await checkAndConsumeRateLimit(`voice-call:${ip}`, {
     max: MAX_CALLS_PER_HOUR_PER_IP,
     windowSeconds: 3600,

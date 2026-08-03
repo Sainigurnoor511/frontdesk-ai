@@ -24,6 +24,7 @@ export function CallDialog({
   agentName,
   staffPhoneNumber,
   authenticated,
+  turnstileToken,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -32,11 +33,12 @@ export function CallDialog({
   agentName: string
   staffPhoneNumber?: string | null
   authenticated: boolean
+  turnstileToken?: string | null
 }) {
   const { status, agentState, errorMessage, transcript, connect, disconnect } = useVoiceCall(() =>
     authenticated
       ? startDashboardCall({ agentId })
-      : startPublicCall({ organizationId, agentId })
+      : startPublicCall({ organizationId, agentId, turnstileToken: turnstileToken ?? undefined })
   )
 
   const transcriptEndRef = useRef<HTMLDivElement>(null)

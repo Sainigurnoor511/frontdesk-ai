@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import { Copy, ChevronDown, Code } from 'lucide-react'
+import { Copy, ChevronDown, Code, Phone } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -13,9 +13,20 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { cn } from '@/lib/utils'
+import {
+  BOOKING_ACCENT_PRESETS,
+  BOOKING_THEME_OPTIONS,
+  bookingAccentText,
+} from '@/lib/booking-theme'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import type { Service } from '@/lib/data/business'
-import { updateBookingPageEnabled, toggleServiceOnBookingPage } from './actions'
+import {
+  updateBookingPageEnabled,
+  updateBookingPageAppearance,
+  toggleServiceOnBookingPage,
+} from './actions'
 
 function slugify(name: string) {
   return name
@@ -42,6 +53,34 @@ export function BookingPageClient({
 }) {
   const [enabled, setEnabled] = useState(settings.bookingPageEnabled)
   const [, startTransition] = useTransition()
+  const [theme, setTheme] = useState<'light' | 'dark'>(settings.bookingPageTheme)
+  const [accent, setAccent] = useState(settings.bookingPageAccent)
+  const [savingAppearance, setSavingAppearance] = useState(false)
+
+  const appearanceDirty =
+    theme !== settings.bookingPageTheme ||
+    accent.toLowerCase() !== settings.bookingPageAccent.toLowerCase()
+
+  function handleSaveAppearance() {
+    setSavingAppearance(true)
+    startTransition(async () => {
+      const result = await updateBookingPageAppearance({
+        bookingPageTheme: theme,
+        bookingPageAccent: accent,
+      })
+      setSavingAppearance(false)
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      toast.success('Appearance saved.')
+    })
+  }
+
+  function handleCancelAppearance() {
+    setTheme(settings.bookingPageTheme)
+    setAccent(settings.bookingPageAccent)
+  }
 
   // TODO: organizations table has no `slug` column yet. Using a lowercase-dashed
   // display slug derived from the org name (falling back to the org id) as a
@@ -139,6 +178,107 @@ export function BookingPageClient({
           </Collapsible>
         </CardContent>
       </Card>
+
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-semibold">Appearance</h3>
+          <p className="text-sm text-muted-foreground">
+            Customize how your public booking page looks to clients.
+          </p>
+        </div>
+
+        <Card>
+          <CardContent className="space-y-5 p-4">
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Theme</span>
+              <div className="flex items-center gap-2">
+                {BOOKING_THEME_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setTheme(option.value)}
+                    className={cn(
+                      'rounded-md border px-3 py-1.5 text-sm font-medium transition-colors',
+                      theme === option.value
+                        ? 'border-foreground bg-foreground text-background'
+                        : 'border-border text-muted-foreground hover:bg-muted'
+                    )}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Accent color</span>
+              <div className="flex items-center gap-2">
+                {BOOKING_ACCENT_PRESETS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={`Accent ${color}`}
+                    onClick={() => setAccent(color)}
+                    className={cn(
+                      'size-7 rounded-full border-2 transition-transform hover:scale-110',
+                      accent.toLowerCase() === color.toLowerCase()
+                        ? 'border-foreground'
+                        : 'border-transparent'
+                    )}
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+                <label
+                  className="relative flex size-7 cursor-pointer items-center justify-center overflow-hidden rounded-full border border-dashed border-muted-foreground/50 text-[10px] font-medium text-muted-foreground hover:border-foreground"
+                  aria-label="Custom accent color"
+                >
+                  <input
+                    type="color"
+                    value={accent}
+                    onChange={(e) => setAccent(e.target.value)}
+                    className="absolute inset-0 cursor-pointer opacity-0"
+                  />
+                  +
+                </label>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-sm font-medium">Preview</span>
+              <div
+                className={cn(
+                  'flex flex-col items-center gap-3 rounded-xl border p-6',
+                  theme === 'dark' ? 'border-zinc-800 bg-zinc-950' : 'border-border bg-muted/30'
+                )}
+              >
+                <p
+                  className={cn(
+                    'text-sm font-semibold',
+                    theme === 'dark' ? 'text-zinc-100' : 'text-foreground'
+                  )}
+                >
+                  {organizationName}
+                </p>
+                <button
+                  type="button"
+                  className="flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: accent, color: bookingAccentText(accent) }}
+                >
+                  <Phone className="size-4" />
+                  Talk to your receptionist
+                </button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <UnsavedChangesBar
+          show={appearanceDirty}
+          saving={savingAppearance}
+          onSave={handleSaveAppearance}
+          onCancel={handleCancelAppearance}
+        />
+      </div>
 
       <div className="space-y-3">
         <div>

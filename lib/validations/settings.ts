@@ -35,6 +35,14 @@ export const updateBookingPageSettingsSchema = z.object({
 })
 export type UpdateBookingPageSettingsInput = z.infer<typeof updateBookingPageSettingsSchema>
 
+export const updateBookingPageAppearanceSchema = z.object({
+  bookingPageTheme: z.enum(['light', 'dark']),
+  bookingPageAccent: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Accent must be a 6-digit hex color.'),
+})
+export type UpdateBookingPageAppearanceInput = z.infer<typeof updateBookingPageAppearanceSchema>
+
 export const updateLanguageSchema = z.object({
   language: z.string().min(2).max(10),
 })
