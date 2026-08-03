@@ -1,6 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
 
-export async function getEnabledIntegrationsForOrg(): Promise<string[]> {
+export type EnabledIntegration = {
+  slug: string
+  config: Record<string, unknown> | null
+}
+
+export async function getEnabledIntegrationsForOrg(): Promise<EnabledIntegration[]> {
   const supabase = await createClient()
   const {
     data: { user },
@@ -18,11 +23,14 @@ export async function getEnabledIntegrationsForOrg(): Promise<string[]> {
 
   const { data: integrations } = await supabase
     .from('organization_integrations')
-    .select('integration_slug')
+    .select('integration_slug, config')
     .eq('organization_id', member.organization_id)
     .eq('is_enabled', true)
 
   if (!integrations) return []
 
-  return integrations.map((integration) => integration.integration_slug)
+  return integrations.map((integration) => ({
+    slug: integration.integration_slug,
+    config: (integration.config as Record<string, unknown> | null) ?? null,
+  }))
 }

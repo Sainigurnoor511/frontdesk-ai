@@ -5,6 +5,7 @@
 // imported from a worker. All functions take `organizationId` explicitly and
 // never trust an LLM-supplied org id.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
+import { dispatchWebhook } from '@/lib/integrations/webhook'
 import type { AppointmentRow } from './calendar'
 
 export type { AppointmentRow }
@@ -112,6 +113,19 @@ export async function createAppointmentServiceRole(
   if (error || !data) {
     throw new Error(`Failed to create appointment: ${error?.message ?? 'unknown error'}`)
   }
+
+  // Webhook delivery is fire-and-forget and never fails the booking.
+  void dispatchWebhook(organizationId, 'appointment.created', {
+    appointmentId: data.id,
+    title: data.title,
+    clientName: data.client_name,
+    clientPhone: data.client_phone,
+    startsAt: data.starts_at,
+    endsAt: data.ends_at,
+    serviceId: data.service_id,
+    staffId: data.staff_id,
+    source: agentId ? 'voice' : 'public',
+  })
 
   return data as AppointmentRow
 }

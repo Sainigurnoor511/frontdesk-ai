@@ -9,6 +9,7 @@
 // This file only imports `createServiceRoleClient` from `lib/supabase/service-role.ts`,
 // which has no such taint, keeping it safe for both Next.js and worker contexts.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
+import { dispatchWebhook } from '@/lib/integrations/webhook'
 import type { Conversation, TranscriptMessage, CallGoal } from './conversations'
 
 export type { Conversation, TranscriptMessage, CallGoal }
@@ -87,7 +88,8 @@ export async function updateConversationStatus(
     durationSeconds?: number
     endedReason?: string
     transcript?: TranscriptMessage[]
-  }
+  },
+  organizationId?: string
 ): Promise<void> {
   const supabase = createServiceRoleClient()
   const update: Record<string, unknown> = {}
@@ -97,6 +99,16 @@ export async function updateConversationStatus(
   if (patch.durationSeconds !== undefined) update.duration_seconds = patch.durationSeconds
   if (patch.endedReason !== undefined) update.ended_reason = patch.endedReason
   if (patch.transcript !== undefined) update.transcript = patch.transcript
+
+  if (organizationId && patch.status === 'completed') {
+    void dispatchWebhook(organizationId, 'conversation.completed', {
+      conversationId: id,
+      summary: patch.summary ?? null,
+      durationSeconds: patch.durationSeconds ?? null,
+      endedReason: patch.endedReason ?? null,
+      transcript: patch.transcript ?? [],
+    })
+  }
 
   // When transitioning out of 'active' (the terminal-state writes made by the
   // voice worker), guard the write with `WHERE status = 'active'` so a stale

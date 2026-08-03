@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { dispatchWebhook } from '@/lib/integrations/webhook'
 import {
   createAppointmentSchema,
   createTimeOffSchema,
@@ -38,20 +39,35 @@ export async function createAppointment(
     return { error: 'Could not determine organization.' }
   }
 
-  const { error } = await supabase.from('appointments').insert({
-    organization_id: member.organization_id,
-    title: parsed.data.title,
-    client_name: parsed.data.clientName,
-    client_phone: parsed.data.clientPhone || null,
-    starts_at: parsed.data.startsAt,
-    ends_at: parsed.data.endsAt,
-    notes: parsed.data.notes,
-    internal_notes: parsed.data.internalNotes,
-  })
+  const { data: appointment, error } = await supabase
+    .from('appointments')
+    .insert({
+      organization_id: member.organization_id,
+      title: parsed.data.title,
+      client_name: parsed.data.clientName,
+      client_phone: parsed.data.clientPhone || null,
+      starts_at: parsed.data.startsAt,
+      ends_at: parsed.data.endsAt,
+      notes: parsed.data.notes,
+      internal_notes: parsed.data.internalNotes,
+    })
+    .select('id')
+    .single()
 
-  if (error) {
+  if (error || !appointment) {
     return { error: 'Could not create appointment. Please try again.' }
   }
+
+  void dispatchWebhook(member.organization_id, 'appointment.created', {
+    appointmentId: appointment.id,
+    title: parsed.data.title,
+    clientName: parsed.data.clientName,
+    clientPhone: parsed.data.clientPhone || null,
+    startsAt: parsed.data.startsAt,
+    endsAt: parsed.data.endsAt,
+    notes: parsed.data.notes,
+    source: 'dashboard',
+  })
 
   revalidatePath('/calendar')
   return { success: true }
@@ -88,6 +104,10 @@ export async function cancelAppointment(
   if (error) {
     return { error: 'Could not cancel appointment. Please try again.' }
   }
+
+  void dispatchWebhook(member.organization_id, 'appointment.cancelled', {
+    appointmentId: id,
+  })
 
   revalidatePath('/calendar')
   return { success: true }

@@ -8,6 +8,10 @@ vi.mock('@/lib/supabase/service-role', () => ({
   createServiceRoleClient: vi.fn(),
 }))
 
+vi.mock('@/lib/integrations/webhook', () => ({
+  dispatchWebhook: vi.fn(),
+}))
+
 describe('findOrCreateClientServiceRole', () => {
   it('reuses an existing client matched by phone number', async () => {
     const { createServiceRoleClient } = await import('@/lib/supabase/service-role')

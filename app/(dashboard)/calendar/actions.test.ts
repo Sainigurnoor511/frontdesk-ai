@@ -9,6 +9,10 @@ vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
 
+vi.mock('@/lib/integrations/webhook', () => ({
+  dispatchWebhook: vi.fn(),
+}))
+
 function mockSupabase({
   user = { id: 'user-1' } as { id: string } | null,
   organizationId = 'org-1',

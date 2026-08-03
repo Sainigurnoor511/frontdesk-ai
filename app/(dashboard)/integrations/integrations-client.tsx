@@ -16,6 +16,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -39,13 +40,30 @@ import {
   type Integration,
   type IntegrationCategory,
 } from '@/lib/data/integration-catalog'
-import { enableIntegration, disableIntegration } from './actions'
+import type { EnabledIntegration } from '@/lib/data/integrations'
+import {
+  WEBHOOK_SLUG,
+  WEBHOOK_EVENTS,
+  WEBHOOK_EVENT_TYPES,
+  type WebhookEventType,
+} from '@/lib/integrations/webhook-events'
+import {
+  enableIntegration,
+  disableIntegration,
+  configureWebhook,
+} from './actions'
 
 const CATEGORY_ALL = 'All integrations'
 
 const fallbackIcons: Record<string, typeof Bot> = {
   'webhook-tool': Webhook,
   'sip-trunk': PhoneForwarded,
+}
+
+function isWebhookEvent(value: unknown): value is WebhookEventType {
+  return (
+    typeof value === 'string' && (WEBHOOK_EVENT_TYPES as readonly string[]).includes(value)
+  )
 }
 
 function IntegrationIcon({
@@ -74,9 +92,9 @@ function IntegrationIcon({
 }
 
 export function IntegrationsClient({
-  enabledIntegrationSlugs,
+  enabledIntegrations,
 }: {
-  enabledIntegrationSlugs: string[]
+  enabledIntegrations: EnabledIntegration[]
 }) {
   const [search, setSearch] = useState('')
   const [sort, setSort] = useState('recent')
@@ -90,12 +108,23 @@ export function IntegrationsClient({
   const [actionError, setActionError] = useState<string | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  const connectedIntegrations = useMemo(() => {
-    const enabledSet = new Set(enabledIntegrationSlugs)
-    return integrationCatalog.filter((integration) =>
-      enabledSet.has(integration.slug)
-    )
-  }, [enabledIntegrationSlugs])
+  const [webhookUrl, setWebhookUrl] = useState('')
+  const [webhookEvents, setWebhookEvents] = useState<WebhookEventType[]>([])
+  const [webhookSecret, setWebhookSecret] = useState('')
+  const [webhookConfigError, setWebhookConfigError] = useState<string | null>(null)
+
+  const enabledIntegrationSlugs = useMemo(
+    () => new Set(enabledIntegrations.map((integration) => integration.slug)),
+    [enabledIntegrations]
+  )
+
+  const connectedIntegrations = useMemo(
+    () =>
+      integrationCatalog.filter((integration) =>
+        enabledIntegrationSlugs.has(integration.slug)
+      ),
+    [enabledIntegrationSlugs]
+  )
 
   const filteredConnectedIntegrations = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -117,7 +146,7 @@ export function IntegrationsClient({
   }, [activeCategory, browseSearch])
 
   const isSelectedEnabled = selectedIntegration
-    ? enabledIntegrationSlugs.includes(selectedIntegration.slug)
+    ? enabledIntegrationSlugs.has(selectedIntegration.slug)
     : false
 
   function openBrowseDialog() {
@@ -128,6 +157,21 @@ export function IntegrationsClient({
 
   function openIntegrationDialog(integration: Integration) {
     setActionError(null)
+    setWebhookConfigError(null)
+    if (integration.slug === WEBHOOK_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === WEBHOOK_SLUG
+      )?.config
+      setWebhookUrl(typeof config?.url === 'string' ? config.url : '')
+      setWebhookEvents(
+        Array.isArray(config?.events) ? config.events.filter(isWebhookEvent) : []
+      )
+      setWebhookSecret(typeof config?.secret === 'string' ? config.secret : '')
+    } else {
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+    }
     setSelectedIntegration(integration)
   }
 
@@ -156,6 +200,30 @@ export function IntegrationsClient({
       const result = await disableIntegration(slug)
       if ('error' in result) {
         setActionError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function toggleWebhookEvent(value: WebhookEventType) {
+    setWebhookEvents((prev) =>
+      prev.includes(value) ? prev.filter((event) => event !== value) : [...prev, value]
+    )
+  }
+
+  function handleSaveWebhook() {
+    if (!selectedIntegration) return
+    setWebhookConfigError(null)
+
+    startTransition(async () => {
+      const result = await configureWebhook({
+        url: webhookUrl,
+        events: webhookEvents,
+        secret: webhookSecret.trim() || undefined,
+      })
+      if ('error' in result) {
+        setWebhookConfigError(result.error)
         return
       }
       setSelectedIntegration(null)
@@ -336,7 +404,7 @@ export function IntegrationsClient({
                               Advanced
                             </Badge>
                           )}
-                          {enabledIntegrationSlugs.includes(integration.slug) && (
+                          {enabledIntegrationSlugs.has(integration.slug) && (
                             <Badge variant="secondary" className="shrink-0">
                               Connected
                             </Badge>
@@ -387,8 +455,59 @@ export function IntegrationsClient({
                 </p>
               </div>
 
+              {selectedIntegration.slug === WEBHOOK_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="webhook-url" className="text-sm font-medium">
+                      Webhook URL
+                    </label>
+                    <Input
+                      id="webhook-url"
+                      type="url"
+                      value={webhookUrl}
+                      onChange={(e) => setWebhookUrl(e.target.value)}
+                      placeholder="https://hooks.example.com/receptionist"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Events</p>
+                    {WEBHOOK_EVENTS.map((event) => (
+                      <label
+                        key={event.value}
+                        className="flex cursor-pointer items-center gap-2 text-sm"
+                      >
+                        <Checkbox
+                          checked={webhookEvents.includes(event.value)}
+                          onCheckedChange={() => toggleWebhookEvent(event.value)}
+                        />
+                        <span className="font-medium">{event.label}</span>
+                        <span className="text-muted-foreground">{event.description}</span>
+                      </label>
+                    ))}
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="webhook-secret" className="text-sm font-medium">
+                      Signing secret (optional)
+                    </label>
+                    <Input
+                      id="webhook-secret"
+                      type="password"
+                      value={webhookSecret}
+                      onChange={(e) => setWebhookSecret(e.target.value)}
+                      placeholder="Signs the X-Frontdesk-Signature header"
+                    />
+                  </div>
+                </div>
+              )}
+
               {actionError && (
                 <p className="text-sm text-destructive">{actionError}</p>
+              )}
+
+              {webhookConfigError && (
+                <p className="text-sm text-destructive">{webhookConfigError}</p>
               )}
 
               <DialogFooter>
@@ -399,7 +518,23 @@ export function IntegrationsClient({
                 >
                   Cancel
                 </Button>
-                {isSelectedEnabled ? (
+                {selectedIntegration.slug === WEBHOOK_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        Disable
+                      </Button>
+                    )}
+                    <Button type="button" disabled={isPending} onClick={handleSaveWebhook}>
+                      Save
+                    </Button>
+                  </>
+                ) : isSelectedEnabled ? (
                   <Button
                     type="button"
                     variant="destructive"

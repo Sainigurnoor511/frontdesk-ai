@@ -13,6 +13,10 @@ vi.mock('@/lib/supabase/service-role', () => ({
   createServiceRoleClient: vi.fn(),
 }))
 
+vi.mock('@/lib/integrations/webhook', () => ({
+  dispatchWebhook: vi.fn(),
+}))
+
 describe('getConversationsForOrg', () => {
   it('returns an empty array when no user is signed in', async () => {
     const { createClient } = await import('@/lib/supabase/server')
@@ -91,6 +95,7 @@ describe('getConversationsForOrg', () => {
         id: 'conv-1',
         organizationId: 'org-1',
         agentId: 'agent-1',
+        agentName: null,
         channel: 'phone',
         outcome: 'successful',
         category: 'General Inquiry',
@@ -328,5 +333,37 @@ describe('updateConversationStatus', () => {
 
     expect(idEq).toHaveBeenCalledWith('id', 'conv-1')
     expect(idEq).not.toHaveBeenCalledWith('status', 'active')
+  })
+
+  it('enqueues a conversation completed webhook when an org id is provided', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { dispatchWebhook } = await import('@/lib/integrations/webhook')
+    const { updateConversationStatus } = await import('./conversations-service')
+
+    const statusEq = vi.fn().mockResolvedValue({ error: null })
+    const idEq = vi.fn().mockReturnValue({ eq: statusEq })
+    const update = vi.fn().mockReturnValue({ eq: idEq })
+    const from = vi.fn().mockReturnValue({ update })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+
+    await updateConversationStatus(
+      'conv-1',
+      {
+        status: 'completed',
+        summary: 'Caller booked an appointment',
+        durationSeconds: 42,
+      },
+      'org-1'
+    )
+
+    expect(dispatchWebhook).toHaveBeenCalledWith(
+      'org-1',
+      'conversation.completed',
+      expect.objectContaining({
+        conversationId: 'conv-1',
+        summary: 'Caller booked an appointment',
+        durationSeconds: 42,
+      })
+    )
   })
 })

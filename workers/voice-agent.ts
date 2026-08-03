@@ -56,6 +56,7 @@ async function entrypoint(ctx: agents.JobContext) {
 
   const startedAt = Date.now()
   let finished = false
+  let organizationId: string | undefined
   let maxDurationTimer: NodeJS.Timeout | undefined
   const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
     if (finished) return
@@ -66,12 +67,16 @@ async function entrypoint(ctx: agents.JobContext) {
     }
     const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
     try {
-      await updateConversationStatus(conversationId, {
-        status,
-        outcome: status === 'completed' ? 'successful' : 'failed',
-        durationSeconds,
-        ...(endedReason ? { endedReason } : {}),
-      })
+      await updateConversationStatus(
+        conversationId,
+        {
+          status,
+          outcome: status === 'completed' ? 'successful' : 'failed',
+          durationSeconds,
+          ...(endedReason ? { endedReason } : {}),
+        },
+        organizationId
+      )
     } catch (err) {
       console.error(`[voice-agent] failed to update conversation ${conversationId} status:`, err)
     }
@@ -85,6 +90,7 @@ async function entrypoint(ctx: agents.JobContext) {
       await ctx.room.disconnect()
       return
     }
+    organizationId = agentDetail.organization_id
 
     // Newly created accounts have no `voice_id` yet. Falling back to a
     // deterministic catalog voice (matched to the agent's language) keeps the
