@@ -1,0 +1,49 @@
+# Applies pending Supabase migrations to the production database on merge to main.
+#
+# Required GitHub repository secrets:
+#   - SUPABASE_ACCESS_TOKEN : Supabase personal/CLI access token (Settings > Access Tokens
+#     in the Supabase dashboard). Distinct from the app's publishable/secret keys.
+#   - SUPABASE_PROJECT_REF  : e.g. "waenxlrtavavzhilyxxd" from your project's API URL.
+#   - SUPABASE_DB_PASSWORD  : the remote Postgres database password (set on the database
+#     settings page, or the original one chosen at project creation).
+name: Supabase Migrations
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-migrations
+  cancel-in-progress: true
+
+jobs:
+  db-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase link --project-ref "${{ secrets.SUPABASE_PROJECT_REF }}" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Push new migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push --linked
