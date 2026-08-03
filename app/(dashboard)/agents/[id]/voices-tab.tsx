@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Star } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -53,24 +53,22 @@ export function VoicesTab({
   const [genderFilter, setGenderFilter] = useState<string | null>(null)
   const [ageFilter, setAgeFilter] = useState<string | null>(null)
   const [playingId, setPlayingId] = useState<string | null>(null)
-  const [audioEl, setAudioEl] = useState<HTMLAudioElement | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     void getFavoriteVoiceIds().then(setFavorites)
     void getCustomVoices().then(setCustomVoices)
   }, [])
 
-  function handleSelectAgent(id: string) {
+  function handleSelectAgent(id: string | null) {
+    if (!id) return
     setSelectedAgentId(id)
     const next = agents.find((a) => a.id === id)
     setCurrentVoiceId(next?.voice_id ?? '')
   }
 
   useEffect(() => {
-    if (!query) {
-      setResults([])
-      return
-    }
+    if (!query) return
     const timeout = setTimeout(() => {
       void searchVoices(query, languageFilter ?? undefined).then(setResults)
     }, 300)
@@ -90,8 +88,8 @@ export function VoicesTab({
   )
 
   function togglePreview(voice: VoiceCatalogEntry) {
-    const audio = audioEl ?? new Audio()
-    if (!audioEl) setAudioEl(audio)
+    if (!audioRef.current) audioRef.current = new Audio()
+    const audio = audioRef.current
     if (playingId === voice.id) {
       audio.pause()
       setPlayingId(null)
@@ -99,9 +97,9 @@ export function VoicesTab({
     }
     audio.pause()
     audio.src = voice.previewUrl
+    audio.onended = () => setPlayingId(null)
     void audio.play()
     setPlayingId(voice.id)
-    audio.onended = () => setPlayingId(null)
   }
 
   async function handleSelectVoice(voiceId: string) {

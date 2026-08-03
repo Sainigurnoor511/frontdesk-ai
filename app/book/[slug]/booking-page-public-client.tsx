@@ -51,7 +51,7 @@ export function BookingPagePublicClient({
 
         {agentId && (
           <div className="flex flex-col items-center gap-3">
-            {requireChallenge && (
+            {TURNSTILE_SITE_KEY && (
               <Turnstile
                 siteKey={TURNSTILE_SITE_KEY}
                 theme={isDark ? 'dark' : 'light'}
