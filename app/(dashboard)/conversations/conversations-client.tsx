@@ -10,12 +10,15 @@ import {
   MessageSquareText,
   Clock,
   SquareArrowOutUpRight,
-  AudioWaveform,
-  Bot,
-  User,
+  ChevronDown,
+  Play,
+  Undo2,
+  Redo2,
+  MoreHorizontal,
   Mail,
   CheckCircle,
   XCircle,
+  HelpCircle,
   Trash,
   UserPlus,
 } from 'lucide-react'
@@ -38,6 +41,7 @@ import {
   deleteMessage,
   createContactFromMessage,
 } from './actions'
+import { ConversationStatusBadge } from '@/components/conversations/conversation-status-badge'
 
 function formatRelativeTime(iso: string): string {
   const date = new Date(iso)
@@ -83,6 +87,31 @@ function FilterChip({ label }: { label: string }) {
   )
 }
 
+function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]['status'] }) {
+  if (status === 'success') {
+    return (
+      <Badge variant="default" className="bg-green-600 text-white [a]:hover:bg-green-600/80">
+        <CheckCircle />
+        Success
+      </Badge>
+    )
+  }
+  if (status === 'failed') {
+    return (
+      <Badge variant="destructive">
+        <XCircle />
+        Failed
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="secondary">
+      <HelpCircle />
+      Unknown
+    </Badge>
+  )
+}
+
 export function ConversationsClient({
   conversations,
   messages,
@@ -93,6 +122,7 @@ export function ConversationsClient({
   const [tab, setTab] = useState('conversations')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Conversation | null>(null)
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [detailTab, setDetailTab] = useState('overview')
   const [messageList, setMessageList] = useState(messages)
   const [isPending, startTransition] = useTransition()
@@ -152,7 +182,7 @@ export function ConversationsClient({
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList>
+        <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
           <TabsTrigger value="conversations">Conversations</TabsTrigger>
           <TabsTrigger value="messages" className="gap-1.5">
             Messages
@@ -198,63 +228,107 @@ export function ConversationsClient({
                 </div>
               ) : (
                 <ul className="divide-y">
-                  {filteredConversations.map((conversation) => (
-                    <li key={conversation.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelected(conversation)
-                          setDetailTab('overview')
-                        }}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
-                      >
-                        <ChannelIcon channel={conversation.channel} />
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="truncate font-medium">
-                              {conversationTitle(conversation)}
-                            </p>
-                            <Badge
-                              variant={
-                                conversation.outcome === 'successful'
-                                  ? 'default'
-                                  : 'destructive'
-                              }
-                              className={
-                                conversation.outcome === 'successful'
-                                  ? 'bg-green-600 text-white [a]:hover:bg-green-600/80'
-                                  : ''
-                              }
-                            >
-                              {conversation.outcome === 'successful'
-                                ? 'Successful'
-                                : 'Failed'}
-                            </Badge>
-                            {conversation.category && (
-                              <Badge variant="secondary">{conversation.category}</Badge>
+                  {filteredConversations.map((conversation) => {
+                    const isExpanded = expandedId === conversation.id
+                    return (
+                      <li key={conversation.id}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedId(isExpanded ? null : conversation.id)
+                          }
+                          className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
+                        >
+                          <ChannelIcon channel={conversation.channel} />
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate font-medium">
+                                {conversationTitle(conversation)}
+                              </p>
+                              <ConversationStatusBadge outcome={conversation.outcome} />
+                              {conversation.category && (
+                                <Badge variant="secondary">{conversation.category}</Badge>
+                              )}
+                            </div>
+                            {conversation.summary && (
+                              <p className="truncate text-sm text-muted-foreground">
+                                {conversation.summary}
+                              </p>
                             )}
                           </div>
-                          {conversation.summary && (
-                            <p className="truncate text-sm text-muted-foreground">
-                              {conversation.summary}
-                            </p>
-                          )}
-                        </div>
-                        <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-                          <span className="flex items-center gap-1">
-                            <MessageSquareText className="size-3.5" />
-                            {conversation.transcript.length}
-                          </span>
-                          <span>{formatRelativeTime(conversation.createdAt)}</span>
-                          <span className="flex items-center gap-1">
-                            <Clock className="size-3.5" />
-                            {formatDuration(conversation.durationSeconds)}
-                          </span>
-                          <SquareArrowOutUpRight className="size-4" />
-                        </div>
-                      </button>
-                    </li>
-                  ))}
+                          <div className="flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                            <span className="flex items-center gap-1">
+                              <MessageSquareText className="size-3.5" />
+                              {conversation.transcript.length}
+                            </span>
+                            <span>{formatRelativeTime(conversation.createdAt)}</span>
+                            <span className="flex items-center gap-1">
+                              <Clock className="size-3.5" />
+                              {formatDuration(conversation.durationSeconds)}
+                            </span>
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setSelected(conversation)
+                                setDetailTab('overview')
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key !== 'Enter' && e.key !== ' ') return
+                                e.stopPropagation()
+                                e.preventDefault()
+                                setSelected(conversation)
+                                setDetailTab('overview')
+                              }}
+                              className="rounded p-0.5 hover:text-foreground"
+                            >
+                              <SquareArrowOutUpRight className="size-4" />
+                            </span>
+                            <ChevronDown
+                              className={`size-4 transition-transform ${
+                                isExpanded ? 'rotate-180' : ''
+                              }`}
+                            />
+                          </div>
+                        </button>
+
+                        {isExpanded && (
+                          <div className="space-y-3 border-t bg-muted/30 px-4 py-3 pl-11 text-sm">
+                            <div className="flex flex-wrap gap-x-6 gap-y-2">
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                  Started
+                                </p>
+                                <p>{new Date(conversation.createdAt).toLocaleString()}</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                  Duration
+                                </p>
+                                <p>{formatDuration(conversation.durationSeconds)}</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                  Messages
+                                </p>
+                                <p>{conversation.transcript.length}</p>
+                              </div>
+                              <div className="space-y-0.5">
+                                <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                                  Receptionist
+                                </p>
+                                <p>{conversation.agentName ?? 'Receptionist Agent'}</p>
+                              </div>
+                            </div>
+                            {conversation.summary && (
+                              <p className="text-muted-foreground">{conversation.summary}</p>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </CardContent>
@@ -368,7 +442,10 @@ export function ConversationsClient({
           {selected && (
             <div className="flex h-full flex-col">
               <SheetHeader>
-                <SheetTitle>Conversation with Receptionist</SheetTitle>
+                <SheetTitle>
+                  Conversation with{' '}
+                  <span className="font-semibold">{selected.agentName ?? 'Receptionist Agent'}</span>
+                </SheetTitle>
                 <SheetDescription>
                   {new Date(selected.createdAt).toLocaleString()}
                 </SheetDescription>
@@ -376,16 +453,38 @@ export function ConversationsClient({
 
               <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
                 {/* TODO: real audio playback - no recording storage yet, this is a static placeholder. */}
-                <div className="flex h-16 items-center justify-center gap-0.5 rounded-lg bg-muted px-4">
-                  <AudioWaveform className="size-8 text-muted-foreground" />
-                  <div className="flex flex-1 items-center gap-0.5">
-                    {Array.from({ length: 40 }).map((_, i) => (
+                <div className="space-y-3">
+                  <div className="flex h-10 items-center gap-0.5">
+                    {Array.from({ length: 60 }).map((_, i) => (
                       <span
                         key={i}
                         className="w-1 rounded-full bg-muted-foreground/30"
-                        style={{ height: `${8 + ((i * 7) % 24)}px` }}
+                        style={{ height: `${8 + ((i * 7) % 28)}px` }}
                       />
                     ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        size="icon"
+                        className="size-8 rounded-full"
+                        disabled
+                      >
+                        <Play className="fill-current" />
+                      </Button>
+                      <span className="text-sm text-muted-foreground">1.0x</span>
+                      <Undo2 className="size-4 text-muted-foreground" />
+                      <Redo2 className="size-4 text-muted-foreground" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm text-muted-foreground">
+                        0:00 / {formatDuration(selected.durationSeconds)}
+                      </span>
+                      <Button type="button" variant="outline" size="icon" className="size-8" disabled>
+                        <MoreHorizontal />
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -434,7 +533,13 @@ export function ConversationsClient({
 
                     {selected.callGoals.length > 0 && (
                       <div className="space-y-2">
-                        <p className="text-sm font-medium">Call goals</p>
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">Call goals</p>
+                          <p className="text-sm text-muted-foreground">
+                            {selected.callGoals.filter((g) => g.status === 'success').length} of{' '}
+                            {selected.callGoals.length} achieved
+                          </p>
+                        </div>
                         <ul className="space-y-2">
                           {selected.callGoals.map((goal, i) => (
                             <li
@@ -443,23 +548,7 @@ export function ConversationsClient({
                             >
                               <div className="flex items-center justify-between gap-2">
                                 <p className="font-medium">{goal.name}</p>
-                                <Badge
-                                  variant={
-                                    goal.status === 'success' ? 'default' : 'destructive'
-                                  }
-                                  className={
-                                    goal.status === 'success'
-                                      ? 'bg-green-600 text-white [a]:hover:bg-green-600/80'
-                                      : ''
-                                  }
-                                >
-                                  {goal.status === 'success' ? (
-                                    <CheckCircle />
-                                  ) : (
-                                    <XCircle />
-                                  )}
-                                  {goal.status === 'success' ? 'Success' : 'Failed'}
-                                </Badge>
+                                <GoalStatusBadge status={goal.status} />
                               </div>
                               <p className="text-muted-foreground">{goal.reasoning}</p>
                             </li>
@@ -479,25 +568,11 @@ export function ConversationsClient({
                         {selected.transcript.map((message, i) => (
                           <li
                             key={i}
-                            className={`flex items-end gap-2 ${
-                              message.role === 'caller' ? 'flex-row-reverse' : ''
+                            className={`flex flex-col ${
+                              message.role === 'caller' ? 'items-end' : 'items-start'
                             }`}
                           >
-                            {message.role === 'agent' && (
-                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
-                                <Bot className="size-3.5 text-muted-foreground" />
-                              </span>
-                            )}
-                            {message.role === 'caller' && (
-                              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
-                                <User className="size-3.5 text-muted-foreground" />
-                              </span>
-                            )}
-                            <div
-                              className={`max-w-[75%] space-y-1 ${
-                                message.role === 'caller' ? 'text-right' : ''
-                              }`}
-                            >
+                            <div className="max-w-[75%] space-y-1">
                               <div
                                 className={`rounded-lg px-3 py-2 text-sm ${
                                   message.role === 'caller'
@@ -507,7 +582,11 @@ export function ConversationsClient({
                               >
                                 {message.text}
                               </div>
-                              <p className="text-xs text-muted-foreground">
+                              <p
+                                className={`text-xs text-muted-foreground ${
+                                  message.role === 'caller' ? 'text-right' : ''
+                                }`}
+                              >
                                 {formatDuration(message.timestampSeconds)}
                               </p>
                             </div>

@@ -12,7 +12,11 @@ import {
 } from '@/lib/data/analytics'
 import { AnalyticsClient } from './analytics-client'
 
-export default async function AnalyticsPage() {
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
   const context = await getCurrentOrgAndUser()
   if (!context) redirect('/login')
 
@@ -30,9 +34,12 @@ export default async function AnalyticsPage() {
       getLocations(context.org.id),
     ])
 
+  const { tab } = await searchParams
+
   return (
     <AnalyticsClient
       initialRange="7d"
+      initialTab={tab}
       initialData={{ overview, callStats, callVolume, conversionRate, clientStats }}
       services={services}
       staff={staff}

@@ -8,7 +8,7 @@ export type TranscriptMessage = {
 
 export type CallGoal = {
   name: string
-  status: 'success' | 'failed'
+  status: 'success' | 'failed' | 'unknown'
   reasoning: string
 }
 
@@ -17,7 +17,7 @@ export type Conversation = {
   organizationId: string
   agentId: string | null
   channel: 'voice_web' | 'phone' | 'chat'
-  outcome: 'successful' | 'failed'
+  outcome: 'successful' | 'failed' | 'unknown'
   category: string | null
   summary: string | null
   durationSeconds: number
@@ -25,6 +25,7 @@ export type Conversation = {
   transcript: TranscriptMessage[]
   callGoals: CallGoal[]
   createdAt: string
+  agentName: string | null
 }
 
 export type CallerMessage = {
@@ -41,7 +42,7 @@ export type CallerMessage = {
 }
 
 const CONVERSATION_COLUMNS =
-  'id, organization_id, agent_id, channel, outcome, category, summary, duration_seconds, ended_reason, transcript, call_goals, created_at'
+  'id, organization_id, agent_id, channel, outcome, category, summary, duration_seconds, ended_reason, transcript, call_goals, created_at, agents(name)'
 
 const CALLER_MESSAGE_COLUMNS =
   'id, organization_id, conversation_id, caller_name, caller_phone, summary, quoted_line, is_read, converted_to_client_id, created_at'
@@ -51,7 +52,7 @@ type ConversationRow = {
   organization_id: string
   agent_id: string | null
   channel: 'voice_web' | 'phone' | 'chat'
-  outcome: 'successful' | 'failed'
+  outcome: 'successful' | 'failed' | 'unknown'
   category: string | null
   summary: string | null
   duration_seconds: number
@@ -59,6 +60,7 @@ type ConversationRow = {
   transcript: TranscriptMessage[]
   call_goals: CallGoal[]
   created_at: string
+  agents: { name: string } | { name: string }[] | null
 }
 
 type CallerMessageRow = {
@@ -75,6 +77,7 @@ type CallerMessageRow = {
 }
 
 function mapConversation(row: ConversationRow): Conversation {
+  const agent = Array.isArray(row.agents) ? row.agents[0] : row.agents
   return {
     id: row.id,
     organizationId: row.organization_id,
@@ -88,6 +91,7 @@ function mapConversation(row: ConversationRow): Conversation {
     transcript: row.transcript ?? [],
     callGoals: row.call_goals ?? [],
     createdAt: row.created_at,
+    agentName: agent?.name ?? null,
   }
 }
 

@@ -62,3 +62,25 @@ export const updateAgentCallSettingsSchema = z.object({
   holdMusic: z.string().optional(),
 })
 export type UpdateAgentCallSettingsInput = z.infer<typeof updateAgentCallSettingsSchema>
+
+export const renameAgentSchema = z.object({
+  agentId: z.string().uuid(),
+  name: z.string().min(1, 'Display name is required').max(200),
+})
+export type RenameAgentInput = z.infer<typeof renameAgentSchema>
+
+export const duplicateAgentSchema = z.object({
+  sourceAgentId: z.string().uuid(),
+  name: z.string().min(1, 'Display name is required').max(200),
+})
+export type DuplicateAgentInput = z.infer<typeof duplicateAgentSchema>
+
+export const setDefaultAgentSchema = z.object({
+  agentId: z.string().uuid(),
+})
+export type SetDefaultAgentInput = z.infer<typeof setDefaultAgentSchema>
+
+export const deleteAgentSchema = z.object({
+  agentId: z.string().uuid(),
+})
+export type DeleteAgentInput = z.infer<typeof deleteAgentSchema>

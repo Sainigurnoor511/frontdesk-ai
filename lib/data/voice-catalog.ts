@@ -9,6 +9,7 @@ export type LanguageOption = {
   code: string
   label: string
   flag: string
+  countryCode: string
 }
 
 // Onboarding (a separate flow) has historically stored the full English
@@ -36,19 +37,19 @@ export function normalizeLanguageCode(value: string): string {
 }
 
 export const languageOptions: LanguageOption[] = [
-  { code: 'en', label: 'English', flag: '🇬🇧' },
-  { code: 'es', label: 'Spanish', flag: '🇪🇸' },
-  { code: 'fr', label: 'French', flag: '🇫🇷' },
-  { code: 'de', label: 'German', flag: '🇩🇪' },
-  { code: 'pt', label: 'Portuguese', flag: '🇵🇹' },
-  { code: 'zh', label: 'Chinese', flag: '🇨🇳' },
-  { code: 'ja', label: 'Japanese', flag: '🇯🇵' },
-  { code: 'hi', label: 'Hindi', flag: '🇮🇳' },
-  { code: 'pa', label: 'Punjabi', flag: '🇮🇳' },
-  { code: 'ta', label: 'Tamil', flag: '🇮🇳' },
-  { code: 'te', label: 'Telugu', flag: '🇮🇳' },
-  { code: 'bn', label: 'Bengali', flag: '🇮🇳' },
-  { code: 'mr', label: 'Marathi', flag: '🇮🇳' },
+  { code: 'en', label: 'English', flag: '🇬🇧', countryCode: 'gb' },
+  { code: 'es', label: 'Spanish', flag: '🇪🇸', countryCode: 'es' },
+  { code: 'fr', label: 'French', flag: '🇫🇷', countryCode: 'fr' },
+  { code: 'de', label: 'German', flag: '🇩🇪', countryCode: 'de' },
+  { code: 'pt', label: 'Portuguese', flag: '🇵🇹', countryCode: 'pt' },
+  { code: 'zh', label: 'Chinese', flag: '🇨🇳', countryCode: 'cn' },
+  { code: 'ja', label: 'Japanese', flag: '🇯🇵', countryCode: 'jp' },
+  { code: 'hi', label: 'Hindi', flag: '🇮🇳', countryCode: 'in' },
+  { code: 'pa', label: 'Punjabi', flag: '🇮🇳', countryCode: 'in' },
+  { code: 'ta', label: 'Tamil', flag: '🇮🇳', countryCode: 'in' },
+  { code: 'te', label: 'Telugu', flag: '🇮🇳', countryCode: 'in' },
+  { code: 'bn', label: 'Bengali', flag: '🇮🇳', countryCode: 'in' },
+  { code: 'mr', label: 'Marathi', flag: '🇮🇳', countryCode: 'in' },
 ]
 
 // Curated shortlist: Fish Audio public model `_id` used directly as the TTS

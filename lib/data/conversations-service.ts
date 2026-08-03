@@ -21,7 +21,7 @@ type ConversationRow = {
   organization_id: string
   agent_id: string | null
   channel: 'voice_web' | 'phone' | 'chat'
-  outcome: 'successful' | 'failed'
+  outcome: 'successful' | 'failed' | 'unknown'
   category: string | null
   summary: string | null
   duration_seconds: number
@@ -45,6 +45,7 @@ function mapConversation(row: ConversationRow): Conversation {
     transcript: row.transcript ?? [],
     callGoals: row.call_goals ?? [],
     createdAt: row.created_at,
+    agentName: null,
   }
 }
 
@@ -81,7 +82,7 @@ export async function updateConversationStatus(
   id: string,
   patch: {
     status?: 'active' | 'completed' | 'failed'
-    outcome?: 'successful' | 'failed'
+    outcome?: 'successful' | 'failed' | 'unknown'
     summary?: string
     durationSeconds?: number
     endedReason?: string

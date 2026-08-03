@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import {
   Pencil,
   Plus,
@@ -10,6 +11,8 @@ import {
   ShieldCheck,
   Wrench,
   CircleQuestionMark,
+  ChevronDown,
+  Trash,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,6 +29,31 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
   Empty,
   EmptyHeader,
   EmptyMedia,
@@ -36,7 +64,15 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
-import { updateAgentGeneral, updateAgentCallSettings, searchVoices } from './actions'
+import {
+  updateAgentGeneral,
+  updateAgentCallSettings,
+  searchVoices,
+  renameAgent,
+  setDefaultAgent,
+  duplicateAgent,
+  deleteAgent,
+} from './actions'
 import {
   voiceCatalog,
   languageOptions,
@@ -70,7 +106,7 @@ function SectionHeading({
 }) {
   return (
     <div className="space-y-1">
-      <h3 className="font-heading text-2xl font-semibold">{title}</h3>
+      <h2 className="font-heading text-xl font-semibold">{title}</h2>
       {description && <p className="text-sm text-muted-foreground">{description}</p>}
     </div>
   )
@@ -94,6 +130,66 @@ export function AgentDetailClient({
       : 'general'
   )
   const [createVoiceOpen, setCreateVoiceOpen] = useState(false)
+
+  // Receptionist switcher / edit / add state
+  const [isSwitching, startSwitchTransition] = useTransition()
+  const [editOpen, setEditOpen] = useState(false)
+  const [editName, setEditName] = useState(agent.business_name ?? agent.name)
+  const [editError, setEditError] = useState<string | null>(null)
+  const [isSavingEdit, startEditTransition] = useTransition()
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [isDeleting, startDeleteTransition] = useTransition()
+  const [addOpen, setAddOpen] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addError, setAddError] = useState<string | null>(null)
+  const [isAdding, startAddTransition] = useTransition()
+
+  function openEditDialog() {
+    setEditName(agent.business_name ?? agent.name)
+    setEditError(null)
+    setEditOpen(true)
+  }
+
+  function handleSwitchAgent(id: string) {
+    if (id === agent.id) return
+    startSwitchTransition(async () => {
+      await setDefaultAgent(id)
+      router.push(`/agents/${id}`)
+    })
+  }
+
+  function handleSaveEdit() {
+    setEditError(null)
+    startEditTransition(async () => {
+      const result = await renameAgent(agent.id, { name: editName })
+      if ('error' in result) {
+        setEditError(result.error)
+        return
+      }
+      setEditOpen(false)
+      router.refresh()
+    })
+  }
+
+  function handleDelete() {
+    startDeleteTransition(async () => {
+      await deleteAgent(agent.id)
+    })
+  }
+
+  function handleAddReceptionist() {
+    setAddError(null)
+    startAddTransition(async () => {
+      const result = await duplicateAgent(agent.id, { name: addName })
+      if ('error' in result) {
+        setAddError(result.error)
+        return
+      }
+      setAddOpen(false)
+      setAddName('')
+      router.push(`/agents/${result.id}`)
+    })
+  }
 
   // General tab state
   const [voiceId, setVoiceId] = useState(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
@@ -205,29 +301,35 @@ export function AgentDetailClient({
       <div className="flex items-center justify-between gap-4">
         <h1 className="font-heading text-2xl font-semibold">Receptionists</h1>
         <div className="flex items-center gap-2">
-          {agents.length > 1 && (
-            <Select
-              value={agent.id}
-              onValueChange={(value) => {
-                if (typeof value === 'string' && value !== agent.id) {
-                  router.push(`/agents/${value}`)
-                }
-              }}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button variant="outline" className="w-56 justify-between font-normal" disabled={isSwitching} />
+              }
             >
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Select receptionist" />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.business_name ?? a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-          {/* TODO: wire up edit receptionist (rename/delete) action */}
-          <Button variant="outline" size="icon" aria-label="Edit receptionist">
+              <span className="truncate">{agent.business_name ?? agent.name}</span>
+              <ChevronDown className="text-muted-foreground" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {agents.map((a) => (
+                <DropdownMenuItem key={a.id} onClick={() => handleSwitchAgent(a.id)}>
+                  {a.business_name ?? a.name}
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setAddName('')
+                  setAddError(null)
+                  setAddOpen(true)
+                }}
+              >
+                <Plus />
+                Create new receptionist
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button variant="outline" size="icon" aria-label="Edit receptionist" onClick={openEditDialog}>
             <Pencil />
           </Button>
           {activeTab === 'voices' && (
@@ -238,6 +340,94 @@ export function AgentDetailClient({
           )}
         </div>
       </div>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit receptionist</DialogTitle>
+            <DialogDescription>
+              Rename this receptionist or remove it. Phone numbers assigned to a deleted
+              receptionist are released back to the workspace pool.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="edit-receptionist-name">Display name</Label>
+            <Input
+              id="edit-receptionist-name"
+              value={editName}
+              onChange={(e) => setEditName(e.target.value)}
+            />
+          </div>
+          {editError && <p className="text-sm text-destructive">{editError}</p>}
+          <DialogFooter className="sm:justify-between">
+            <Button
+              type="button"
+              variant="outline"
+              className="text-destructive hover:text-destructive"
+              disabled={agents.length <= 1}
+              onClick={() => setDeleteConfirmOpen(true)}
+            >
+              <Trash />
+              Delete
+            </Button>
+            <Button type="button" onClick={handleSaveEdit} disabled={isSavingEdit || !editName.trim()}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {agent.business_name ?? agent.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This can&apos;t be undone. Phone numbers assigned to this receptionist are
+              released back to the workspace pool.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-white hover:bg-destructive/90"
+              disabled={isDeleting}
+              onClick={handleDelete}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add receptionist</DialogTitle>
+            <DialogDescription>
+              Settings are copied from <span className="font-medium">{agent.business_name ?? agent.name}</span> —
+              you can change the voice, prompt, and phone numbers after creation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="add-receptionist-name">Display name</Label>
+            <Input
+              id="add-receptionist-name"
+              value={addName}
+              onChange={(e) => setAddName(e.target.value)}
+              placeholder="e.g. Weekend receptionist"
+            />
+          </div>
+          {addError && <p className="text-sm text-destructive">{addError}</p>}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={handleAddReceptionist} disabled={isAdding || !addName.trim()}>
+              Add receptionist
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as (typeof TAB_VALUES)[number])}>
         <TabsList variant="line" className="w-full justify-start gap-1 border-b [&>*]:flex-none">
@@ -254,7 +444,7 @@ export function AgentDetailClient({
             <div className="space-y-8">
               <div className="space-y-2">
                 <SectionHeading
-                  title="Additional Instructions"
+                  title="Additional instructions"
                   description={`Extra instructions for the receptionist. E.g. "If someone asks about parking, mention the free parking lot behind the building."`}
                 />
                 <div className="overflow-hidden rounded-2xl border border-border">
@@ -367,9 +557,14 @@ export function AgentDetailClient({
                           const selectedLang = languageOptions.find((lang) => lang.code === value)
                           return selectedLang ? (
                             <span className="flex items-center gap-2">
-                              <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">
-                                {selectedLang.flag}
-                              </span>
+                              <Image
+                                src={`https://hatscripts.github.io/circle-flags/flags/${selectedLang.countryCode}.svg`}
+                                alt={`${selectedLang.label} flag`}
+                                width={20}
+                                height={20}
+                                className="size-5 shrink-0 rounded-full"
+                                unoptimized
+                              />
                               {selectedLang.label}
                             </span>
                           ) : (
@@ -382,9 +577,14 @@ export function AgentDetailClient({
                       {languageOptions.map((lang) => (
                         <SelectItem key={lang.code} value={lang.code}>
                           <span className="flex items-center gap-2">
-                            <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs">
-                              {lang.flag}
-                            </span>
+                            <Image
+                              src={`https://hatscripts.github.io/circle-flags/flags/${lang.countryCode}.svg`}
+                              alt={`${lang.label} flag`}
+                              width={20}
+                              height={20}
+                              className="size-5 shrink-0 rounded-full"
+                              unoptimized
+                            />
                             {lang.label}
                           </span>
                         </SelectItem>

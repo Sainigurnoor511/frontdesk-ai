@@ -1,7 +1,7 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, ChevronsUpDown } from 'lucide-react'
 import {
   Command,
   CommandEmpty,
@@ -74,13 +74,14 @@ export function VoicePicker({
               className="size-6 shrink-0 rounded-full"
               style={{ background: `radial-gradient(circle at 30% 30%, ${selectedColors[0]}, ${selectedColors[1]} 55%, ${selectedColors[2]} 100%)` }}
             />
-            {selected.label}
+            <span className="truncate">{selected.label}</span>
           </>
         ) : (
           placeholder
         )}
+        <ChevronsUpDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
       </PopoverTrigger>
-      <PopoverContent className="w-full max-w-none p-0">
+      <PopoverContent className="w-(--anchor-width) max-w-none p-0">
         <Command shouldFilter={false}>
           <CommandInput
             value={query}

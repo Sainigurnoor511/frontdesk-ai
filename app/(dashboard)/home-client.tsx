@@ -17,7 +17,6 @@ import {
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
 import {
   Table,
@@ -28,6 +27,7 @@ import {
   TableCell,
 } from '@/components/ui/table'
 import { CallDialog } from '@/components/voice/call-dialog'
+import { ConversationStatusBadge } from '@/components/conversations/conversation-status-badge'
 import type { Agent } from '@/lib/data/agents'
 import type { Conversation } from '@/lib/data/conversations'
 import type { AppointmentRow } from '@/lib/data/calendar'
@@ -291,9 +291,7 @@ export function HomeClient({
                         {formatDuration(call.durationSeconds)}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Badge variant={call.outcome === 'successful' ? 'secondary' : 'destructive'}>
-                          {call.outcome === 'successful' ? 'Successful' : 'Failed'}
-                        </Badge>
+                        <ConversationStatusBadge outcome={call.outcome} />
                       </TableCell>
                     </TableRow>
                   ))}

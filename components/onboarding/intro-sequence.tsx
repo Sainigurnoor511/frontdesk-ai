@@ -45,7 +45,7 @@ export function IntroSequence({ onFinish }: { onFinish: () => void }) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="flex items-center gap-0 text-2xl font-semibold"
+            className="flex items-center gap-0 font-brand text-5xl"
           >
             <span>F</span>
             <AnimatePresence>

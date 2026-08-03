@@ -26,7 +26,7 @@ export default async function HomePage() {
       getBusinessProfile(context.org.id),
     ])
 
-  const agent = agents[0] ?? null
+  const agent = agents.find((a) => a.is_default) ?? agents[0] ?? null
   const businessName = businessProfile.businessName ?? agent?.business_name ?? agent?.name ?? null
 
   return (

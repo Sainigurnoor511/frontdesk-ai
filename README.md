@@ -2,15 +2,16 @@
 
 An open-source, self-hostable AI receptionist platform. Frontdesk.ai answers calls, books appointments, and manages your business's front desk — an original implementation inspired by products like ElevenLabs' Reception.ai, built to be free, transparent, and self-hostable.
 
+> **Branding:** the *Frontdesk.ai* wordmark uses the [Bitcount Prop Single](https://fonts.google.com/) Google Font.
+
 ## Screenshots
 
-<!--
-  TODO: add product screenshots here once available, e.g.:
-  ![Home dashboard](./docs/images/home.png)
-  ![Live call with real-time transcript](./docs/images/call-dialog.png)
-  ![Calendar](./docs/images/calendar.png)
-  ![Receptionist settings](./docs/images/receptionist-settings.png)
--->
+![Home dashboard](./public/images/home.png)
+![Live call with real-time transcript](./public/images/call-dialog.png)
+![Calendar](./public/images/calendar.png)
+![Receptionist settings](./public/images/receptionists.png)
+![Business settings](./public/images/business.png)
+![Assistant](./public/images/assistant.png)
 
 ## Features
 

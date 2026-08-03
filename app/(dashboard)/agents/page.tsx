@@ -10,7 +10,8 @@ export default async function AgentsPage() {
   const agents = await getAgentsForOrg(context.org.id)
   if (agents.length === 0) redirect('/onboarding')
 
-  const agent = await getAgentById(agents[0].id)
+  const defaultAgent = agents.find((a) => a.is_default) ?? agents[0]
+  const agent = await getAgentById(defaultAgent.id)
   if (!agent) notFound()
 
   return <AgentDetailClient agent={agent} agents={agents} />

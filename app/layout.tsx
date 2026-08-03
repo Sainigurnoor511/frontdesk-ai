@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Geist, Geist_Mono, Roboto_Condensed } from "next/font/google";
+import { Inter, Geist, Geist_Mono, Roboto_Condensed, Bitcount_Prop_Single } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -23,6 +23,11 @@ const robotoCondensed = Roboto_Condensed({
   subsets: ["latin"],
 });
 
+const bitcountPropSingle = Bitcount_Prop_Single({
+  variable: "--font-bitcount",
+  subsets: ["latin"],
+});
+
 export const metadata: Metadata = {
   title: "Frontdesk.ai",
   description: "Open-source AI receptionist platform",
@@ -36,7 +41,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${robotoCondensed.variable} h-full antialiased`}
+      className={`${inter.variable} ${geistSans.variable} ${geistMono.variable} ${robotoCondensed.variable} ${bitcountPropSingle.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}

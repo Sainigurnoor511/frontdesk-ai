@@ -28,6 +28,17 @@ const RANGE_OPTIONS: { value: DateRangeOption; label: string }[] = [
   { value: '90d', label: 'Last 90 days' },
 ]
 
+const TAB_VALUES = [
+  'overview',
+  'calls',
+  'services',
+  'clients',
+  'conversion',
+  'staff-locations',
+] as const
+
+type AnalyticsTab = (typeof TAB_VALUES)[number]
+
 function formatDuration(seconds: number) {
   if (seconds <= 0) return '0s'
   const minutes = Math.floor(seconds / 60)
@@ -42,12 +53,14 @@ function formatDayLabel(dateStr: string) {
 
 export function AnalyticsClient({
   initialRange,
+  initialTab,
   initialData,
   services,
   staff,
   locations,
 }: {
   initialRange: DateRangeOption
+  initialTab?: string
   initialData: AnalyticsData
   services: Service[]
   staff: StaffMember[]
@@ -56,6 +69,11 @@ export function AnalyticsClient({
   const [range, setRange] = useState<DateRangeOption>(initialRange)
   const [data, setData] = useState<AnalyticsData>(initialData)
   const [isPending, startTransition] = useTransition()
+  const [tab, setTab] = useState<AnalyticsTab>(
+    TAB_VALUES.includes(initialTab as AnalyticsTab)
+      ? (initialTab as AnalyticsTab)
+      : 'overview'
+  )
 
   function handleRangeChange(value: string | null) {
     const nextRange = (value ?? '7d') as DateRangeOption
@@ -75,7 +93,7 @@ export function AnalyticsClient({
         <p className="mt-1 text-sm font-normal text-[#96989d]">Track call volume and performance.</p>
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs value={tab} onValueChange={(value) => setTab(value as AnalyticsTab)}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <TabsList>
             <TabsTrigger value="overview">Overview</TabsTrigger>

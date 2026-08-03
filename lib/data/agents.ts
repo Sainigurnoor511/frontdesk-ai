@@ -9,6 +9,7 @@ export type Agent = {
   country: string | null
   language: string | null
   staff_phone_number: string | null
+  is_default: boolean
 }
 
 export type AgentDetail = Agent & {
@@ -28,13 +29,15 @@ export type AgentDetail = Agent & {
 }
 
 const AGENT_DETAIL_COLUMNS =
-  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, created_at, updated_at'
+  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, is_default, created_at, updated_at'
 
 export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> {
   const supabase = await createClient()
   const { data } = await supabase
     .from('agents')
-    .select('id, organization_id, name, business_name, industry, country, language, staff_phone_number')
+    .select(
+      'id, organization_id, name, business_name, industry, country, language, staff_phone_number, is_default'
+    )
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })
 

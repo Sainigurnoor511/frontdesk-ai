@@ -4,7 +4,13 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <div className="flex flex-1 flex-col items-center justify-center gap-10 p-4">
-        <span className="text-lg font-semibold">Frontdesk.ai</span>
+        <Link
+          href="/"
+          aria-label="Frontdesk.ai"
+          className="font-brand text-5xl"
+        >
+          Frontdesk.ai
+        </Link>
         <div className="w-full max-w-xs">{children}</div>
       </div>
       <footer className="border-t bg-muted/40 py-4 text-center text-xs text-muted-foreground">

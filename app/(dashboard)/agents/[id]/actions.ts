@@ -2,12 +2,19 @@
 
 import Groq from 'groq-sdk'
 import { revalidatePath } from 'next/cache'
+import { redirect } from 'next/navigation'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import {
   updateAgentGeneralSchema,
   updateAgentCallSettingsSchema,
+  renameAgentSchema,
+  duplicateAgentSchema,
+  setDefaultAgentSchema,
+  deleteAgentSchema,
   type UpdateAgentGeneralInput,
   type UpdateAgentCallSettingsInput,
+  type RenameAgentInput,
+  type DuplicateAgentInput,
 } from '@/lib/validations/agent'
 import type { VoiceCatalogEntry } from '@/lib/data/voice-catalog'
 
@@ -226,6 +233,237 @@ export async function updateAgentCallSettings(
 
   revalidatePath(`/agents/${agentId}`)
   return { success: true }
+}
+
+export async function renameAgent(
+  agentId: string,
+  input: Omit<RenameAgentInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = renameAgentSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to update this receptionist.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { error } = await supabase
+    .from('agents')
+    .update({ name: parsed.data.name, business_name: parsed.data.name, updated_at: new Date().toISOString() })
+    .eq('id', parsed.data.agentId)
+    .eq('organization_id', member.organization_id)
+
+  if (error) {
+    return { error: 'Could not rename receptionist. Please try again.' }
+  }
+
+  revalidatePath('/', 'layout')
+  return { success: true }
+}
+
+export async function setDefaultAgent(agentId: string): Promise<{ error: string } | { success: true }> {
+  const parsed = setDefaultAgentSchema.safeParse({ agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to switch receptionists.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { error: clearError } = await supabase
+    .from('agents')
+    .update({ is_default: false })
+    .eq('organization_id', member.organization_id)
+    .eq('is_default', true)
+
+  if (clearError) {
+    return { error: 'Could not switch receptionist. Please try again.' }
+  }
+
+  const { error: setError } = await supabase
+    .from('agents')
+    .update({ is_default: true })
+    .eq('id', parsed.data.agentId)
+    .eq('organization_id', member.organization_id)
+
+  if (setError) {
+    return { error: 'Could not switch receptionist. Please try again.' }
+  }
+
+  revalidatePath('/', 'layout')
+  return { success: true }
+}
+
+export async function duplicateAgent(
+  sourceAgentId: string,
+  input: Omit<DuplicateAgentInput, 'sourceAgentId'>
+): Promise<{ error: string } | { id: string }> {
+  const parsed = duplicateAgentSchema.safeParse({ ...input, sourceAgentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to create a receptionist.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { data: source } = await supabase
+    .from('agents')
+    .select(
+      'country, language, industry, greeting_prompt, personality_notes, answering_mode, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id'
+    )
+    .eq('id', parsed.data.sourceAgentId)
+    .eq('organization_id', member.organization_id)
+    .single()
+
+  if (!source) {
+    return { error: 'Could not find receptionist to copy settings from.' }
+  }
+
+  const { error: clearError } = await supabase
+    .from('agents')
+    .update({ is_default: false })
+    .eq('organization_id', member.organization_id)
+    .eq('is_default', true)
+
+  if (clearError) {
+    return { error: 'Could not create receptionist. Please try again.' }
+  }
+
+  const { data: created, error } = await supabase
+    .from('agents')
+    .insert({
+      organization_id: member.organization_id,
+      name: parsed.data.name,
+      business_name: parsed.data.name,
+      country: source.country,
+      language: source.language,
+      industry: source.industry,
+      greeting_prompt: source.greeting_prompt,
+      personality_notes: source.personality_notes,
+      answering_mode: source.answering_mode,
+      max_ring_seconds: source.max_ring_seconds,
+      hold_music: source.hold_music,
+      additional_instructions: source.additional_instructions,
+      first_message: source.first_message,
+      tone_traits: source.tone_traits,
+      voice_id: source.voice_id,
+      is_default: true,
+    })
+    .select('id')
+    .single()
+
+  if (error || !created) {
+    return { error: 'Could not create receptionist. Please try again.' }
+  }
+
+  revalidatePath('/', 'layout')
+  return { id: created.id }
+}
+
+export async function deleteAgent(agentId: string): Promise<{ error: string } | { success: true }> {
+  const parsed = deleteAgentSchema.safeParse({ agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to delete this receptionist.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { data: orgAgents } = await supabase
+    .from('agents')
+    .select('id, is_default')
+    .eq('organization_id', member.organization_id)
+    .order('created_at', { ascending: false })
+
+  if (!orgAgents || orgAgents.length <= 1) {
+    return { error: 'You must have at least one receptionist.' }
+  }
+
+  const deleted = orgAgents.find((a) => a.id === parsed.data.agentId)
+  if (!deleted) {
+    return { error: 'Receptionist not found.' }
+  }
+
+  const { error } = await supabase
+    .from('agents')
+    .delete()
+    .eq('id', parsed.data.agentId)
+    .eq('organization_id', member.organization_id)
+
+  if (error) {
+    return { error: 'Could not delete receptionist. Please try again.' }
+  }
+
+  let nextAgentId: string | null = null
+  if (deleted.is_default) {
+    nextAgentId = orgAgents.find((a) => a.id !== parsed.data.agentId)?.id ?? null
+    if (nextAgentId) {
+      await supabase
+        .from('agents')
+        .update({ is_default: true })
+        .eq('id', nextAgentId)
+        .eq('organization_id', member.organization_id)
+    }
+  }
+
+  revalidatePath('/', 'layout')
+  redirect(`/agents/${nextAgentId ?? orgAgents.find((a) => a.id !== parsed.data.agentId)!.id}`)
 }
 
 export async function getFavoriteVoiceIds(): Promise<string[]> {

@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     redirect('/onboarding')
   }
 
-  const agent = agents[0]
+  const agent = agents.find((a) => a.is_default) ?? agents[0]
   const [hiddenSidebarItems, businessProfile] = await Promise.all([
     getHiddenSidebarItems(context.org.id),
     getBusinessProfile(context.org.id),

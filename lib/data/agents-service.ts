@@ -14,7 +14,7 @@ import type { AgentDetail } from './agents'
 export type { AgentDetail }
 
 const AGENT_DETAIL_COLUMNS =
-  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, created_at, updated_at'
+  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, is_default, created_at, updated_at'
 
 export async function getAgentByIdServiceRole(id: string): Promise<AgentDetail | null> {
   const supabase = createServiceRoleClient()

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
+import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
@@ -125,12 +126,12 @@ function CallReceptionistPill({
     <SidebarMenuItem>
       <SidebarMenuButton
         onClick={onClick}
-        className="h-8 justify-center rounded-[10px] border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors group-data-[collapsible=icon]:gap-0 group-data-[collapsible=icon]:border-0 group-data-[collapsible=icon]:bg-none group-data-[collapsible=icon]:shadow-none hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
+        className="h-8 justify-center rounded-[10px] border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors group-data-[collapsible=icon]:gap-0 hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
         style={{
           borderColor: 'hsl(228.75deg 47.06% 86.67%)',
         }}
       >
-        <div className="size-4 shrink-0 overflow-hidden rounded-sm">
+        <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
           <Orb seed={1} />
         </div>
         {state !== 'collapsed' && <span>{phoneNumber}</span>}
@@ -187,15 +188,21 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="icon">
-      <SidebarHeader className="gap-2 py-2">
+      <SidebarHeader className="gap-2 py-2 group-data-[collapsible=icon]:px-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
               render={<Link href="/" />}
             >
-              <span className="text-base font-semibold">F</span>
-              <span className="text-base font-semibold tracking-tight">rontdesk.ai</span>
+              <Image
+                src="/images/logo/logo.png"
+                alt="Frontdesk.ai"
+                width={1123}
+                height={203}
+                priority
+                className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:object-cover group-data-[collapsible=icon]:object-left"
+              />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -394,7 +401,7 @@ export function AppSidebar({
                       </div>
                     </DropdownMenuCheckboxItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => logOut()}>
+                    <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
                       <LogOut />
                       Log out
                     </DropdownMenuItem>
