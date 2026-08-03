@@ -18,6 +18,7 @@ export const createPublicAppointmentSchema = z.object({
   clientEmail: z.string().email(),
   clientPhone: z.string().max(30).optional(),
   businessName: z.string().optional(),
+  notes: z.string().max(4000).optional(),
   turnstileToken: z.string().optional(),
 })
 export type CreatePublicAppointmentInput = z.infer<typeof createPublicAppointmentSchema>

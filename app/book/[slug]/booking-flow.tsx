@@ -9,6 +9,7 @@ import { Calendar } from '@/components/ui/calendar'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
+import type { CustomField } from '@/lib/data/booking-page-config'
 import { getPublicAvailableSlots, createPublicAppointment } from '@/app/book/actions'
 import { bookingAccentText } from '@/lib/booking-theme'
 
@@ -27,6 +28,9 @@ export function BookingFlow({
   staff,
   theme = 'light',
   accent = '#4F46E5',
+  showServiceDescriptions = true,
+  showPrices = true,
+  customFields = [],
 }: {
   organizationId: string
   organizationName: string
@@ -34,6 +38,9 @@ export function BookingFlow({
   staff: BookingPageStaff[]
   theme?: 'light' | 'dark'
   accent?: string
+  showServiceDescriptions?: boolean
+  showPrices?: boolean
+  customFields?: CustomField[]
 }) {
   const isDark = theme === 'dark'
   const [step, setStep] = useState<Step>('service')
@@ -46,6 +53,7 @@ export function BookingFlow({
   const [clientName, setClientName] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [clientPhone, setClientPhone] = useState('')
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string | boolean>>({})
   const [submitting, setSubmitting] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
@@ -98,6 +106,13 @@ export function BookingFlow({
     setSubmitting(true)
     setErrorMessage(null)
 
+    const customAnswersNotes =
+      customFields.length > 0
+        ? customFields
+            .map((field) => `${field.label}: ${customAnswers[field.id] ?? ''}`)
+            .join('\n')
+        : undefined
+
     const result = await createPublicAppointment({
       organizationId,
       serviceId: service.id,
@@ -108,6 +123,7 @@ export function BookingFlow({
       clientEmail,
       clientPhone: clientPhone || undefined,
       businessName: organizationName,
+      notes: customAnswersNotes,
     })
 
     setSubmitting(false)
@@ -145,8 +161,13 @@ export function BookingFlow({
                 <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
                   {svc.durationMinutes} min
                 </p>
+                {showServiceDescriptions && svc.description && (
+                  <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
+                    {svc.description}
+                  </p>
+                )}
               </div>
-              <p className="text-sm font-medium">${svc.price.toFixed(2)}</p>
+              {showPrices && <p className="text-sm font-medium">${svc.price.toFixed(2)}</p>}
             </button>
           ))}
         </CardContent>
@@ -223,6 +244,52 @@ export function BookingFlow({
             <Label htmlFor="booking-phone">Phone (optional)</Label>
             <Input id="booking-phone" value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} />
           </div>
+
+          {customFields.map((field) => (
+            <div key={field.id} className="space-y-2">
+              <Label htmlFor={`custom-${field.id}`}>
+                {field.label}
+                {field.required && ' *'}
+              </Label>
+              {field.type === 'text' && (
+                <Input
+                  id={`custom-${field.id}`}
+                  value={(customAnswers[field.id] as string) ?? ''}
+                  onChange={(e) =>
+                    setCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))
+                  }
+                />
+              )}
+              {field.type === 'checkbox' && (
+                <input
+                  id={`custom-${field.id}`}
+                  type="checkbox"
+                  checked={Boolean(customAnswers[field.id])}
+                  onChange={(e) =>
+                    setCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.checked }))
+                  }
+                />
+              )}
+              {field.type === 'dropdown' && (
+                <select
+                  id={`custom-${field.id}`}
+                  value={(customAnswers[field.id] as string) ?? ''}
+                  onChange={(e) =>
+                    setCustomAnswers((prev) => ({ ...prev, [field.id]: e.target.value }))
+                  }
+                  className="w-full rounded-md border px-3 py-2 text-sm"
+                >
+                  <option value="">Select…</option>
+                  {(field.options ?? []).map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          ))}
+
           <Button
             type="button"
             disabled={!clientName.trim() || !clientEmail.trim()}

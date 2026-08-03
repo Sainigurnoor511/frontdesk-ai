@@ -227,6 +227,7 @@ export async function createPublicAppointment(
     endsAt: parsed.data.endsAt,
     serviceId: parsed.data.serviceId,
     staffId: parsed.data.staffId ?? null,
+    notes: parsed.data.notes ?? null,
   })
 
   try {
