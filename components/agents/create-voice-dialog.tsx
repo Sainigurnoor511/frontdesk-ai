@@ -86,7 +86,7 @@ export function CreateVoiceDialog({
     if (!voiceName.trim()) return
     setSavingCandidateId(candidate.id)
     setError(null)
-    const result = await saveVoiceModel(candidate.audioBase64, voiceName.trim())
+    const result = await saveVoiceModel(candidate.audioBase64, voiceName.trim(), language)
     setSavingCandidateId(null)
     if ('error' in result) {
       setError(result.error)

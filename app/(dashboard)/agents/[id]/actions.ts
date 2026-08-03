@@ -16,7 +16,7 @@ import {
   type RenameAgentInput,
   type DuplicateAgentInput,
 } from '@/lib/validations/agent'
-import type { VoiceCatalogEntry } from '@/lib/data/voice-catalog'
+import { normalizeLanguageCode, type VoiceCatalogEntry } from '@/lib/data/voice-catalog'
 
 const MAX_INSTRUCTIONS_LENGTH = 8000
 
@@ -564,7 +564,8 @@ export async function designVoiceCandidates(
 
 export async function saveVoiceModel(
   audioBase64: string,
-  title: string
+  title: string,
+  language: string
 ): Promise<{ error: string } | { id: string }> {
   const audioBuffer = Buffer.from(audioBase64, 'base64')
   const form = new FormData()
@@ -589,5 +590,62 @@ export async function saveVoiceModel(
     return { error: 'Could not save the new voice. Please try again.' }
   }
 
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { error: 'You must be signed in to save a voice.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  // Register the created voice so it shows up in the org's Recommended list.
+  const { error: insertError } = await supabase.from('custom_voices').insert({
+    organization_id: member.organization_id,
+    voice_id: data.id,
+    name: title,
+    language: normalizeLanguageCode(language),
+  })
+
+  if (insertError) {
+    return { error: 'Could not save the new voice. Please try again.' }
+  }
+
   return { id: data.id }
+}
+
+export async function getCustomVoices(): Promise<VoiceSearchResult[]> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) return []
+
+  const { data } = await supabase
+    .from('custom_voices')
+    .select('voice_id, name, language')
+    .eq('organization_id', member.organization_id)
+    .order('created_at', { ascending: false })
+
+  return (data ?? []).map((row) => ({
+    id: row.voice_id,
+    label: row.name,
+    language: row.language,
+    previewUrl: '',
+  }))
 }

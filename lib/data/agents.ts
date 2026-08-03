@@ -10,6 +10,7 @@ export type Agent = {
   language: string | null
   staff_phone_number: string | null
   is_default: boolean
+  voice_id: string | null
 }
 
 export type AgentDetail = Agent & {
@@ -36,7 +37,7 @@ export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> 
   const { data } = await supabase
     .from('agents')
     .select(
-      'id, organization_id, name, business_name, industry, country, language, staff_phone_number, is_default'
+      'id, organization_id, name, business_name, industry, country, language, staff_phone_number, is_default, voice_id'
     )
     .eq('organization_id', organizationId)
     .order('created_at', { ascending: false })

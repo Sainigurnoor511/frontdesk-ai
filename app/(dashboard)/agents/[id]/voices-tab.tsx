@@ -21,11 +21,12 @@ import {
 import {
   searchVoices,
   getFavoriteVoiceIds,
+  getCustomVoices,
   toggleFavoriteVoice,
   updateAgentGeneral,
   type VoiceSearchResult,
 } from './actions'
-import type { AgentDetail } from '@/lib/data/agents'
+import type { AgentDetail, Agent } from '@/lib/data/agents'
 
 const GENDER_OPTIONS = ['male', 'female'] as const
 const AGE_OPTIONS = ['young', 'middle-aged', 'old'] as const
@@ -33,14 +34,18 @@ const ALL_VALUE = '__all'
 
 export function VoicesTab({
   agent,
+  agents,
   createOpen,
   onCreateOpenChange,
 }: {
   agent: AgentDetail
+  agents: Agent[]
   createOpen: boolean
   onCreateOpenChange: (open: boolean) => void
 }) {
+  const [selectedAgentId, setSelectedAgentId] = useState(agent.id)
   const [currentVoiceId, setCurrentVoiceId] = useState(agent.voice_id ?? '')
+  const [customVoices, setCustomVoices] = useState<VoiceSearchResult[]>([])
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<VoiceSearchResult[]>([])
   const [favorites, setFavorites] = useState<string[]>([])
@@ -52,7 +57,14 @@ export function VoicesTab({
 
   useEffect(() => {
     void getFavoriteVoiceIds().then(setFavorites)
+    void getCustomVoices().then(setCustomVoices)
   }, [])
+
+  function handleSelectAgent(id: string) {
+    setSelectedAgentId(id)
+    const next = agents.find((a) => a.id === id)
+    setCurrentVoiceId(next?.voice_id ?? '')
+  }
 
   useEffect(() => {
     if (!query) {
@@ -65,7 +77,7 @@ export function VoicesTab({
     return () => clearTimeout(timeout)
   }, [query, languageFilter])
 
-  const baseList: VoiceSearchResult[] = query ? results : voiceCatalog
+  const baseList: VoiceSearchResult[] = query ? results : [...customVoices, ...voiceCatalog]
   const filtered = baseList.filter((voice) => {
     if (languageFilter && voice.language !== languageFilter) return false
     if (genderFilter && voice.gender !== genderFilter) return false
@@ -73,7 +85,9 @@ export function VoicesTab({
     return true
   })
 
-  const currentVoice = voiceCatalog.find((v) => v.id === currentVoiceId)
+  const currentVoice = [...customVoices, ...voiceCatalog, ...results].find(
+    (v) => v.id === currentVoiceId
+  )
 
   function togglePreview(voice: VoiceCatalogEntry) {
     const audio = audioEl ?? new Audio()
@@ -92,7 +106,7 @@ export function VoicesTab({
 
   async function handleSelectVoice(voiceId: string) {
     setCurrentVoiceId(voiceId)
-    await updateAgentGeneral(agent.id, { voiceId })
+    await updateAgentGeneral(selectedAgentId, { voiceId })
   }
 
   async function handleToggleFavorite(voiceId: string) {
@@ -111,12 +125,33 @@ export function VoicesTab({
       </p>
 
       <div className="flex items-center justify-between gap-3">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search library voices..."
-          className="max-w-sm"
-        />
+        <div className="flex items-center gap-3">
+          {agents.length > 1 && (
+            <Select value={selectedAgentId} onValueChange={handleSelectAgent}>
+              <SelectTrigger className="w-56">
+                <SelectValue placeholder="Select receptionist">
+                  {(value: string) => {
+                    const next = agents.find((a) => a.id === value)
+                    return next ? (next.business_name ?? next.name) : 'Select receptionist'
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {agents.map((a) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.business_name ?? a.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search library voices..."
+            className="max-w-sm"
+          />
+        </div>
         {currentVoice && (
           <p className="shrink-0 text-sm text-muted-foreground">
             Currently using{' '}
@@ -250,8 +285,9 @@ export function VoicesTab({
         open={createOpen}
         onOpenChange={onCreateOpenChange}
         onVoiceCreated={(voice) => {
+          setCustomVoices((prev) => [voice, ...prev])
           setCurrentVoiceId(voice.id)
-          void updateAgentGeneral(agent.id, { voiceId: voice.id })
+          void updateAgentGeneral(selectedAgentId, { voiceId: voice.id })
         }}
       />
     </div>

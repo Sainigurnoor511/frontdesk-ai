@@ -620,6 +620,7 @@ export function AgentDetailClient({
         <TabsContent value="voices" className="pt-6">
           <VoicesTab
             agent={agent}
+            agents={agents}
             createOpen={createVoiceOpen}
             onCreateOpenChange={setCreateVoiceOpen}
           />

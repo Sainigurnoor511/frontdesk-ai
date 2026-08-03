@@ -472,18 +472,43 @@ describe('saveVoiceModel', () => {
       json: async () => ({ id: 'new-voice-id' }),
     } as unknown as Response)
 
-    const result = await saveVoiceModel('AAAA', 'My Custom Voice')
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const insert = vi.fn().mockResolvedValue({ error: null })
+    const memberSingle = vi.fn().mockResolvedValue({ data: { organization_id: 'org-1' } })
+    const from = vi.fn((table: string) => {
+      if (table === 'members') {
+        return {
+          select: vi.fn().mockReturnValue({ eq: vi.fn().mockReturnValue({ single: memberSingle }) }),
+        }
+      }
+      if (table === 'custom_voices') {
+        return { insert }
+      }
+      throw new Error(`Unexpected table: ${table}`)
+    })
+    vi.mocked(createSupabaseClient).mockResolvedValue({
+      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'user-1' } } }) },
+      from,
+    } as never)
+
+    const result = await saveVoiceModel('AAAA', 'My Custom Voice', 'en')
 
     expect(result).toEqual({ id: 'new-voice-id' })
     const [url, init] = vi.mocked(fetch).mock.calls[0]
     expect(url).toBe('https://api.fish.audio/model')
     expect(init?.method).toBe('POST')
     expect(init?.body).toBeInstanceOf(FormData)
+    expect(insert).toHaveBeenCalledWith({
+      organization_id: 'org-1',
+      voice_id: 'new-voice-id',
+      name: 'My Custom Voice',
+      language: 'en',
+    })
   })
 
   it('returns an error on a non-ok response', async () => {
     global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
-    const result = await saveVoiceModel('AAAA', 'My Custom Voice')
+    const result = await saveVoiceModel('AAAA', 'My Custom Voice', 'en')
     expect(result).toEqual({ error: 'Could not save the new voice. Please try again.' })
   })
 })

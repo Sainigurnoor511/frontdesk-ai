@@ -51,7 +51,7 @@ describe('CreateVoiceDialog', () => {
     fireEvent.click(screen.getByRole('button', { name: /^save$/i }))
 
     await waitFor(() =>
-      expect(saveVoiceModel).toHaveBeenCalledWith('AAAA', 'My Custom Voice')
+      expect(saveVoiceModel).toHaveBeenCalledWith('AAAA', 'My Custom Voice', 'en')
     )
     expect(onVoiceCreated).toHaveBeenCalledWith({
       id: 'new-voice-id',
