@@ -13,7 +13,7 @@ import { updateConversationStatus } from '@/lib/data/conversations-service'
 /**
  * JSON payload set on the LiveKit room's metadata at creation time by
  * `startDashboardCall`/`startPublicCall` (see `app/(dashboard)/actions/voice.ts`
- * and `app/book/actions.ts`), via `RoomServiceClient.createRoom({ metadata })`.
+ * and `app/smb/actions.ts`), via `RoomServiceClient.createRoom({ metadata })`.
  * Room metadata is preferred over cramming identifiers into the room name —
  * room names stay simple opaque identifiers (`${organizationId}:call:${uuid}`).
  */

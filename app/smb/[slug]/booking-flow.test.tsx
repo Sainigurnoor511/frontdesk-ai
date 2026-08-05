@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { BookingFlow } from './booking-flow'
 
-vi.mock('@/app/book/actions', () => ({
+vi.mock('@/app/smb/actions', () => ({
   getPublicAvailableSlots: vi.fn(),
   createPublicAppointment: vi.fn(),
 }))
@@ -44,7 +44,7 @@ function clickADayCell() {
 
 describe('BookingFlow', () => {
   it('advances from service selection to the staff step on click', async () => {
-    const { getPublicAvailableSlots } = await import('@/app/book/actions')
+    const { getPublicAvailableSlots } = await import('@/app/smb/actions')
     vi.mocked(getPublicAvailableSlots).mockResolvedValue({ slots: [] })
 
     render(
@@ -64,7 +64,7 @@ describe('BookingFlow', () => {
   })
 
   it('shows a "no times available" message when a date is picked and slots come back empty', async () => {
-    const { getPublicAvailableSlots } = await import('@/app/book/actions')
+    const { getPublicAvailableSlots } = await import('@/app/smb/actions')
     vi.mocked(getPublicAvailableSlots).mockResolvedValue({ slots: [] })
 
     render(
@@ -89,7 +89,7 @@ describe('BookingFlow', () => {
   })
 
   it('submits the contact form and shows the success screen on a successful booking', async () => {
-    const { getPublicAvailableSlots, createPublicAppointment } = await import('@/app/book/actions')
+    const { getPublicAvailableSlots, createPublicAppointment } = await import('@/app/smb/actions')
     vi.mocked(getPublicAvailableSlots).mockResolvedValue({ slots: [slot] })
     vi.mocked(createPublicAppointment).mockResolvedValue({ success: true, appointmentId: 'appt-1' })
 
@@ -131,7 +131,7 @@ describe('BookingFlow', () => {
   })
 
   it('shows a slot-taken message and returns to the date/time step when the booking loses the race', async () => {
-    const { getPublicAvailableSlots, createPublicAppointment } = await import('@/app/book/actions')
+    const { getPublicAvailableSlots, createPublicAppointment } = await import('@/app/smb/actions')
     vi.mocked(getPublicAvailableSlots).mockResolvedValue({ slots: [slot] })
     vi.mocked(createPublicAppointment).mockResolvedValue({ error: 'slot_taken' })
 

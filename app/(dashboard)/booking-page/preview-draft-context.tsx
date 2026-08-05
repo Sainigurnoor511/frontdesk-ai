@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, useRef, useState } from 'react'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
-import { BOOKING_PAGE_PREVIEW_MESSAGE_TYPE } from '@/app/book/[slug]/booking-page-public-client'
+import { BOOKING_PAGE_PREVIEW_MESSAGE_TYPE } from '@/app/smb/[slug]/booking-page-public-client'
 
 export type DraftPatch = {
   theme?: 'light' | 'dark'

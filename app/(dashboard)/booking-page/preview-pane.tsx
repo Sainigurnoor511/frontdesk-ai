@@ -8,8 +8,9 @@ import { usePreviewDraft } from './preview-draft-context'
 import {
   BOOKING_PAGE_PREVIEW_MESSAGE_TYPE,
   type BookingPagePreviewMessage,
-} from '@/app/book/[slug]/booking-page-public-client'
+} from '@/app/smb/[slug]/booking-page-public-client'
 import type { DraftPatch } from './preview-draft-context'
+import { getPublicBookingPath } from '@/lib/public-booking-url'
 
 type Device = 'desktop' | 'tablet' | 'mobile'
 type Zoom = 100 | 75 | 50
@@ -99,7 +100,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
             variant="ghost"
             size="icon"
             className="size-7"
-            onClick={() => window.open(`/book/${slug}?preview=1`, '_blank')}
+            onClick={() => window.open(`${getPublicBookingPath(slug)}?preview=1`, '_blank')}
             aria-label="Open in new tab"
           >
             <Maximize2 className="size-3.5" />
@@ -118,7 +119,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
         >
           <iframe
             ref={frameRef}
-            src={`/book/${slug}?preview=1`}
+            src={`${getPublicBookingPath(slug)}?preview=1`}
             className="size-full rounded-md border bg-background"
             title="Booking page preview"
           />

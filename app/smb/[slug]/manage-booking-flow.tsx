@@ -13,7 +13,7 @@ import {
   cancelPublicAppointment,
   getPublicAvailableSlots,
   type PublicAppointmentSummary,
-} from '@/app/book/actions'
+} from '@/app/smb/actions'
 
 type Step = 'lookup' | 'list' | 'reschedule' | 'done'
 

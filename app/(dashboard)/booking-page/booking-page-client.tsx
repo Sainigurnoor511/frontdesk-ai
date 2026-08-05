@@ -28,6 +28,7 @@ import { PreviewDraftProvider } from './preview-draft-context'
 import { PreviewPane } from './preview-pane'
 import { TemplatesDialog } from './templates-dialog'
 import { updateBookingPageEnabled, toggleServiceOnBookingPage } from './actions'
+import { getPublicBookingUrl, getPublicBookingPath } from '@/lib/public-booking-url'
 
 function formatPrice(price: number) {
   return `$${price.toFixed(2)}`
@@ -66,7 +67,7 @@ export function BookingPageClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  const embedSnippet = `<iframe src="https://yourapp.com/book/${slug}" width="100%" height="800" frameborder="0"></iframe>`
+  const embedSnippet = `<iframe src="${getPublicBookingUrl(slug)}" width="100%" height="800" frameborder="0"></iframe>`
 
   function handleToggleEnabled(checked: boolean) {
     setEnabled(checked)
@@ -97,7 +98,7 @@ export function BookingPageClient({
             type="button"
             className="gap-1.5"
             nativeButton={false}
-            render={<a href={`/book/${slug}`} target="_blank" rel="noreferrer" />}
+            render={<a href={getPublicBookingPath(slug)} target="_blank" rel="noreferrer" />}
           >
             Open public page
             <ExternalLink className="size-4" />

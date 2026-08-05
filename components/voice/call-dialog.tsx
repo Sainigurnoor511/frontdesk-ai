@@ -14,7 +14,7 @@ import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { useVoiceCall } from './use-voice-call'
 import { startDashboardCall } from '@/app/(dashboard)/actions/voice'
-import { startPublicCall } from '@/app/book/actions'
+import { startPublicCall } from '@/app/smb/actions'
 
 export function CallDialog({
   open,

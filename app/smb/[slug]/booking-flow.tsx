@@ -6,11 +6,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calendar } from '@/components/ui/calendar'
+import { ChevronRight, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
 import type { CustomField } from '@/lib/data/booking-page-config'
-import { getPublicAvailableSlots, createPublicAppointment } from '@/app/book/actions'
+import { getPublicAvailableSlots, createPublicAppointment } from '@/app/smb/actions'
 import { bookingAccentText } from '@/lib/booking-theme'
 
 type Step = 'service' | 'staff' | 'datetime' | 'contact' | 'confirm' | 'success'
@@ -147,31 +148,43 @@ export function BookingFlow({
 
   if (step === 'service') {
     return (
-      <Card className={cardClass}>
-        <CardContent className="divide-y p-0">
-          {services.map((svc) => (
-            <button
-              key={svc.id}
-              type="button"
-              onClick={() => handleSelectService(svc)}
-              className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left hover:bg-muted/50"
-            >
-              <div>
-                <p className="text-sm font-medium">{svc.name}</p>
-                <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
-                  {svc.durationMinutes} min
-                </p>
-                {showServiceDescriptions && svc.description && (
-                  <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
-                    {svc.description}
-                  </p>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        {services.map((svc) => (
+          <button
+            key={svc.id}
+            type="button"
+            onClick={() => handleSelectService(svc)}
+            className={cn(
+              'flex flex-col items-start gap-2 rounded-xl border p-4 text-left transition-colors hover:bg-muted/50',
+              isDark ? 'border-zinc-800 bg-zinc-900' : 'border-border bg-white'
+            )}
+          >
+            <div className="flex w-full items-start justify-between gap-2">
+              <p className="truncate text-sm font-semibold" title={svc.name}>
+                {svc.name}
+              </p>
+              <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+            </div>
+            {showServiceDescriptions && svc.description && (
+              <p
+                className={cn(
+                  'line-clamp-2 text-xs',
+                  isDark ? 'text-zinc-400' : 'text-muted-foreground'
                 )}
-              </div>
-              {showPrices && <p className="text-sm font-medium">${svc.price.toFixed(2)}</p>}
-            </button>
-          ))}
-        </CardContent>
-      </Card>
+                title={svc.description}
+              >
+                {svc.description}
+              </p>
+            )}
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>{showPrices ? (svc.price > 0 ? `$${svc.price.toFixed(2)}` : 'Free') : 'Price on request'}</span>
+              <span aria-hidden="true">·</span>
+              <Clock className="size-3.5" />
+              <span>{svc.durationMinutes} min</span>
+            </div>
+          </button>
+        ))}
+      </div>
     )
   }
 

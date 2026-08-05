@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { getOrganizationBySlug } from '@/lib/data/organization-slug'
 import { getOrganizationSettings } from '@/lib/data/settings'
-import { getServices } from '@/lib/data/business'
+import { getServices, getBusinessProfile } from '@/lib/data/business'
 import { getPublicAgentsForOrg } from '@/lib/data/agents'
 import { getStaffForBookingPage } from '@/lib/data/availability-engine'
 import { getPublicBookingPageConfig } from '@/lib/data/booking-page-config'
@@ -21,12 +21,13 @@ export default async function PublicBookingPage({
   const org = await getOrganizationBySlug(slug)
   if (!org) notFound()
 
-  const [settings, services, agents, staff, config] = await Promise.all([
+  const [settings, services, agents, staff, config, businessProfile] = await Promise.all([
     getOrganizationSettings(org.id),
     getServices(org.id),
     getPublicAgentsForOrg(org.id),
     getStaffForBookingPage(org.id),
     getPublicBookingPageConfig(org.id),
+    getBusinessProfile(org.id),
   ])
 
   // Preview mode (embedded in the editor's own iframe) bypasses the enabled
@@ -48,6 +49,7 @@ export default async function PublicBookingPage({
       accent={settings.bookingPageAccent}
       config={config}
       previewMode={previewMode}
+      timezone={businessProfile.timezone}
     />
   )
 }

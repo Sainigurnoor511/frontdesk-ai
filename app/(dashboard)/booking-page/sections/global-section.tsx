@@ -24,8 +24,7 @@ import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateGlobalBookingFlow, updateOrganizationSlug } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
-
-const BOOKING_URL_PREFIX = 'yourapp.com/book/'
+import { getPublicBookingUrl, getPublicBookingPath } from '@/lib/public-booking-url'
 
 export function GlobalSection({
   organizationSlug,
@@ -170,15 +169,14 @@ export function GlobalSection({
 
           <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2">
             <p className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">
-              {BOOKING_URL_PREFIX}
-              <span className="font-medium text-foreground">{slug}</span>
+              {getPublicBookingUrl(slug)}
             </p>
             <Button
               type="button"
               variant="ghost"
               size="icon"
               aria-label="Copy booking page URL"
-              onClick={() => copyToClipboard(`https://${BOOKING_URL_PREFIX}${slug}`, 'Link')}
+              onClick={() => copyToClipboard(getPublicBookingUrl(slug), 'Link')}
             >
               <Copy className="size-4" />
             </Button>
@@ -188,7 +186,7 @@ export function GlobalSection({
               size="icon"
               aria-label="Open booking page in new tab"
               nativeButton={false}
-              render={<a href={`/book/${slug}`} target="_blank" rel="noreferrer" />}
+              render={<a href={getPublicBookingPath(slug)} target="_blank" rel="noreferrer" />}
             >
               <ExternalLink className="size-4" />
             </Button>
