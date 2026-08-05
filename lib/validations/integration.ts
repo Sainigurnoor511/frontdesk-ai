@@ -12,3 +12,8 @@ export const configureWebhookSchema = z.object({
   secret: z.string().max(256).optional(),
 })
 export type ConfigureWebhookInput = z.infer<typeof configureWebhookSchema>
+
+export const configureGoogleCalendarSchema = z.object({
+  calendarId: z.string().min(1, 'Calendar ID is required'),
+})
+export type ConfigureGoogleCalendarInput = z.infer<typeof configureGoogleCalendarSchema>

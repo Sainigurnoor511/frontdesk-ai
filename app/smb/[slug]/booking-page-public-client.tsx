@@ -43,12 +43,19 @@ const LETTER_SPACING_CLASS: Record<BookingPageConfig['letterSpacing'], string> =
 /** Posted by the editor's preview pane (see PreviewFrame) to reflect unsaved
  * edits without a save round-trip. Only present when `previewMode` is true. */
 export const BOOKING_PAGE_PREVIEW_MESSAGE_TYPE = 'booking-page-preview-update'
+export const BOOKING_PAGE_PREVIEW_TAB_MESSAGE_TYPE = 'booking-page-preview-tab'
+export type BookingPagePreviewTab = 'book' | 'manage'
 export type BookingPagePreviewMessage = {
   type: typeof BOOKING_PAGE_PREVIEW_MESSAGE_TYPE
   theme?: 'light' | 'dark'
   accent?: string
   config?: Partial<BookingPageConfig>
 }
+export type BookingPagePreviewTabMessage = {
+  type: typeof BOOKING_PAGE_PREVIEW_TAB_MESSAGE_TYPE
+  tab: BookingPagePreviewTab
+}
+
 
 function formatTimezoneOffset(timezone: string): string {
   try {
@@ -209,11 +216,21 @@ export function BookingPagePublicClient({
     if (!previewMode) return
 
     function handleMessage(event: MessageEvent) {
-      const data = event.data as BookingPagePreviewMessage | undefined
-      if (!data || data.type !== BOOKING_PAGE_PREVIEW_MESSAGE_TYPE) return
+      const data = event.data as
+        | BookingPagePreviewMessage
+        | BookingPagePreviewTabMessage
+        | undefined
+      if (!data?.type) return
 
-      if (data.theme) setTheme(data.theme)
-      if (data.config) setConfig((prev) => ({ ...prev, ...data.config }))
+      if (data.type === BOOKING_PAGE_PREVIEW_MESSAGE_TYPE) {
+        if (data.theme) setTheme(data.theme)
+        if (data.config) setConfig((prev) => ({ ...prev, ...data.config }))
+        return
+      }
+
+      if (data.type === BOOKING_PAGE_PREVIEW_TAB_MESSAGE_TYPE) {
+        setTab(data.tab)
+      }
     }
 
     window.addEventListener('message', handleMessage)
@@ -280,26 +297,25 @@ export function BookingPagePublicClient({
     </div>
   )
 
-  const bookingFlowBlock = showBookingFlow && (
-    <div className="space-y-4">
-      {tabBar}
-      {tab === 'book' ? (
-        <BookingFlow
-          organizationId={organizationId}
-          organizationName={organizationName}
-          services={services}
-          staff={staff}
-          theme={theme}
-          accent={initialAccent}
-          showServiceDescriptions={config.showServiceDescriptions}
-          showPrices={config.showPrices}
-          customFields={config.customFields}
-        />
-      ) : (
-        <ManageBookingFlow organizationId={organizationId} theme={theme} accent={initialAccent} />
-      )}
-    </div>
+  const bookingFlowContent = showBookingFlow && (
+    tab === 'book' ? (
+      <BookingFlow
+        organizationId={organizationId}
+        organizationName={organizationName}
+        services={services}
+        staff={staff}
+        theme={theme}
+        accent={initialAccent}
+        showServiceDescriptions={config.showServiceDescriptions}
+        showPrices={config.showPrices}
+        customFields={config.customFields}
+      />
+    ) : (
+      <ManageBookingFlow organizationId={organizationId} theme={theme} accent={initialAccent} />
+    )
   )
+
+  const showMobileSplit = showReceptionist && showBookingFlow
 
   const headerRow = config.showHeader && (
     <div className="flex items-center justify-between gap-4 border-b px-6 py-4 sm:px-10">
@@ -337,17 +353,46 @@ export function BookingPagePublicClient({
           )}
         </div>
 
-        {bookingFlowBlock}
+        {showBookingFlow && (
+          <div className="space-y-4">
+            {!previewMode && tabBar}
+            {bookingFlowContent}
+          </div>
+        )}
       </div>
     </div>
   )
 
-  const showMobileSplit = showReceptionist && showBookingFlow
+  const receptionistPanel = showReceptionist && receptionistBlock && (
+    <div
+      data-booking-receptionist-root
+      className={cn(
+        'flex w-full min-h-0 flex-1 flex-col',
+        'lg:h-[100dvh] lg:w-1/2 lg:shrink-0 lg:flex-none',
+        showMobileSplit && mobilePanel !== 'assistant' ? 'hidden' : 'flex'
+      )}
+    >
+      {receptionistBlock}
+    </div>
+  )
+
+  const bookingPanel = (
+    <div
+      className={cn(
+        'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-border',
+        showMobileSplit ? 'lg:h-[100dvh] lg:w-1/2 lg:shrink-0 lg:flex-none lg:border-l' : 'lg:w-full',
+        showMobileSplit && mobilePanel !== 'steps' ? 'hidden' : 'flex'
+      )}
+    >
+      {rightPanel}
+    </div>
+  )
 
   return (
     <div
+      data-booking-public-root
       className={cn(
-        'isolate flex h-svh flex-col overflow-hidden lg:flex-row',
+        'isolate flex h-[100dvh] flex-col overflow-hidden lg:flex-row',
         isDark ? 'text-zinc-100' : 'text-foreground',
         FONT_WEIGHT_CLASS[config.fontWeight],
         LINE_HEIGHT_CLASS[config.lineHeight],
@@ -355,29 +400,27 @@ export function BookingPagePublicClient({
       )}
       style={{ fontFamily: config.bodyFont }}
     >
-      <div
-        className={cn(
-          'min-h-0 flex-1 lg:flex lg:w-1/2 lg:shrink-0',
-          showMobileSplit && mobilePanel !== 'assistant' ? 'hidden' : 'flex'
-        )}
-      >
-        {config.receptionistPosition === 'left' ? receptionistBlock : rightPanel}
-      </div>
-      <div
-        className={cn(
-          'min-h-0 flex-1 border-border lg:flex lg:w-1/2 lg:shrink-0 lg:border-l',
-          showMobileSplit && mobilePanel !== 'steps' ? 'hidden' : 'flex'
-        )}
-      >
-        {config.receptionistPosition === 'left' ? rightPanel : receptionistBlock}
-      </div>
+      {config.receptionistPosition === 'left' ? (
+        <>
+          {receptionistPanel}
+          {bookingPanel}
+        </>
+      ) : (
+        <>
+          {bookingPanel}
+          {receptionistPanel}
+        </>
+      )}
 
       {showMobileSplit && (
-        <div className="shrink-0 border-t px-3 py-2.5 lg:hidden">
+        <div
+          data-booking-mobile-split
+          className="shrink-0 border-t px-3 py-2.5 lg:hidden"
+        >
           <div
             role="tablist"
             className={cn(
-              'grid h-11 grid-cols-2 gap-1 rounded-[10px] border p-1',
+              'grid h-11 w-full grid-cols-2 gap-1 rounded-[10px] border p-1',
               isDark ? 'border-zinc-800' : 'border-border'
             )}
           >
@@ -387,7 +430,7 @@ export function BookingPagePublicClient({
               aria-selected={mobilePanel === 'steps'}
               onClick={() => setMobilePanel('steps')}
               className={cn(
-                'rounded-[7px] px-3 text-sm font-medium transition-colors',
+                'inline-flex h-full items-center justify-center rounded-[7px] px-3 text-sm font-medium transition-colors',
                 mobilePanel === 'steps'
                   ? isDark
                     ? 'bg-zinc-800 text-zinc-100'
@@ -403,7 +446,7 @@ export function BookingPagePublicClient({
               aria-selected={mobilePanel === 'assistant'}
               onClick={() => setMobilePanel('assistant')}
               className={cn(
-                'rounded-[7px] px-3 text-sm font-medium transition-colors',
+                'inline-flex h-full items-center justify-center rounded-[7px] px-3 text-sm font-medium transition-colors',
                 mobilePanel === 'assistant'
                   ? isDark
                     ? 'bg-zinc-800 text-zinc-100'

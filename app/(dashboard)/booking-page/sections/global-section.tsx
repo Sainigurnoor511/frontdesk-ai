@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { ChevronDown, Code, Copy, ExternalLink } from 'lucide-react'
+import { Code, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -15,12 +15,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { EmbedDialog } from '../embed-dialog'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateGlobalBookingFlow, updateOrganizationSlug } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
@@ -28,17 +24,18 @@ import { getPublicBookingUrl, getPublicBookingPath } from '@/lib/public-booking-
 
 export function GlobalSection({
   organizationSlug,
+  organizationName,
   onSlugSaved,
-  embedSnippet,
   config,
 }: {
   organizationSlug: string
+  organizationName: string
   onSlugSaved: (slug: string) => void
-  embedSnippet: string
   config: BookingPageConfig
 }) {
   const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
+  const [embedOpen, setEmbedOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [slug, setSlug] = useState(organizationSlug)
   const [slugInput, setSlugInput] = useState(organizationSlug)
@@ -130,15 +127,16 @@ export function GlobalSection({
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Global settings</h2>
-        <p className="text-sm text-muted-foreground">
-          Your public booking link and how customers move through the booking process.
-        </p>
-      </div>
-
       <Card>
-        <CardContent className="space-y-4 p-4">
+        <CardContent className="p-0">
+          <div className="space-y-1 border-b p-4">
+            <h2 className="text-lg font-semibold">Global settings</h2>
+            <p className="text-sm text-muted-foreground">
+              Your public booking link and how customers move through the booking process.
+            </p>
+          </div>
+
+          <div className="space-y-4 p-4">
           <div>
             <h3 className="text-sm font-semibold">Booking page URL</h3>
             <p className="text-sm text-muted-foreground">
@@ -192,35 +190,25 @@ export function GlobalSection({
             </Button>
           </div>
 
-          <Collapsible>
-            <CollapsibleTrigger className="flex w-full items-center justify-between rounded-md border px-3 py-2 text-sm font-medium">
-              <span className="flex items-center gap-2">
-                <Code className="size-4" />
-                Embed on your website
-              </span>
-              <ChevronDown className="size-4 text-muted-foreground" />
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-2 pt-3">
-              <p className="text-sm text-muted-foreground">
-                Paste this snippet into your website&apos;s HTML to embed the booking page.
-              </p>
-              <div className="relative">
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-                  <code>{embedSnippet}</code>
-                </pre>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="absolute top-2 right-2"
-                  onClick={() => copyToClipboard(embedSnippet, 'Snippet')}
-                >
-                  <Copy className="size-3.5" />
-                  Copy
-                </Button>
-              </div>
-            </CollapsibleContent>
-          </Collapsible>
+          <Button
+            type="button"
+            variant="outline"
+            className="w-full justify-between gap-2"
+            onClick={() => setEmbedOpen(true)}
+          >
+            <span className="flex items-center gap-2">
+              <Code className="size-4" />
+              Embed on your website
+            </span>
+          </Button>
+
+          <EmbedDialog
+            open={embedOpen}
+            onOpenChange={setEmbedOpen}
+            organizationSlug={slug}
+            organizationName={organizationName}
+          />
+          </div>
         </CardContent>
       </Card>
 

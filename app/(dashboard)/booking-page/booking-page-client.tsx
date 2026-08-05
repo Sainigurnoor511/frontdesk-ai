@@ -28,7 +28,7 @@ import { PreviewDraftProvider } from './preview-draft-context'
 import { PreviewPane } from './preview-pane'
 import { TemplatesDialog } from './templates-dialog'
 import { updateBookingPageEnabled, toggleServiceOnBookingPage } from './actions'
-import { getPublicBookingUrl, getPublicBookingPath } from '@/lib/public-booking-url'
+import { getPublicBookingPath } from '@/lib/public-booking-url'
 
 function formatPrice(price: number) {
   return `$${price.toFixed(2)}`
@@ -67,8 +67,6 @@ export function BookingPageClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  const embedSnippet = `<iframe src="${getPublicBookingUrl(slug)}" width="100%" height="800" frameborder="0"></iframe>`
-
   function handleToggleEnabled(checked: boolean) {
     setEnabled(checked)
     startTransition(async () => {
@@ -81,8 +79,8 @@ export function BookingPageClient({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex shrink-0 items-start justify-between gap-4 border-b-1 pb-4">
         <div>
           <h1 className="font-heading text-2xl font-semibold">Bookings page</h1>
           <p className="mt-1 text-sm font-normal text-[#96989d]">
@@ -115,55 +113,51 @@ export function BookingPageClient({
       />
 
       {!enabled && (
-        <div className="rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground">
+        <div className="shrink-0 rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground">
           Your booking page is currently disabled. Clients won&apos;t be able to book online.
         </div>
       )}
 
       <PreviewDraftProvider>
-        <div className="flex gap-6">
+        <div className="flex min-h-0 flex-1 gap-4">
           <EditorSidebar active={section} onSelect={setSection} />
 
-          <div className="min-w-0 flex-1 basis-1/2">
+          <div className="scrollbar-thin min-h-0 min-w-0 flex-1 basis-1/2 overflow-y-auto">
             {section === 'global' && (
-              <div className="space-y-6">
+              <div className="space-y-6 p-4">
                 <GlobalSection
                   organizationSlug={slug}
+                  organizationName={organizationName}
                   onSlugSaved={setSlug}
-                  embedSnippet={embedSnippet}
                   config={config}
                 />
 
-                <div className="space-y-3">
-                  <div>
-                    <h3 className="text-sm font-semibold">Services shown on this page</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Choose which services clients can book from your public booking page.
-                    </p>
-                  </div>
+                <Card>
+                  <CardContent className="p-0">
+                    <div className="space-y-1 border-b p-4">
+                      <h3 className="text-sm font-semibold">Services shown on this page</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Choose which services clients can book from your public booking page.
+                      </p>
+                    </div>
 
-                  {services.length === 0 ? (
-                    <Card>
-                      <CardContent className="p-4 text-sm text-muted-foreground">
+                    {services.length === 0 ? (
+                      <p className="p-4 text-sm text-muted-foreground">
                         No services yet.{' '}
                         <Link href="/business?tab=services" className="text-foreground underline">
                           Add services in Business
                         </Link>{' '}
                         to make them bookable online.
-                      </CardContent>
-                    </Card>
-                  ) : (
-                    <Card>
-                      <CardContent className="p-0">
-                        <ul className="divide-y">
-                          {services.map((service) => (
-                            <ServiceRow key={service.id} service={service} />
-                          ))}
-                        </ul>
-                      </CardContent>
-                    </Card>
-                  )}
-                </div>
+                      </p>
+                    ) : (
+                      <ul className="divide-y">
+                        {services.map((service) => (
+                          <ServiceRow key={service.id} service={service} />
+                        ))}
+                      </ul>
+                    )}
+                  </CardContent>
+                </Card>
               </div>
             )}
 
@@ -183,7 +177,7 @@ export function BookingPageClient({
             {section === 'history' && <HistorySection />}
           </div>
 
-          <div className="min-w-0 flex-1 basis-1/2">
+          <div className="min-h-0 min-w-0 flex-1 basis-1/2">
             <PreviewPane
               slug={slug}
               initialDraft={{

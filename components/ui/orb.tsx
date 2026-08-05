@@ -5,6 +5,17 @@ import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 
+// @react-three/fiber still constructs THREE.Clock internally (deprecated in r183).
+if (typeof window !== "undefined" && !THREE.getConsoleFunction()) {
+  THREE.setConsoleFunction((type, message, ...params) => {
+    if (type === "warn" && message.includes("THREE.Clock: This module has been deprecated")) {
+      return
+    }
+    const log = type === "error" ? console.error : type === "warn" ? console.warn : console.log
+    log(message, ...params)
+  })
+}
+
 export type AgentState = null | "thinking" | "listening" | "talking"
 
 type OrbProps = {

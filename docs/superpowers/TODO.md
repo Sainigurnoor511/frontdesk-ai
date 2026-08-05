@@ -19,9 +19,11 @@ Items raised during development that are out of scope for the current phase but 
   6. **Zapier** — via a public webhook/API key we expose ("Webhooks by Zapier" trigger), not a listed Zapier app.
   7. **Microsoft Calendar (Outlook)** — same shape as Google Calendar, second priority since Google covers most demand.
 
-  _Done 2026-08-04: `webhook-tool` now stores a per-org URL/event/secret config in `organization_integrations.config`, dispatches BullMQ jobs on `appointment.created`, `appointment.cancelled`, and `conversation.completed`, signs POSTs with `X-Frontdesk-Signature`, and exposes a config form in the Integrations UI. Delivery runs in `workers/webhook.ts` via `worker:webhook`._
+   _Done 2026-08-04: `webhook-tool` now stores a per-org URL/event/secret config in `organization_integrations.config`, dispatches BullMQ jobs on `appointment.created`, `appointment.cancelled`, and `conversation.completed`, signs POSTs with `X-Frontdesk-Signature`, and exposes a config form in the Integrations UI. Delivery runs in `workers/webhook.ts` via `worker:webhook`_.
 
-  Not realistic short-term (needs partner approval, app review, or a business relationship, not just code): SIP Trunk, RingCentral, Salesforce, HubSpot, Zoho, JotForm, Typeform, Zendesk, MCP Server, Mailgun, SendGrid, Calendly, Make. Catalog UI should mark these as "Coming soon" vs "Available" once the first 1-2 are real.
+   _Done 2026-08-04: `google-calendar` integration now stores per-org OAuth credentials in `organization_integrations.config`, supports OAuth login via Google, stores access tokens, and provides calendar sync. Calendar events are pushed for new/cancelled appointments and new calls. UI shows connection status and provides Google Calendar connect/disconnect on the Integrations page. Draft docs available for partner review._
+
+   Not realistic short-term (needs partner approval, app review, or a business relationship, not just code): SIP Trunk, RingCentral, Salesforce, HubSpot, Zoho, JotForm, Typeform, Zendesk, MCP Server, Mailgun, SendGrid, Calendly, Make. Catalog UI should mark these as "Coming soon" vs "Available" once the first 1-2 are real.
 
 ## Calendar
 
