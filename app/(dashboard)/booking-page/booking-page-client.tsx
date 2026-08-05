@@ -4,8 +4,10 @@ import { useState, useTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { LayoutGrid, ExternalLink } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
 import { Card, CardContent } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import type { Service } from '@/lib/data/business'
 import type { BusinessProfile } from '@/lib/data/business'
@@ -24,6 +26,7 @@ import { SchedulingSection } from './sections/scheduling-section'
 import { HistorySection } from './sections/history-section'
 import { PreviewDraftProvider } from './preview-draft-context'
 import { PreviewPane } from './preview-pane'
+import { TemplatesDialog } from './templates-dialog'
 import { updateBookingPageEnabled, toggleServiceOnBookingPage } from './actions'
 
 function formatPrice(price: number) {
@@ -52,6 +55,7 @@ export function BookingPageClient({
   const searchParams = useSearchParams()
   const [enabled, setEnabled] = useState(settings.bookingPageEnabled)
   const [slug, setSlug] = useState(organizationSlug)
+  const [templatesOpen, setTemplatesOpen] = useState(false)
   const [, startTransition] = useTransition()
 
   const section = (searchParams.get('section') as EditorSection | null) ?? 'global'
@@ -84,11 +88,30 @@ export function BookingPageClient({
             Your public booking link, where clients can book appointments themselves.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">Enable online booking</span>
+        <div className="flex items-center gap-3">
+          <Button type="button" variant="outline" className="gap-1.5" onClick={() => setTemplatesOpen(true)}>
+            <LayoutGrid className="size-4" />
+            Templates
+          </Button>
+          <Button
+            type="button"
+            className="gap-1.5"
+            nativeButton={false}
+            render={<a href={`/book/${slug}`} target="_blank" rel="noreferrer" />}
+          >
+            Open public page
+            <ExternalLink className="size-4" />
+          </Button>
+          <span className="ml-2 text-sm font-medium">Enable online booking</span>
           <Switch checked={enabled} onCheckedChange={handleToggleEnabled} />
         </div>
       </div>
+
+      <TemplatesDialog
+        open={templatesOpen}
+        onOpenChange={setTemplatesOpen}
+        onApplied={() => router.refresh()}
+      />
 
       {!enabled && (
         <div className="rounded-md border bg-muted px-4 py-3 text-sm text-muted-foreground">
