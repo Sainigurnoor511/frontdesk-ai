@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { ChevronDown, Code, Copy } from 'lucide-react'
+import { ChevronDown, Code, Copy, ExternalLink } from 'lucide-react'
 import { toast } from 'sonner'
 import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
@@ -22,21 +22,29 @@ import {
 } from '@/components/ui/collapsible'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
-import { updateGlobalBookingFlow } from '../actions'
+import { updateGlobalBookingFlow, updateOrganizationSlug } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
 
+const BOOKING_URL_PREFIX = 'yourapp.com/book/'
+
 export function GlobalSection({
-  bookingUrl,
+  organizationSlug,
+  onSlugSaved,
   embedSnippet,
   config,
 }: {
-  bookingUrl: string
+  organizationSlug: string
+  onSlugSaved: (slug: string) => void
   embedSnippet: string
   config: BookingPageConfig
 }) {
   const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
+  const [slug, setSlug] = useState(organizationSlug)
+  const [slugInput, setSlugInput] = useState(organizationSlug)
+  const [savingSlug, setSavingSlug] = useState(false)
+  const [slugError, setSlugError] = useState<string | null>(null)
   const [showStaffSelection, setShowStaffSelection] = useState(config.showStaffSelection)
   const [showReceptionist, setShowReceptionist] = useState(config.showReceptionistOnBookingPage)
   const [receptionistOnly, setReceptionistOnly] = useState(config.receptionistOnly)
@@ -73,6 +81,24 @@ export function GlobalSection({
     navigator.clipboard.writeText(text)
     toast.success(`${label} copied`)
   }
+
+  function handleSaveSlug() {
+    setSavingSlug(true)
+    setSlugError(null)
+    startTransition(async () => {
+      const result = await updateOrganizationSlug({ slug: slugInput })
+      setSavingSlug(false)
+      if ('error' in result) {
+        setSlugError(result.error)
+        return
+      }
+      setSlug(result.slug)
+      onSlugSaved(result.slug)
+      toast.success('Booking page URL updated.')
+    })
+  }
+
+  const slugDirty = slugInput !== slug
 
   function handleSave() {
     setSaving(true)
@@ -120,15 +146,51 @@ export function GlobalSection({
               Share this link with clients so they can book appointments online.
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Input value={bookingUrl} readOnly className="font-mono text-sm" />
+
+          <div className="space-y-2">
+            <Label htmlFor="booking-slug">Slug</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="booking-slug"
+                value={slugInput}
+                onChange={(e) => {
+                  setSlugInput(e.target.value.toLowerCase())
+                  setSlugError(null)
+                }}
+                className="font-mono text-sm"
+              />
+              {slugDirty && (
+                <Button type="button" size="sm" disabled={savingSlug} onClick={handleSaveSlug}>
+                  {savingSlug ? 'Saving…' : 'Save'}
+                </Button>
+              )}
+            </div>
+            {slugError && <p className="text-sm text-destructive">{slugError}</p>}
+          </div>
+
+          <div className="flex items-center gap-2 rounded-md bg-muted px-3 py-2">
+            <p className="min-w-0 flex-1 truncate font-mono text-sm text-muted-foreground">
+              {BOOKING_URL_PREFIX}
+              <span className="font-medium text-foreground">{slug}</span>
+            </p>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="icon"
-              onClick={() => copyToClipboard(`https://${bookingUrl}`, 'Link')}
+              aria-label="Copy booking page URL"
+              onClick={() => copyToClipboard(`https://${BOOKING_URL_PREFIX}${slug}`, 'Link')}
             >
               <Copy className="size-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Open booking page in new tab"
+              nativeButton={false}
+              render={<a href={`/book/${slug}`} target="_blank" rel="noreferrer" />}
+            >
+              <ExternalLink className="size-4" />
             </Button>
           </div>
 

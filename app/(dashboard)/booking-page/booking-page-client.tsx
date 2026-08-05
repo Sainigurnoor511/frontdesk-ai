@@ -51,6 +51,7 @@ export function BookingPageClient({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const [enabled, setEnabled] = useState(settings.bookingPageEnabled)
+  const [slug, setSlug] = useState(organizationSlug)
   const [, startTransition] = useTransition()
 
   const section = (searchParams.get('section') as EditorSection | null) ?? 'global'
@@ -61,8 +62,7 @@ export function BookingPageClient({
     router.push(`${pathname}?${params.toString()}`)
   }
 
-  const bookingUrl = `yourapp.com/book/${organizationSlug}`
-  const embedSnippet = `<iframe src="https://${bookingUrl}" width="100%" height="800" frameborder="0"></iframe>`
+  const embedSnippet = `<iframe src="https://yourapp.com/book/${slug}" width="100%" height="800" frameborder="0"></iframe>`
 
   function handleToggleEnabled(checked: boolean) {
     setEnabled(checked)
@@ -103,7 +103,12 @@ export function BookingPageClient({
           <div className="min-w-0 flex-1 basis-1/2">
             {section === 'global' && (
               <div className="space-y-6">
-                <GlobalSection bookingUrl={bookingUrl} embedSnippet={embedSnippet} config={config} />
+                <GlobalSection
+                  organizationSlug={slug}
+                  onSlugSaved={setSlug}
+                  embedSnippet={embedSnippet}
+                  config={config}
+                />
 
                 <div className="space-y-3">
                   <div>
@@ -156,7 +161,7 @@ export function BookingPageClient({
 
           <div className="min-w-0 flex-1 basis-1/2">
             <PreviewPane
-              slug={organizationSlug}
+              slug={slug}
               initialDraft={{
                 theme: settings.bookingPageTheme,
                 accent: settings.bookingPageAccent,

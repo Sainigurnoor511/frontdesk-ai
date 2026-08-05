@@ -18,6 +18,8 @@ import {
   updateGlobalBookingFlowSchema,
   updateCalendarConfigSchema,
   restoreBookingPageVersionSchema,
+  updateOrganizationSlugSchema,
+  applyBookingPageTemplateSchema,
   type UpdateTypographyInput,
   type UpdateBrandingInput,
   type UpdateLayoutInput,
@@ -27,6 +29,8 @@ import {
   type UpdateGlobalBookingFlowInput,
   type UpdateCalendarConfigInput,
   type RestoreBookingPageVersionInput,
+  type UpdateOrganizationSlugInput,
+  type ApplyBookingPageTemplateInput,
 } from '@/lib/validations/booking-page-config'
 import { z } from 'zod'
 
@@ -397,4 +401,83 @@ export async function toggleServiceOnBookingPage(
 
   revalidatePath('/booking-page')
   return { success: true }
+}
+
+export async function updateOrganizationSlug(
+  input: UpdateOrganizationSlugInput
+): Promise<{ error: string } | { success: true; slug: string }> {
+  const parsed = updateOrganizationSlugSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const orgResult = await getOrgId(supabase)
+  if ('error' in orgResult) return orgResult
+
+  const { data: existing } = await supabase
+    .from('organizations')
+    .select('id')
+    .eq('slug', parsed.data.slug)
+    .maybeSingle()
+
+  if (existing && existing.id !== orgResult.organizationId) {
+    return { error: 'That URL is already taken. Please choose another.' }
+  }
+
+  const { error } = await supabase
+    .from('organizations')
+    .update({ slug: parsed.data.slug })
+    .eq('id', orgResult.organizationId)
+
+  if (error) {
+    return { error: 'Could not update the booking page URL. Please try again.' }
+  }
+
+  revalidatePath('/booking-page')
+  return { success: true, slug: parsed.data.slug }
+}
+
+const BOOKING_PAGE_TEMPLATES: Record<
+  ApplyBookingPageTemplateInput['templateId'],
+  Record<string, unknown>
+> = {
+  minimal: {
+    heading_font: 'system-ui',
+    body_font: 'system-ui',
+    heading_size: 'md',
+    font_weight: 'normal',
+    letter_spacing: 'normal',
+  },
+  bold: {
+    heading_font: 'Poppins',
+    body_font: 'Inter',
+    heading_size: 'xl',
+    font_weight: 'bold',
+    letter_spacing: 'tight',
+  },
+  warm: {
+    heading_font: 'Georgia',
+    body_font: 'Merriweather',
+    heading_size: 'lg',
+    font_weight: 'medium',
+    letter_spacing: 'normal',
+  },
+}
+
+export async function applyBookingPageTemplate(
+  input: ApplyBookingPageTemplateInput
+): Promise<ActionResult> {
+  const parsed = applyBookingPageTemplateSchema.safeParse(input)
+  if (!parsed.success) return { error: parsed.error.issues[0].message }
+
+  const supabase = await createSupabaseClient()
+  const orgResult = await getOrgId(supabase)
+  if ('error' in orgResult) return orgResult
+
+  return saveBookingPageConfigSection(
+    supabase,
+    orgResult.organizationId,
+    BOOKING_PAGE_TEMPLATES[parsed.data.templateId]
+  )
 }

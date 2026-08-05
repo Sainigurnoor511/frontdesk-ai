@@ -74,3 +74,34 @@ export const restoreBookingPageVersionSchema = z.object({
   versionId: z.string().uuid(),
 })
 export type RestoreBookingPageVersionInput = z.infer<typeof restoreBookingPageVersionSchema>
+
+export const RESERVED_SLUGS = [
+  'api',
+  'app',
+  'admin',
+  'book',
+  'booking',
+  'dashboard',
+  'login',
+  'logout',
+  'settings',
+  'signup',
+  'staff',
+  'support',
+  'www',
+]
+
+export const updateOrganizationSlugSchema = z.object({
+  slug: z
+    .string()
+    .min(3)
+    .max(63)
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, 'Use lowercase letters, numbers, and hyphens only.')
+    .refine((value) => !RESERVED_SLUGS.includes(value), 'That URL is reserved. Please choose another.'),
+})
+export type UpdateOrganizationSlugInput = z.infer<typeof updateOrganizationSlugSchema>
+
+export const applyBookingPageTemplateSchema = z.object({
+  templateId: z.enum(['minimal', 'bold', 'warm']),
+})
+export type ApplyBookingPageTemplateInput = z.infer<typeof applyBookingPageTemplateSchema>
