@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Phone, PhoneOff, ArrowUp, Globe } from 'lucide-react'
+import { Phone, PhoneOff, ArrowUp, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
@@ -128,7 +128,7 @@ function ReceptionistPanel({
 
       <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-2">
         <div className="relative">
-          <div className="size-44 overflow-hidden rounded-full shadow-xl">
+          <div className="flex size-44 items-center justify-center overflow-hidden rounded-full shadow-xl">
             <Orb agentState={isConnected ? 'listening' : null} seed={1} />
           </div>
           <button
@@ -203,6 +203,7 @@ export function BookingPagePublicClient({
   const [theme, setTheme] = useState(initialTheme)
   const [config, setConfig] = useState(initialConfig)
   const [tab, setTab] = useState<'book' | 'manage'>('book')
+  const [mobilePanel, setMobilePanel] = useState<'steps' | 'assistant'>('steps')
 
   useEffect(() => {
     if (!previewMode) return
@@ -310,7 +311,7 @@ export function BookingPagePublicClient({
         <p className="font-semibold">{organizationName}</p>
       </div>
       <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-        <Globe className="size-4" />
+        <Clock className="size-4" />
         <span>{formatTimezoneOffset(timezone)}</span>
       </div>
     </div>
@@ -341,11 +342,12 @@ export function BookingPagePublicClient({
     </div>
   )
 
+  const showMobileSplit = showReceptionist && showBookingFlow
+
   return (
     <div
       className={cn(
-        'grid min-h-svh',
-        showReceptionist && showBookingFlow ? 'md:grid-cols-2' : 'grid-cols-1',
+        'isolate flex h-svh flex-col overflow-hidden lg:flex-row',
         isDark ? 'text-zinc-100' : 'text-foreground',
         FONT_WEIGHT_CLASS[config.fontWeight],
         LINE_HEIGHT_CLASS[config.lineHeight],
@@ -353,16 +355,66 @@ export function BookingPagePublicClient({
       )}
       style={{ fontFamily: config.bodyFont }}
     >
-      {config.receptionistPosition === 'left' ? (
-        <>
-          {receptionistBlock}
-          {rightPanel}
-        </>
-      ) : (
-        <>
-          {rightPanel}
-          {receptionistBlock}
-        </>
+      <div
+        className={cn(
+          'min-h-0 flex-1 lg:flex lg:w-1/2 lg:shrink-0',
+          showMobileSplit && mobilePanel !== 'assistant' ? 'hidden' : 'flex'
+        )}
+      >
+        {config.receptionistPosition === 'left' ? receptionistBlock : rightPanel}
+      </div>
+      <div
+        className={cn(
+          'min-h-0 flex-1 border-border lg:flex lg:w-1/2 lg:shrink-0 lg:border-l',
+          showMobileSplit && mobilePanel !== 'steps' ? 'hidden' : 'flex'
+        )}
+      >
+        {config.receptionistPosition === 'left' ? rightPanel : receptionistBlock}
+      </div>
+
+      {showMobileSplit && (
+        <div className="shrink-0 border-t px-3 py-2.5 lg:hidden">
+          <div
+            role="tablist"
+            className={cn(
+              'grid h-11 grid-cols-2 gap-1 rounded-[10px] border p-1',
+              isDark ? 'border-zinc-800' : 'border-border'
+            )}
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePanel === 'steps'}
+              onClick={() => setMobilePanel('steps')}
+              className={cn(
+                'rounded-[7px] px-3 text-sm font-medium transition-colors',
+                mobilePanel === 'steps'
+                  ? isDark
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground'
+              )}
+            >
+              Step by step
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePanel === 'assistant'}
+              onClick={() => setMobilePanel('assistant')}
+              className={cn(
+                'rounded-[7px] px-3 text-sm font-medium transition-colors',
+                mobilePanel === 'assistant'
+                  ? isDark
+                    ? 'bg-zinc-800 text-zinc-100'
+                    : 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground'
+              )}
+            >
+              With assistant
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )

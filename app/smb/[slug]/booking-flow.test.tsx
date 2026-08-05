@@ -43,7 +43,7 @@ function clickADayCell() {
 }
 
 describe('BookingFlow', () => {
-  it('advances from service selection to the staff step on click', async () => {
+  it('advances from service selection straight to the date/time step on click', async () => {
     const { getPublicAvailableSlots } = await import('@/app/smb/actions')
     vi.mocked(getPublicAvailableSlots).mockResolvedValue({ slots: [] })
 
@@ -60,7 +60,8 @@ describe('BookingFlow', () => {
 
     fireEvent.click(screen.getByText('Consultation'))
 
-    await screen.findByText(/any staff member/i)
+    const cells = await screen.findAllByRole('gridcell')
+    expect(cells.length).toBeGreaterThan(0)
   })
 
   it('shows a "no times available" message when a date is picked and slots come back empty', async () => {
@@ -79,7 +80,6 @@ describe('BookingFlow', () => {
     )
 
     fireEvent.click(screen.getByText('Consultation'))
-    fireEvent.click(await screen.findByText(/any staff member/i))
 
     await screen.findAllByRole('gridcell')
     clickADayCell()
@@ -105,7 +105,6 @@ describe('BookingFlow', () => {
     )
 
     fireEvent.click(screen.getByText('Consultation'))
-    fireEvent.click(await screen.findByText(/any staff member/i))
 
     await screen.findAllByRole('gridcell')
     clickADayCell()
@@ -147,7 +146,6 @@ describe('BookingFlow', () => {
     )
 
     fireEvent.click(screen.getByText('Consultation'))
-    fireEvent.click(await screen.findByText(/any staff member/i))
 
     await screen.findAllByRole('gridcell')
     clickADayCell()

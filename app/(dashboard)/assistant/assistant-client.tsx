@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ArrowUp, Loader2 } from 'lucide-react'
+import { ArrowUp } from 'lucide-react'
+import { ThinkingOrb } from 'thinking-orbs'
 import { cn } from '@/lib/utils'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
@@ -152,7 +153,7 @@ export function AssistantClient() {
 
           {isThinking && (
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-3.5 animate-spin" />
+              <ThinkingOrb state="composing" size={20} />
               Thinking...
             </div>
           )}

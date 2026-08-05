@@ -10,6 +10,7 @@ import {
   RotateCcw,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ThinkingOrb } from 'thinking-orbs'
 import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { useVoiceCall } from './use-voice-call'
@@ -142,8 +143,8 @@ export function CallDialog({
                   )}
                 >
                   {message.speaker === 'agent' && (
-                    <div className="size-7 shrink-0 overflow-hidden rounded-full">
-                      <Orb agentState={null} seed={1} />
+                    <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                      <ThinkingOrb state="composing" size={64} />
                     </div>
                   )}
                   <div

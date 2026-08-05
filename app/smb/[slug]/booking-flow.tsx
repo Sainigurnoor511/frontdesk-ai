@@ -6,6 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calendar } from '@/components/ui/calendar'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { ChevronRight, Clock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
@@ -14,7 +21,9 @@ import type { CustomField } from '@/lib/data/booking-page-config'
 import { getPublicAvailableSlots, createPublicAppointment } from '@/app/smb/actions'
 import { bookingAccentText } from '@/lib/booking-theme'
 
-type Step = 'service' | 'staff' | 'datetime' | 'contact' | 'confirm' | 'success'
+const ANY_STAFF_VALUE = '__any__'
+
+type Step = 'service' | 'datetime' | 'contact' | 'confirm' | 'success'
 
 function formatSlotLabel(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).format(
@@ -77,12 +86,14 @@ export function BookingFlow({
 
   function handleSelectService(selected: Service) {
     setService(selected)
-    setStep(staff.length > 0 ? 'staff' : 'datetime')
+    setStep('datetime')
   }
 
-  function handleSelectStaff(id: string | undefined) {
+  async function handleSelectStaffFilter(value: string) {
+    const id = value === ANY_STAFF_VALUE ? undefined : value
     setStaffId(id)
-    setStep('datetime')
+    setSelectedSlot(null)
+    if (date && service) await loadSlots(date, id, service)
   }
 
   async function handleSelectDate(selected: Date | undefined) {
@@ -188,36 +199,28 @@ export function BookingFlow({
     )
   }
 
-  if (step === 'staff') {
-    return (
-      <Card className={cardClass}>
-        <CardContent className="divide-y p-0">
-          <button
-            type="button"
-            onClick={() => handleSelectStaff(undefined)}
-            className="flex w-full px-4 py-3 text-left hover:bg-muted/50"
-          >
-            Any staff member
-          </button>
-          {staff.map((member) => (
-            <button
-              key={member.id}
-              type="button"
-              onClick={() => handleSelectStaff(member.id)}
-              className="flex w-full px-4 py-3 text-left hover:bg-muted/50"
-            >
-              {member.name}
-            </button>
-          ))}
-        </CardContent>
-      </Card>
-    )
-  }
-
   if (step === 'datetime') {
     return (
       <div className="space-y-4">
         {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+        {staff.length > 0 && (
+          <Select
+            value={staffId ?? ANY_STAFF_VALUE}
+            onValueChange={(value) => handleSelectStaffFilter(value ?? ANY_STAFF_VALUE)}
+          >
+            <SelectTrigger className="w-full sm:w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ANY_STAFF_VALUE}>Any staff member</SelectItem>
+              {staff.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  {member.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         <Calendar mode="single" selected={date} onSelect={handleSelectDate} />
         {slotsLoading && <p className="text-sm text-muted-foreground">Loading times…</p>}
         {!slotsLoading && date && slots.length === 0 && (
