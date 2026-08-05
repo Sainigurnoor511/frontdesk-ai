@@ -6,13 +6,25 @@ import { createConversation, updateConversationStatus } from '@/lib/data/convers
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
 import { startPublicCallSchema, type StartPublicCallInput } from '@/lib/validations/voice'
 import { getAvailableSlots } from '@/lib/data/availability-engine'
-import { findOrCreateClientServiceRole, createAppointmentServiceRole } from '@/lib/data/booking-service'
+import {
+  findOrCreateClientServiceRole,
+  createAppointmentServiceRole,
+  getUpcomingAppointmentsByEmailServiceRole,
+  reschedulePublicAppointmentServiceRole,
+  cancelPublicAppointmentServiceRole,
+} from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 import {
   getPublicAvailableSlotsSchema,
   createPublicAppointmentSchema,
+  lookupPublicAppointmentsSchema,
+  reschedulePublicAppointmentSchema,
+  cancelPublicAppointmentSchema,
   type GetPublicAvailableSlotsInput,
   type CreatePublicAppointmentInput,
+  type LookupPublicAppointmentsInput,
+  type ReschedulePublicAppointmentInput,
+  type CancelPublicAppointmentInput,
 } from '@/lib/validations/booking'
 
 const MAX_CALL_SECONDS = 300
@@ -43,7 +55,8 @@ export async function startPublicCall(
   // Turnstile is only enforced when the secret key is configured (e.g.
   // production). Without a configured secret, the widget is never rendered
   // on the public page, so requiring a token here would break local dev.
-  if (process.env.TURNSTILE_SECRET_KEY) {
+  // DISABLED for now — see booking-page-public-client.tsx (showTurnstile).
+  if (false && process.env.TURNSTILE_SECRET_KEY) {
     if (!parsed.data.turnstileToken) {
       return { error: 'Verification failed. Please refresh and try again.' }
     }
@@ -139,7 +152,7 @@ export async function getPublicAvailableSlots(
   }
 
   const days = await getAvailableSlots(parsed.data.organizationId, {
-    serviceId: parsed.data.serviceId,
+    serviceId: parsed.data.serviceId ?? '',
     staffId: parsed.data.staffId ?? null,
     rangeStart: parsed.data.date,
     rangeEnd: parsed.data.date,
@@ -163,7 +176,8 @@ export async function createPublicAppointment(
     headersList.get('x-real-ip') ??
     'unknown'
 
-  if (process.env.TURNSTILE_SECRET_KEY) {
+  // DISABLED for now — see booking-page-public-client.tsx (showTurnstile).
+  if (false && process.env.TURNSTILE_SECRET_KEY) {
     if (!parsed.data.turnstileToken) {
       return { error: 'Verification failed. Please refresh and try again.' }
     }
@@ -243,4 +257,81 @@ export async function createPublicAppointment(
   }
 
   return { success: true, appointmentId: appointment.id }
+}
+
+export type PublicAppointmentSummary = {
+  id: string
+  title: string
+  startsAt: string
+  endsAt: string
+  serviceId: string | null
+}
+
+export async function lookupPublicAppointments(
+  input: LookupPublicAppointmentsInput
+): Promise<{ error: string } | { appointments: PublicAppointmentSummary[] }> {
+  const parsed = lookupPublicAppointmentsSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const rows = await getUpcomingAppointmentsByEmailServiceRole(parsed.data.organizationId, parsed.data.email)
+
+  return {
+    appointments: rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      startsAt: row.starts_at,
+      endsAt: row.ends_at,
+      serviceId: row.service_id,
+    })),
+  }
+}
+
+export async function reschedulePublicAppointment(
+  input: ReschedulePublicAppointmentInput
+): Promise<{ error: string } | { success: true }> {
+  const parsed = reschedulePublicAppointmentSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  // Re-check the new slot is still open before moving the appointment onto
+  // it — no serviceId is known here, so this checks the org-wide gap the
+  // same way the voice-booking tool does (see lib/voice/booking-tools.ts).
+  const date = parsed.data.startsAt.slice(0, 10)
+  const days = await getAvailableSlots(parsed.data.organizationId, {
+    serviceId: '',
+    rangeStart: date,
+    rangeEnd: date,
+  })
+  const stillOpen = (days[0]?.slots ?? []).some(
+    (slot) => slot.startsAt === parsed.data.startsAt && slot.endsAt === parsed.data.endsAt
+  )
+  if (!stillOpen) {
+    return { error: 'slot_taken' }
+  }
+
+  return reschedulePublicAppointmentServiceRole(
+    parsed.data.organizationId,
+    parsed.data.appointmentId,
+    parsed.data.email,
+    parsed.data.startsAt,
+    parsed.data.endsAt
+  )
+}
+
+export async function cancelPublicAppointment(
+  input: CancelPublicAppointmentInput
+): Promise<{ error: string } | { success: true }> {
+  const parsed = cancelPublicAppointmentSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  return cancelPublicAppointmentServiceRole(
+    parsed.data.organizationId,
+    parsed.data.appointmentId,
+    parsed.data.email
+  )
 }

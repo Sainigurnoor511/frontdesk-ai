@@ -11,6 +11,7 @@ import { CallDialog } from '@/components/voice/call-dialog'
 import { Turnstile } from '@/components/voice/turnstile'
 import { bookingAccentText } from '@/lib/booking-theme'
 import { BookingFlow } from './booking-flow'
+import { ManageBookingFlow } from './manage-booking-flow'
 
 const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
 
@@ -80,6 +81,7 @@ export function BookingPagePublicClient({
   const [theme, setTheme] = useState(initialTheme)
   const [accent, setAccent] = useState(initialAccent)
   const [config, setConfig] = useState(initialConfig)
+  const [tab, setTab] = useState<'book' | 'manage'>('book')
 
   useEffect(() => {
     if (!previewMode) return
@@ -101,13 +103,14 @@ export function BookingPagePublicClient({
   }, [previewMode])
 
   const isDark = theme === 'dark'
-  const requireChallenge = Boolean(TURNSTILE_SITE_KEY)
+  const requireChallenge = false
+  const showTurnstile = false
   const showReceptionist = config.showReceptionistOnBookingPage && Boolean(agentId)
   const showBookingFlow = !config.receptionistOnly && services.length > 0
 
   const receptionistBlock = showReceptionist && (
     <div className="flex flex-col items-center gap-3">
-      {TURNSTILE_SITE_KEY && (
+      {showTurnstile && TURNSTILE_SITE_KEY && (
         <Turnstile
           siteKey={TURNSTILE_SITE_KEY}
           theme={isDark ? 'dark' : 'light'}
@@ -132,18 +135,58 @@ export function BookingPagePublicClient({
     </div>
   )
 
+  const tabBar = (
+    <div className={cn('flex gap-1 rounded-full border p-1', isDark ? 'border-zinc-800' : 'border-border')}>
+      <button
+        type="button"
+        onClick={() => setTab('book')}
+        className={cn(
+          'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+          tab === 'book'
+            ? isDark
+              ? 'bg-zinc-100 text-zinc-900'
+              : 'bg-foreground text-background'
+            : 'text-muted-foreground'
+        )}
+      >
+        Book appointment
+      </button>
+      <button
+        type="button"
+        onClick={() => setTab('manage')}
+        className={cn(
+          'rounded-full px-3 py-1.5 text-sm font-medium transition-colors',
+          tab === 'manage'
+            ? isDark
+              ? 'bg-zinc-100 text-zinc-900'
+              : 'bg-foreground text-background'
+            : 'text-muted-foreground'
+        )}
+      >
+        Reschedule / Cancel
+      </button>
+    </div>
+  )
+
   const bookingFlowBlock = showBookingFlow && (
-    <BookingFlow
-      organizationId={organizationId}
-      organizationName={organizationName}
-      services={services}
-      staff={staff}
-      theme={theme}
-      accent={accent}
-      showServiceDescriptions={config.showServiceDescriptions}
-      showPrices={config.showPrices}
-      customFields={config.customFields}
-    />
+    <div className="space-y-4">
+      {tabBar}
+      {tab === 'book' ? (
+        <BookingFlow
+          organizationId={organizationId}
+          organizationName={organizationName}
+          services={services}
+          staff={staff}
+          theme={theme}
+          accent={accent}
+          showServiceDescriptions={config.showServiceDescriptions}
+          showPrices={config.showPrices}
+          customFields={config.customFields}
+        />
+      ) : (
+        <ManageBookingFlow organizationId={organizationId} theme={theme} accent={accent} />
+      )}
+    </div>
   )
 
   return (
@@ -209,7 +252,6 @@ export function BookingPagePublicClient({
             agentId={agentId}
             agentName={agentName}
             authenticated={false}
-            turnstileToken={turnstileToken}
           />
         )}
       </div>

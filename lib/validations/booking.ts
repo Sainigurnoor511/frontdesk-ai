@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 export const getPublicAvailableSlotsSchema = z.object({
   organizationId: z.string().uuid(),
-  serviceId: z.string().uuid(),
+  serviceId: z.string().uuid().optional(),
   staffId: z.string().uuid().optional(),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
 })
@@ -22,3 +22,25 @@ export const createPublicAppointmentSchema = z.object({
   turnstileToken: z.string().optional(),
 })
 export type CreatePublicAppointmentInput = z.infer<typeof createPublicAppointmentSchema>
+
+export const lookupPublicAppointmentsSchema = z.object({
+  organizationId: z.string().uuid(),
+  email: z.string().email(),
+})
+export type LookupPublicAppointmentsInput = z.infer<typeof lookupPublicAppointmentsSchema>
+
+export const reschedulePublicAppointmentSchema = z.object({
+  organizationId: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+  email: z.string().email(),
+  startsAt: z.string().datetime(),
+  endsAt: z.string().datetime(),
+})
+export type ReschedulePublicAppointmentInput = z.infer<typeof reschedulePublicAppointmentSchema>
+
+export const cancelPublicAppointmentSchema = z.object({
+  organizationId: z.string().uuid(),
+  appointmentId: z.string().uuid(),
+  email: z.string().email(),
+})
+export type CancelPublicAppointmentInput = z.infer<typeof cancelPublicAppointmentSchema>

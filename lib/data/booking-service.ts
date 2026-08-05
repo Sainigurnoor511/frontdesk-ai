@@ -129,3 +129,101 @@ export async function createAppointmentServiceRole(
 
   return data as AppointmentRow
 }
+
+/**
+ * Public lookup for the reschedule/cancel flow — upcoming, non-cancelled
+ * appointments for the client matching this email within the org. No auth:
+ * scoped by organizationId + exact email match only, mirroring the trust
+ * model of the rest of the public booking actions (rate-limited by caller).
+ */
+export async function getUpcomingAppointmentsByEmailServiceRole(
+  organizationId: string,
+  email: string
+): Promise<AppointmentRow[]> {
+  const supabase = createServiceRoleClient()
+  const { data: client } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('email', email.trim())
+    .maybeSingle()
+
+  if (!client) return []
+
+  const { data, error } = await supabase
+    .from('appointments')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('client_id', client.id)
+    .neq('status', 'cancelled')
+    .gte('starts_at', new Date().toISOString())
+    .order('starts_at', { ascending: true })
+
+  if (error) return []
+  return (data ?? []) as AppointmentRow[]
+}
+
+/**
+ * Verifies the appointment belongs to a client with the given email before
+ * mutating it — the email is the only credential a public caller has, so
+ * every reschedule/cancel must re-check this ownership server-side.
+ */
+async function assertAppointmentOwnedByEmail(
+  organizationId: string,
+  appointmentId: string,
+  email: string
+): Promise<boolean> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .from('appointments')
+    .select('client_id, clients(email)')
+    .eq('id', appointmentId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+
+  if (!data) return false
+  const client = Array.isArray(data.clients) ? data.clients[0] : data.clients
+  return client?.email?.toLowerCase() === email.trim().toLowerCase()
+}
+
+export async function reschedulePublicAppointmentServiceRole(
+  organizationId: string,
+  appointmentId: string,
+  email: string,
+  startsAt: string,
+  endsAt: string
+): Promise<{ error: string } | { success: true }> {
+  const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
+  if (!owned) return { error: 'Appointment not found.' }
+
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('appointments')
+    .update({ starts_at: startsAt, ends_at: endsAt, updated_at: new Date().toISOString() })
+    .eq('id', appointmentId)
+    .eq('organization_id', organizationId)
+
+  if (error) return { error: 'Could not reschedule. Please try again.' }
+  return { success: true }
+}
+
+export async function cancelPublicAppointmentServiceRole(
+  organizationId: string,
+  appointmentId: string,
+  email: string
+): Promise<{ error: string } | { success: true }> {
+  const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
+  if (!owned) return { error: 'Appointment not found.' }
+
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('appointments')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('id', appointmentId)
+    .eq('organization_id', organizationId)
+
+  if (error) return { error: 'Could not cancel. Please try again.' }
+
+  void dispatchWebhook(organizationId, 'appointment.cancelled', { appointmentId })
+  return { success: true }
+}

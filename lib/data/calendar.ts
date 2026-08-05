@@ -7,6 +7,10 @@ export type AppointmentRow = {
   title: string
   client_name: string
   client_phone: string | null
+  client_id: string | null
+  conversation_id: string | null
+  service_id: string | null
+  staff_id: string | null
   starts_at: string
   ends_at: string
   notes: string | null
