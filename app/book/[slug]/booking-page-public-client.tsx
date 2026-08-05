@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
-import { Phone } from 'lucide-react'
+import { Phone, ArrowUp } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
@@ -82,6 +82,7 @@ export function BookingPagePublicClient({
   const [accent, setAccent] = useState(initialAccent)
   const [config, setConfig] = useState(initialConfig)
   const [tab, setTab] = useState<'book' | 'manage'>('book')
+  const [chatMessage, setChatMessage] = useState('')
 
   useEffect(() => {
     if (!previewMode) return
@@ -188,6 +189,77 @@ export function BookingPagePublicClient({
       )}
     </div>
   )
+
+  if (config.receptionistOnly) {
+    function handleChatSubmit() {
+      if (!chatMessage.trim()) return
+      setCallOpen(true)
+    }
+
+    return (
+      <div
+        className={cn(
+          'relative flex min-h-svh flex-col items-center justify-between bg-cover bg-center px-4 py-10 text-white'
+        )}
+        style={{
+          backgroundImage: config.backgroundImageUrl ? `url(${config.backgroundImageUrl})` : undefined,
+          fontFamily: config.bodyFont,
+        }}
+      >
+        <div className="absolute inset-0 bg-black/40" />
+
+        <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4">
+          <div
+            className="size-40 rounded-full bg-gradient-to-br from-blue-400 via-blue-600 to-indigo-900 shadow-2xl"
+            aria-hidden="true"
+          />
+          {agentId && config.showPhoneFallback && (
+            <button
+              type="button"
+              onClick={() => setCallOpen(true)}
+              className="flex size-14 items-center justify-center rounded-full bg-black text-white shadow-lg"
+              aria-label={`Call ${agentName}`}
+            >
+              <Phone className="size-5" />
+            </button>
+          )}
+        </div>
+
+        <div className="relative z-10 w-full max-w-md">
+          <div className="flex items-center gap-2 rounded-full bg-white/95 p-1.5 pl-4 shadow-lg">
+            <input
+              value={chatMessage}
+              onChange={(e) => setChatMessage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleChatSubmit()
+              }}
+              placeholder="Send a message..."
+              className="flex-1 bg-transparent text-sm text-zinc-900 outline-none placeholder:text-zinc-500"
+            />
+            <button
+              type="button"
+              onClick={handleChatSubmit}
+              className="flex size-9 shrink-0 items-center justify-center rounded-full bg-black text-white"
+              aria-label="Send message"
+            >
+              <ArrowUp className="size-4" />
+            </button>
+          </div>
+        </div>
+
+        {agentId && (
+          <CallDialog
+            open={callOpen}
+            onOpenChange={setCallOpen}
+            organizationId={organizationId}
+            agentId={agentId}
+            agentName={agentName}
+            authenticated={false}
+          />
+        )}
+      </div>
+    )
+  }
 
   return (
     <div
