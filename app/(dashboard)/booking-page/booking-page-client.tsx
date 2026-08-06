@@ -4,10 +4,17 @@ import { useState, useTransition } from 'react'
 import { useSearchParams, useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { LayoutGrid, ExternalLink } from 'lucide-react'
+import { LayoutGrid, ExternalLink, Store } from 'lucide-react'
 import { Switch } from '@/components/ui/switch'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { SettingsCard } from './section-layout'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import type { OrganizationSettings } from '@/lib/data/settings'
 import type { Service } from '@/lib/data/business'
 import type { BusinessProfile } from '@/lib/data/business'
@@ -119,12 +126,12 @@ export function BookingPageClient({
       )}
 
       <PreviewDraftProvider>
-        <div className="flex min-h-0 flex-1 gap-4">
+        <div className="flex min-h-0 flex-1 gap-2">
           <EditorSidebar active={section} onSelect={setSection} />
 
-          <div className="scrollbar-thin min-h-0 min-w-0 flex-1 basis-1/2 overflow-y-auto">
+          <div className="scrollbar-thin min-h-0 min-w-0 flex-1 basis-1/2 overflow-y-auto p-1">
             {section === 'global' && (
-              <div className="space-y-6 p-4">
+              <div className="space-y-6">
                 <GlobalSection
                   organizationSlug={slug}
                   organizationName={organizationName}
@@ -132,32 +139,34 @@ export function BookingPageClient({
                   config={config}
                 />
 
-                <Card>
-                  <CardContent className="p-0">
-                    <div className="space-y-1 border-b p-4">
-                      <h3 className="text-sm font-semibold">Services shown on this page</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Choose which services clients can book from your public booking page.
-                      </p>
-                    </div>
-
-                    {services.length === 0 ? (
-                      <p className="p-4 text-sm text-muted-foreground">
-                        No services yet.{' '}
-                        <Link href="/business?tab=services" className="text-foreground underline">
-                          Add services in Business
-                        </Link>{' '}
-                        to make them bookable online.
-                      </p>
-                    ) : (
-                      <ul className="divide-y">
-                        {services.map((service) => (
-                          <ServiceRow key={service.id} service={service} />
-                        ))}
-                      </ul>
-                    )}
-                  </CardContent>
-                </Card>
+                <SettingsCard
+                  title="Services shown on this page"
+                  description="Choose which services clients can book from your public booking page."
+                  contentClassName="p-0"
+                >
+                  {services.length === 0 ? (
+                    <Empty className="border-0 py-10">
+                      <EmptyHeader>
+                        <EmptyMedia variant="icon">
+                          <Store />
+                        </EmptyMedia>
+                        <EmptyTitle>No services yet</EmptyTitle>
+                        <EmptyDescription>
+                          <Link href="/business?tab=services" className="text-foreground underline">
+                            Add services in Business
+                          </Link>{' '}
+                          to make them bookable online.
+                        </EmptyDescription>
+                      </EmptyHeader>
+                    </Empty>
+                  ) : (
+                    <ul className="divide-y">
+                      {services.map((service) => (
+                        <ServiceRow key={service.id} service={service} />
+                      ))}
+                    </ul>
+                  )}
+                </SettingsCard>
               </div>
             )}
 

@@ -8,6 +8,7 @@ import {
   getAssets,
   getProducts,
 } from '@/lib/data/business'
+import { getKnowledgeSourcesForOrg, getFaqsForOrg } from '@/lib/data/knowledge'
 import { BusinessClient } from './business-client'
 
 export default async function BusinessPage({
@@ -20,13 +21,16 @@ export default async function BusinessPage({
 
   const { tab } = await searchParams
 
-  const [profile, locations, services, assets, products, agents] = await Promise.all([
+  const [profile, locations, services, assets, products, agents, knowledgeSources, faqs] =
+    await Promise.all([
     getBusinessProfile(context.org.id),
     getLocations(context.org.id),
     getServices(context.org.id),
     getAssets(context.org.id),
     getProducts(context.org.id),
     getAgentsForOrg(context.org.id),
+    getKnowledgeSourcesForOrg(context.org.id),
+    getFaqsForOrg(context.org.id),
   ])
 
   const firstAgent = agents[0] ? await getAgentById(agents[0].id) : null
@@ -40,6 +44,8 @@ export default async function BusinessPage({
       assets={assets}
       products={products}
       contactPhoneNumber={contactPhoneNumber}
+      knowledgeSources={knowledgeSources}
+      faqs={faqs}
       initialTab={tab}
     />
   )

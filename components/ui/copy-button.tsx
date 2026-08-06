@@ -2,14 +2,16 @@
 
 import { useState } from 'react'
 import { Check, Copy } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, type buttonVariants } from '@/components/ui/button'
+import type { VariantProps } from 'class-variance-authority'
 
 type CopyButtonProps = {
   value: string
   className?: string
+  size?: VariantProps<typeof buttonVariants>['size']
 }
 
-export function CopyButton({ value, className }: CopyButtonProps) {
+export function CopyButton({ value, className, size = 'icon' }: CopyButtonProps) {
   const [copied, setCopied] = useState(false)
 
   async function handleCopy() {
@@ -22,12 +24,12 @@ export function CopyButton({ value, className }: CopyButtonProps) {
     <Button
       type="button"
       variant="outline"
-      size="icon"
-      className={className ?? 'size-8'}
+      size={size}
+      className={className}
       onClick={handleCopy}
       aria-label={copied ? 'Copied' : 'Copy'}
     >
-      {copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+      {copied ? <Check /> : <Copy />}
     </Button>
   )
 }

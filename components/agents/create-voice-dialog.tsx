@@ -3,6 +3,7 @@
 import { useRef, useState } from 'react'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -10,6 +11,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import { Sparkles, Check, Wand2 } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -64,6 +66,10 @@ export function CreateVoiceDialog({
       setError(result.error)
       return
     }
+    if (result.candidates.length === 0) {
+      setError('No voice candidates were returned. Try a different description.')
+      return
+    }
     setCandidates(result.candidates.map((c, i) => ({ ...c, id: `candidate-${i}` })))
   }
 
@@ -110,83 +116,90 @@ export function CreateVoiceDialog({
           <DialogTitle>Create a voice</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-3">
-          <Textarea
-            value={instruction}
-            onChange={(e) => setInstruction(e.target.value)}
-            placeholder="Describe the voice you want..."
-            rows={3}
-          />
-          <Select value={language} onValueChange={(value) => setLanguage(value ?? 'en')}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a language">
-                {(value: string) => {
-                  const lang = languageOptions.find((l) => l.code === value)
-                  return lang ? `${lang.flag} ${lang.label}` : 'Select a language'
-                }}
-              </SelectValue>
-            </SelectTrigger>
-            <SelectContent>
-              {languageOptions.map((lang) => (
-                <SelectItem key={lang.code} value={lang.code}>
-                  {lang.flag} {lang.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            type="button"
-            onClick={handleGenerate}
-            disabled={!instruction.trim() || generating}
-          >
-            {generating ? 'Generating...' : 'Generate'}
-          </Button>
+        <DialogBody>
+          <div className="space-y-3">
+            <Textarea
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="Describe the voice you want..."
+              rows={3}
+            />
+            <Select value={language} onValueChange={(value) => setLanguage(value ?? 'en')}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a language">
+                  {(value: string) => {
+                    const lang = languageOptions.find((l) => l.code === value)
+                    return lang ? `${lang.flag} ${lang.label}` : 'Select a language'
+                  }}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {languageOptions.map((lang) => (
+                  <SelectItem key={lang.code} value={lang.code}>
+                    {lang.flag} {lang.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              className="gap-1.5"
+              onClick={handleGenerate}
+              disabled={!instruction.trim() || generating}
+            >
+              <Sparkles />
+              {generating ? 'Generating...' : 'Generate'}
+            </Button>
 
-          {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {candidates.length > 0 && (
-            <div className="space-y-2">
-              {candidates.map((candidate) => (
-                <div key={candidate.id} className="flex items-center gap-3 rounded-lg border p-2">
-                  <VoiceOrbButton
-                    id={candidate.id}
-                    playing={playingId === candidate.id}
-                    onToggle={() => togglePreview(candidate)}
-                  />
-                  {nameForCandidateId === candidate.id ? (
-                    <>
-                      <Input
-                        value={voiceName}
-                        onChange={(e) => setVoiceName(e.target.value)}
-                        placeholder="Name this voice"
-                        className="flex-1"
-                        autoFocus
-                      />
+            {candidates.length > 0 && (
+              <div className="space-y-2">
+                {candidates.map((candidate) => (
+                  <div key={candidate.id} className="flex items-center gap-3 rounded-lg border p-2">
+                    <VoiceOrbButton
+                      id={candidate.id}
+                      playing={playingId === candidate.id}
+                      onToggle={() => togglePreview(candidate)}
+                    />
+                    {nameForCandidateId === candidate.id ? (
+                      <>
+                        <Input
+                          value={voiceName}
+                          onChange={(e) => setVoiceName(e.target.value)}
+                          placeholder="Name this voice"
+                          className="flex-1"
+                          autoFocus
+                        />
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="gap-1.5"
+                          disabled={!voiceName.trim() || savingCandidateId === candidate.id}
+                          onClick={() => handleSave(candidate)}
+                        >
+                          <Check />
+                          {savingCandidateId === candidate.id ? 'Saving...' : 'Save'}
+                        </Button>
+                      </>
+                    ) : (
                       <Button
                         type="button"
+                        variant="outline"
                         size="sm"
-                        disabled={!voiceName.trim() || savingCandidateId === candidate.id}
-                        onClick={() => handleSave(candidate)}
+                        className="ml-auto gap-1.5"
+                        onClick={() => setNameForCandidateId(candidate.id)}
                       >
-                        {savingCandidateId === candidate.id ? 'Saving...' : 'Save'}
+                        <Wand2 />
+                        Use this voice
                       </Button>
-                    </>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      className="ml-auto"
-                      onClick={() => setNameForCandidateId(candidate.id)}
-                    >
-                      Use this voice
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

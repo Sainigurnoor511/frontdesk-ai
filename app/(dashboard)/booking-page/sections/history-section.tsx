@@ -1,9 +1,18 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
+import { History } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { SkeletonVersionList } from '@/components/layout/dashboard-skeletons'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { BookingSection, SettingsCard } from '../section-layout'
 import {
   getBookingPageConfigVersions,
   restoreBookingPageConfigVersion,
@@ -47,42 +56,45 @@ export function HistorySection() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">History</h2>
-        <p className="text-sm text-muted-foreground">
-          Every save creates a snapshot. Restore a previous version if something goes wrong.
-        </p>
-      </div>
-
-      <Card>
-        <CardContent className="p-0">
-          {versions === null && (
-            <p className="p-4 text-sm text-muted-foreground">Loading…</p>
-          )}
-          {versions?.length === 0 && (
-            <p className="p-4 text-sm text-muted-foreground">No saved versions yet.</p>
-          )}
-          {versions && versions.length > 0 && (
-            <ul className="divide-y">
-              {versions.map((version) => (
-                <li key={version.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                  <p className="text-sm">{formatTimestamp(version.createdAt)}</p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={restoringId === version.id}
-                    onClick={() => handleRestore(version.id)}
-                  >
-                    {restoringId === version.id ? 'Restoring…' : 'Restore'}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+    <BookingSection>
+      <SettingsCard
+        title="History"
+        description="Every save creates a snapshot. Restore a previous version if something goes wrong."
+        contentClassName="p-0"
+      >
+        {versions === null && <SkeletonVersionList rows={3} />}
+        {versions?.length === 0 && (
+          <Empty className="border-0 py-10">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <History />
+              </EmptyMedia>
+              <EmptyTitle>No saved versions yet</EmptyTitle>
+              <EmptyDescription>
+                Snapshots are created each time you save booking page settings.
+              </EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        )}
+        {versions && versions.length > 0 && (
+          <ul className="divide-y">
+            {versions.map((version) => (
+              <li key={version.id} className="flex items-center justify-between gap-4 px-4 py-3">
+                <p className="text-sm">{formatTimestamp(version.createdAt)}</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={restoringId === version.id}
+                  onClick={() => handleRestore(version.id)}
+                >
+                  {restoringId === version.id ? 'Restoring…' : 'Restore'}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </SettingsCard>
+    </BookingSection>
   )
 }

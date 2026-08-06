@@ -7,6 +7,7 @@ import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 import { getBusinessProfile } from '@/lib/data/business'
 import { getHiddenSidebarItems } from '@/lib/data/sidebar-preferences'
+import { getConversationNavCounts } from '@/lib/data/conversations'
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const context = await getCurrentOrgAndUser()
@@ -21,9 +22,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   }
 
   const agent = agents.find((a) => a.is_default) ?? agents[0]
-  const [hiddenSidebarItems, businessProfile] = await Promise.all([
+  const [hiddenSidebarItems, businessProfile, conversationCounts] = await Promise.all([
     getHiddenSidebarItems(context.org.id),
     getBusinessProfile(context.org.id),
+    getConversationNavCounts(),
   ])
   const businessName = businessProfile.businessName ?? agent.business_name ?? agent.name
 
@@ -37,6 +39,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           staffPhoneNumber: agent.staff_phone_number,
         }}
         hiddenItems={hiddenSidebarItems}
+        unreadConversationCount={conversationCounts?.unreadConversations ?? 0}
       />
       <SidebarInset className="h-svh overflow-hidden">
         <AppHeader

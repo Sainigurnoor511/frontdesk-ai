@@ -6,14 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Calendar } from '@/components/ui/calendar'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import { ChevronRight, Clock } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, CheckCircle2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
@@ -25,10 +18,94 @@ const ANY_STAFF_VALUE = '__any__'
 
 type Step = 'service' | 'datetime' | 'contact' | 'confirm' | 'success'
 
+const STEP_LABELS: Record<Exclude<Step, 'success'>, string> = {
+  service: 'Service',
+  datetime: 'Date & time',
+  contact: 'Your details',
+  confirm: 'Confirm',
+}
+
 function formatSlotLabel(iso: string): string {
   return new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).format(
     new Date(iso)
   )
+}
+
+function formatDateLabel(iso: string): string {
+  return new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(
+    new Date(iso)
+  )
+}
+
+function formatDateFromLocal(date: Date): string {
+  return new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+  }).format(date)
+}
+
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+function StepHeader({
+  step,
+  onBack,
+  accent,
+}: {
+  step: Exclude<Step, 'success'>
+  onBack?: () => void
+  accent: string
+}) {
+  const steps: Exclude<Step, 'success'>[] = ['service', 'datetime', 'contact', 'confirm']
+  const currentIndex = steps.indexOf(step)
+
+  return (
+    <div className="space-y-3">
+      {onBack && (
+        <Button type="button" variant="ghost" size="sm" className="-ml-2 gap-1" onClick={onBack}>
+          <ChevronLeft className="size-4" />
+          Back
+        </Button>
+      )}
+      <div className="flex items-center gap-2">
+        {steps.map((s, index) => (
+          <div key={s} className="flex flex-1 items-center gap-2">
+            <div
+              className={cn(
+                'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-medium',
+                index <= currentIndex ? 'text-white' : 'bg-muted text-muted-foreground'
+              )}
+              style={index <= currentIndex ? { backgroundColor: accent } : undefined}
+            >
+              {index + 1}
+            </div>
+            {index < steps.length - 1 && (
+              <div
+                className={cn('h-0.5 flex-1 rounded', index < currentIndex ? '' : 'bg-muted')}
+                style={index < currentIndex ? { backgroundColor: accent } : undefined}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+      <p className="text-sm font-medium">{STEP_LABELS[step]}</p>
+    </div>
+  )
+}
+
+function isCustomFieldValid(
+  field: CustomField,
+  answers: Record<string, string | boolean>
+): boolean {
+  if (!field.required) return true
+  const value = answers[field.id]
+  if (field.type === 'checkbox') return value === true
+  return typeof value === 'string' && value.trim().length > 0
 }
 
 export function BookingFlow({
@@ -54,6 +131,7 @@ export function BookingFlow({
 }) {
   const isDark = theme === 'dark'
   const [step, setStep] = useState<Step>('service')
+  const [datetimeSubstep, setDatetimeSubstep] = useState<'date' | 'time'>('date')
   const [service, setService] = useState<Service | null>(null)
   const [staffId, setStaffId] = useState<string | undefined>(undefined)
   const [date, setDate] = useState<Date | undefined>(undefined)
@@ -69,7 +147,7 @@ export function BookingFlow({
 
   async function loadSlots(forDate: Date, chosenStaffId: string | undefined, forService: Service) {
     setSlotsLoading(true)
-    const dateStr = forDate.toISOString().slice(0, 10)
+    const dateStr = toLocalDateString(forDate)
     const result = await getPublicAvailableSlots({
       organizationId,
       serviceId: forService.id,
@@ -86,6 +164,10 @@ export function BookingFlow({
 
   function handleSelectService(selected: Service) {
     setService(selected)
+    setDatetimeSubstep('date')
+    setDate(undefined)
+    setSlots([])
+    setSelectedSlot(null)
     setStep('datetime')
   }
 
@@ -100,7 +182,9 @@ export function BookingFlow({
     setDate(selected)
     setSelectedSlot(null)
     setErrorMessage(null)
-    if (selected && service) await loadSlots(selected, staffId, service)
+    if (!selected || !service) return
+    await loadSlots(selected, staffId, service)
+    setDatetimeSubstep('time')
   }
 
   function handleSelectSlot(slot: { startsAt: string; endsAt: string }) {
@@ -110,6 +194,14 @@ export function BookingFlow({
   }
 
   function handleContactSubmit() {
+    const missingRequired = customFields.some(
+      (field) => !isCustomFieldValid(field, customAnswers)
+    )
+    if (missingRequired) {
+      setErrorMessage('Please complete all required fields.')
+      return
+    }
+    setErrorMessage(null)
     setStep('confirm')
   }
 
@@ -144,6 +236,7 @@ export function BookingFlow({
       if (result.error === 'slot_taken') {
         setErrorMessage('That time is no longer available. Please pick another.')
         setSelectedSlot(null)
+        setDatetimeSubstep('time')
         setStep('datetime')
         if (date && service) await loadSlots(date, staffId, service)
         return
@@ -200,39 +293,80 @@ export function BookingFlow({
   }
 
   if (step === 'datetime') {
+    const datetimeBack =
+      datetimeSubstep === 'time'
+        ? () => setDatetimeSubstep('date')
+        : () => setStep('service')
+
     return (
       <div className="space-y-4">
+        <StepHeader step="datetime" accent={accent} onBack={datetimeBack} />
         {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-        {staff.length > 0 && (
-          <Select
-            value={staffId ?? ANY_STAFF_VALUE}
-            onValueChange={(value) => handleSelectStaffFilter(value ?? ANY_STAFF_VALUE)}
-          >
-            <SelectTrigger className="w-full sm:w-64">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ANY_STAFF_VALUE}>Any staff member</SelectItem>
-              {staff.map((member) => (
-                <SelectItem key={member.id} value={member.id}>
-                  {member.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+        {datetimeSubstep === 'date' && (
+          <>
+            {staff.length > 0 && (
+              <div className="space-y-2">
+                <Label>Staff member</Label>
+                <select
+                  value={staffId ?? ANY_STAFF_VALUE}
+                  onChange={(e) => void handleSelectStaffFilter(e.target.value)}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-64"
+                >
+                  <option value={ANY_STAFF_VALUE}>Any staff member</option>
+                  {staff.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label>Select a date</Label>
+              <Calendar mode="single" selected={date} onSelect={(value) => void handleSelectDate(value)} />
+            </div>
+          </>
         )}
-        <Calendar mode="single" selected={date} onSelect={handleSelectDate} />
-        {slotsLoading && <p className="text-sm text-muted-foreground">Loading times…</p>}
-        {!slotsLoading && date && slots.length === 0 && (
-          <p className="text-sm text-muted-foreground">No times available this day.</p>
-        )}
-        {!slotsLoading && slots.length > 0 && (
-          <div className="grid grid-cols-3 gap-2">
-            {slots.map((slot) => (
-              <Button key={slot.startsAt} type="button" variant="outline" onClick={() => handleSelectSlot(slot)}>
-                {formatSlotLabel(slot.startsAt)}
+
+        {datetimeSubstep === 'time' && date && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
+              <div>
+                <p className="text-xs text-muted-foreground">Selected date</p>
+                <p className="text-sm font-medium">{formatDateFromLocal(date)}</p>
+              </div>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setDatetimeSubstep('date')}>
+                Change
               </Button>
-            ))}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Select a time</Label>
+              {slotsLoading && <p className="text-sm text-muted-foreground">Loading times…</p>}
+              {!slotsLoading && slots.length === 0 && (
+                <p className="text-sm text-muted-foreground">No times available this day.</p>
+              )}
+              {!slotsLoading && slots.length > 0 && (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {slots.map((slot) => (
+                    <Button
+                      key={slot.startsAt}
+                      type="button"
+                      variant={selectedSlot?.startsAt === slot.startsAt ? 'default' : 'outline'}
+                      onClick={() => handleSelectSlot(slot)}
+                      style={
+                        selectedSlot?.startsAt === slot.startsAt
+                          ? { backgroundColor: accent, color: bookingAccentText(accent) }
+                          : undefined
+                      }
+                    >
+                      {formatSlotLabel(slot.startsAt)}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -243,6 +377,15 @@ export function BookingFlow({
     return (
       <Card className={cardClass}>
         <CardContent className="space-y-4 p-4">
+          <StepHeader
+            step="contact"
+            accent={accent}
+            onBack={() => {
+              setDatetimeSubstep('time')
+              setStep('datetime')
+            }}
+          />
+          {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           <div className="space-y-2">
             <Label htmlFor="booking-name">Name</Label>
             <Input id="booking-name" value={clientName} onChange={(e) => setClientName(e.target.value)} />
@@ -320,16 +463,37 @@ export function BookingFlow({
   }
 
   if (step === 'confirm') {
+    const staffMember = staff.find((member) => member.id === staffId)
     return (
       <Card className={cardClass}>
         <CardContent className="space-y-4 p-4">
-          <p className="text-sm">
-            <strong>{service?.name}</strong>
-            {selectedSlot && ` — ${formatSlotLabel(selectedSlot.startsAt)}`}
-          </p>
-          <p className="text-sm text-muted-foreground">
-            {clientName} · {clientEmail}
-          </p>
+          <StepHeader step="confirm" accent={accent} onBack={() => setStep('contact')} />
+          <div className="space-y-3 rounded-lg border p-4">
+            <div>
+              <p className="text-xs text-muted-foreground">Service</p>
+              <p className="font-medium">{service?.name}</p>
+            </div>
+            {selectedSlot && (
+              <div>
+                <p className="text-xs text-muted-foreground">When</p>
+                <p className="font-medium">
+                  {formatDateLabel(selectedSlot.startsAt)} at {formatSlotLabel(selectedSlot.startsAt)}
+                </p>
+              </div>
+            )}
+            {staffMember && (
+              <div>
+                <p className="text-xs text-muted-foreground">Staff</p>
+                <p className="font-medium">{staffMember.name}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-xs text-muted-foreground">Contact</p>
+              <p className="font-medium">{clientName}</p>
+              <p className="text-sm text-muted-foreground">{clientEmail}</p>
+              {clientPhone && <p className="text-sm text-muted-foreground">{clientPhone}</p>}
+            </div>
+          </div>
           {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
           <Button
             type="button"
@@ -337,7 +501,7 @@ export function BookingFlow({
             onClick={handleConfirm}
             style={{ backgroundColor: accent, color: bookingAccentText(accent) }}
           >
-            Confirm booking
+            {submitting ? 'Booking…' : 'Confirm booking'}
           </Button>
         </CardContent>
       </Card>
@@ -346,8 +510,26 @@ export function BookingFlow({
 
   return (
     <Card className={cardClass}>
-      <CardContent className="p-4 text-sm">
-        Your appointment is booked. A confirmation email is on its way to {clientEmail}.
+      <CardContent className="space-y-4 p-6 text-center">
+        <CheckCircle2 className="mx-auto size-10" style={{ color: accent }} />
+        <div className="space-y-1">
+          <p className="text-lg font-semibold">You&apos;re booked!</p>
+          <p className="text-sm text-muted-foreground">
+            A confirmation email is on its way to {clientEmail}.
+          </p>
+        </div>
+        {service && selectedSlot && (
+          <div className="rounded-lg border p-4 text-left text-sm">
+            <p className="font-medium">{service.name}</p>
+            <p className="text-muted-foreground">
+              {formatDateLabel(selectedSlot.startsAt)} at {formatSlotLabel(selectedSlot.startsAt)}
+            </p>
+            <p className="text-muted-foreground">{organizationName}</p>
+          </div>
+        )}
+        <Button type="button" variant="outline" onClick={() => setStep('service')}>
+          Book another appointment
+        </Button>
       </CardContent>
     </Card>
   )

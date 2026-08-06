@@ -13,7 +13,8 @@
     "worker": "tsx watch workers/scan-website.ts",
     "worker:voice": "tsx watch workers/voice-agent.ts dev",
     "worker:voice:start": "tsx workers/voice-agent.ts start",
-    "worker:webhook": "tsx watch workers/webhook.ts"
+    "worker:webhook": "tsx watch workers/webhook.ts",
+    "worker:knowledge": "tsx watch workers/knowledge-indexing.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
@@ -33,6 +34,7 @@
     "cmdk": "^1.1.1",
     "date-fns": "^4.4.0",
     "embla-carousel-react": "^8.6.0",
+    "fastembed": "^2.1.0",
     "groq-sdk": "^1.5.0",
     "input-otp": "^1.4.2",
     "ioredis": "^6.0.0",

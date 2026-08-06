@@ -2,10 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { BookingSection, SettingsCard } from '../section-layout'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateLayout } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
@@ -68,14 +68,12 @@ export function LayoutSection({ config }: { config: BookingPageConfig }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Layout</h2>
-        <p className="text-sm text-muted-foreground">How the public booking page is structured.</p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-5 p-4">
+    <BookingSection>
+      <SettingsCard
+        title="Layout"
+        description="How the public booking page is structured."
+        contentClassName="space-y-5 p-4"
+      >
           <div className="space-y-2">
             <span className="text-sm font-medium">Receptionist panel position</span>
             <div className="flex items-center gap-2">
@@ -98,21 +96,29 @@ export function LayoutSection({ config }: { config: BookingPageConfig }) {
           </div>
 
           <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-medium">Show header</p>
+            <div>
+              <p className="text-sm font-medium">Show header</p>
+              <p className="text-sm text-muted-foreground">Business name and branding at the top of the page.</p>
+            </div>
             <Switch checked={showHeader} onCheckedChange={setShowHeaderDraft} />
           </div>
           <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-medium">Show service descriptions</p>
+            <div>
+              <p className="text-sm font-medium">Show service descriptions</p>
+              <p className="text-sm text-muted-foreground">Display description text under each service.</p>
+            </div>
             <Switch checked={showServiceDescriptions} onCheckedChange={setShowServiceDescriptionsDraft} />
           </div>
           <div className="flex items-center justify-between gap-4">
-            <p className="text-sm font-medium">Show prices</p>
+            <div>
+              <p className="text-sm font-medium">Show prices</p>
+              <p className="text-sm text-muted-foreground">Display service prices on the booking page.</p>
+            </div>
             <Switch checked={showPrices} onCheckedChange={setShowPricesDraft} />
           </div>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

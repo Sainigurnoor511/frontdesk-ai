@@ -25,12 +25,21 @@ export type AgentDetail = Agent & {
   first_message: string | null
   tone_traits: string[]
   voice_id: string | null
+  llm_model: string
+  reasoning_effort: 'minimal' | 'low' | 'medium' | 'high'
+  filter_background_speech: boolean
+  skip_knowledge_retrieval: boolean
+  allow_dtmf: boolean
+  hold_sound: string | null
+  typing_sound_enabled: boolean
+  secure_mode: boolean
+  identity_verification_enabled: boolean
   created_at: string
   updated_at: string
 }
 
 const AGENT_DETAIL_COLUMNS =
-  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, is_default, created_at, updated_at'
+  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, llm_model, reasoning_effort, filter_background_speech, skip_knowledge_retrieval, allow_dtmf, hold_sound, typing_sound_enabled, secure_mode, identity_verification_enabled, is_default, created_at, updated_at'
 
 export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> {
   const supabase = await createClient()

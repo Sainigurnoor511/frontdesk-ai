@@ -5,8 +5,10 @@ import { Code, Copy, HelpCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -65,15 +67,15 @@ export function EmbedDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-3xl" showCloseButton>
-        <div className="space-y-4 p-6 pb-4">
-          <DialogHeader className="gap-1.5">
-            <DialogTitle className="text-xl font-semibold">Embed on your website</DialogTitle>
-            <DialogDescription>
-              Paste this snippet into your website. It always shows your latest design, so you never
-              have to update it.
-            </DialogDescription>
-          </DialogHeader>
+        <DialogHeader className="border-0 px-6 pt-6 pb-0">
+          <DialogTitle className="text-xl font-semibold">Embed on your website</DialogTitle>
+          <DialogDescription>
+            Paste this snippet into your website. It always shows your latest design, so you never
+            have to update it.
+          </DialogDescription>
+        </DialogHeader>
 
+        <DialogBody className="space-y-4 px-6">
           <Tabs value={platform} onValueChange={(value) => setPlatform(value as EmbedPlatform)}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <TabsList className="h-auto w-full justify-start gap-1 p-1 sm:w-auto">
@@ -145,14 +147,14 @@ export function EmbedDialog({
             Keep the <code className="text-foreground">allow=&quot;microphone&quot;</code> attribute
             — without it your receptionist cannot hear customers who call from the embedded page.
           </p>
-        </div>
+        </DialogBody>
 
-        <div className="flex justify-end border-t bg-muted/30 px-6 py-4">
-          <Button type="button" className="gap-2" onClick={copySnippet}>
+        <DialogFooter className="px-6">
+          <Button type="button" className="gap-1.5" onClick={copySnippet}>
             <Code className="size-4" />
             Copy code
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

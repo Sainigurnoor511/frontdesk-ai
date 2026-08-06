@@ -2,8 +2,10 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { Check } from 'lucide-react'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -71,38 +73,42 @@ export function TemplatesDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-3">
-          {TEMPLATES.map((template) => (
-            <div
-              key={template.id}
-              className="flex items-center justify-between gap-4 rounded-md border p-4"
-            >
-              <div className="flex items-center gap-4">
-                <div
-                  className={cn(
-                    'flex size-12 items-center justify-center rounded-md border text-lg font-bold'
-                  )}
-                  style={{ fontFamily: template.preview.font, fontWeight: template.preview.weight }}
-                >
-                  Aa
-                </div>
-                <div>
-                  <p className="text-sm font-medium">{template.name}</p>
-                  <p className="text-sm text-muted-foreground">{template.description}</p>
-                </div>
-              </div>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={applyingId === template.id}
-                onClick={() => handleApply(template.id)}
+        <DialogBody>
+          <div className="space-y-3">
+            {TEMPLATES.map((template) => (
+              <div
+                key={template.id}
+                className="flex items-center justify-between gap-4 rounded-md border p-4"
               >
-                {applyingId === template.id ? 'Applying…' : 'Apply'}
-              </Button>
-            </div>
-          ))}
-        </div>
+                <div className="flex items-center gap-4">
+                  <div
+                    className={cn(
+                      'flex size-12 items-center justify-center rounded-md border text-lg font-bold'
+                    )}
+                    style={{ fontFamily: template.preview.font, fontWeight: template.preview.weight }}
+                  >
+                    Aa
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{template.name}</p>
+                    <p className="text-sm text-muted-foreground">{template.description}</p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={applyingId === template.id}
+                  onClick={() => handleApply(template.id)}
+                >
+                  <Check />
+                  {applyingId === template.id ? 'Applying…' : 'Apply'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </DialogBody>
       </DialogContent>
     </Dialog>
   )

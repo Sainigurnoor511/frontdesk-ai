@@ -6,13 +6,25 @@ import {
   Search,
   Pencil,
   Trash,
+  Plus,
+  X,
+  Check,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -130,7 +142,10 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
             Clients are the people who call or book with you.
           </p>
         </div>
-        <Button onClick={openAddDialog}>Add client</Button>
+        <Button className="gap-1.5" onClick={openAddDialog}>
+          <Plus />
+          Add client
+        </Button>
       </div>
 
       <div className="relative max-w-sm">
@@ -146,13 +161,29 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
       <Card>
         <CardContent className="p-0">
           {filteredClients.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <Users className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No clients yet</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Clients you add, or promote from a conversation, will show up here.
-              </p>
-            </div>
+            <Empty className="border-0 py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Users />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {clients.length === 0 ? 'No clients yet' : 'No matching clients'}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {clients.length === 0
+                    ? 'Clients you add, or promote from a conversation, will show up here.'
+                    : 'Try a different search term.'}
+                </EmptyDescription>
+              </EmptyHeader>
+              {clients.length === 0 && (
+                <EmptyContent>
+                  <Button className="gap-1.5" onClick={openAddDialog}>
+          <Plus />
+          Add client
+        </Button>
+                </EmptyContent>
+              )}
+            </Empty>
           ) : (
             <ul className="divide-y">
               {filteredClients.map((client) => (
@@ -194,7 +225,10 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DialogHeader>
               <DialogTitle>{isEditMode ? 'Edit client' : 'Add client'}</DialogTitle>
               <DialogDescription>
@@ -204,7 +238,8 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <DialogBody>
+              <div className="space-y-3">
               <div className="space-y-1.5">
                 <label htmlFor="client-name" className="text-sm font-medium">
                   Name
@@ -254,17 +289,21 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
               </div>
 
               {formError && <p className="text-sm text-destructive">{formError}</p>}
-            </div>
+              </div>
+            </DialogBody>
 
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
+                className="gap-1.5"
                 onClick={() => setDialogOpen(false)}
               >
+                <X />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" className="gap-1.5" disabled={isPending}>
+                {isEditMode ? <Check /> : <Plus />}
                 {isEditMode ? 'Save changes' : 'Add client'}
               </Button>
             </DialogFooter>
@@ -284,12 +323,16 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5">
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={handleDelete}
               disabled={isPending}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

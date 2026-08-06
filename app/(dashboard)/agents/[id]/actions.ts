@@ -7,12 +7,14 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import {
   updateAgentGeneralSchema,
   updateAgentCallSettingsSchema,
+  updateAgentAdvancedSettingsSchema,
   renameAgentSchema,
   duplicateAgentSchema,
   setDefaultAgentSchema,
   deleteAgentSchema,
   type UpdateAgentGeneralInput,
   type UpdateAgentCallSettingsInput,
+  type UpdateAgentAdvancedSettingsInput,
   type RenameAgentInput,
   type DuplicateAgentInput,
 } from '@/lib/validations/agent'
@@ -63,6 +65,59 @@ export async function updateAgentGeneral(
 
   if (error) {
     return { error: 'Could not update receptionist. Please try again.' }
+  }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
+}
+
+export async function updateAgentAdvancedSettings(
+  agentId: string,
+  input: Omit<UpdateAgentAdvancedSettingsInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = updateAgentAdvancedSettingsSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be signed in to update this receptionist.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { error } = await supabase
+    .from('agents')
+    .update({
+      llm_model: parsed.data.llmModel,
+      reasoning_effort: parsed.data.reasoningEffort,
+      filter_background_speech: parsed.data.filterBackgroundSpeech,
+      skip_knowledge_retrieval: parsed.data.skipKnowledgeRetrieval,
+      allow_dtmf: parsed.data.allowDtmf,
+      hold_sound: parsed.data.holdSound,
+      typing_sound_enabled: parsed.data.typingSoundEnabled,
+      secure_mode: parsed.data.secureMode,
+      identity_verification_enabled: parsed.data.identityVerificationEnabled,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.agentId)
+    .eq('organization_id', member.organization_id)
+
+  if (error) {
+    return { error: 'Could not update advanced settings. Please try again.' }
   }
 
   revalidatePath(`/agents/${agentId}`)
@@ -153,6 +208,29 @@ export type VoiceSearchResult = VoiceCatalogEntry & {
 
 const GENDER_TAGS = ['male', 'female'] as const
 const AGE_TAGS = ['young', 'middle-aged', 'old'] as const
+
+const VOICE_PREVIEW_SAMPLE =
+  'Hello, thanks for calling. How can I help you today?'
+
+function fishAudioApiError(
+  status: number,
+  body: unknown,
+  fallback: string
+): string {
+  if (status === 402 || status === 403) {
+    return 'Your Fish Audio account needs credits for this feature. Top up your balance and try again.'
+  }
+  if (body && typeof body === 'object') {
+    const message =
+      'message' in body && typeof body.message === 'string'
+        ? body.message
+        : 'detail' in body && typeof body.detail === 'string'
+          ? body.detail
+          : null
+    if (message) return message
+  }
+  return fallback
+}
 
 export async function searchVoices(
   query: string,
@@ -351,7 +429,7 @@ export async function duplicateAgent(
   const { data: source } = await supabase
     .from('agents')
     .select(
-      'country, language, industry, greeting_prompt, personality_notes, answering_mode, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id'
+      'country, language, industry, greeting_prompt, personality_notes, answering_mode, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, llm_model, reasoning_effort, filter_background_speech, skip_knowledge_retrieval, allow_dtmf, hold_sound, typing_sound_enabled, secure_mode, identity_verification_enabled'
     )
     .eq('id', parsed.data.sourceAgentId)
     .eq('organization_id', member.organization_id)
@@ -389,6 +467,15 @@ export async function duplicateAgent(
       first_message: source.first_message,
       tone_traits: source.tone_traits,
       voice_id: source.voice_id,
+      llm_model: source.llm_model,
+      reasoning_effort: source.reasoning_effort,
+      filter_background_speech: source.filter_background_speech,
+      skip_knowledge_retrieval: source.skip_knowledge_retrieval,
+      allow_dtmf: source.allow_dtmf,
+      hold_sound: source.hold_sound,
+      typing_sound_enabled: source.typing_sound_enabled,
+      secure_mode: source.secure_mode,
+      identity_verification_enabled: source.identity_verification_enabled,
       is_default: true,
     })
     .select('id')
@@ -550,14 +637,29 @@ export async function designVoiceCandidates(
     body: JSON.stringify({ instruction, language, n: 4 }),
   })
 
+  const data = (await response.json().catch(() => null)) as {
+    candidates?: Array<{ audio_base64?: string }>
+    message?: string
+    detail?: string
+  } | null
+
   if (!response.ok) {
-    return { error: 'Could not generate voice candidates. Please try again.' }
+    return {
+      error: fishAudioApiError(
+        response.status,
+        data,
+        'Could not generate voice candidates. Please try again.'
+      ),
+    }
   }
 
-  const data = (await response.json()) as { candidates?: Array<{ audio_base64?: string }> }
-  const candidates = (data.candidates ?? [])
+  const candidates = (data?.candidates ?? [])
     .filter((c): c is { audio_base64: string } => typeof c.audio_base64 === 'string')
     .map((c) => ({ audioBase64: c.audio_base64 }))
+
+  if (candidates.length === 0) {
+    return { error: 'No voice candidates were returned. Try a different description.' }
+  }
 
   return { candidates }
 }
@@ -581,12 +683,23 @@ export async function saveVoiceModel(
     body: form,
   })
 
+  const data = (await response.json().catch(() => null)) as {
+    id?: string
+    message?: string
+    detail?: string
+  } | null
+
   if (!response.ok) {
-    return { error: 'Could not save the new voice. Please try again.' }
+    return {
+      error: fishAudioApiError(
+        response.status,
+        data,
+        'Could not save the new voice. Please try again.'
+      ),
+    }
   }
 
-  const data = (await response.json()) as { id?: string }
-  if (!data.id) {
+  if (!data?.id) {
     return { error: 'Could not save the new voice. Please try again.' }
   }
 
@@ -620,6 +733,55 @@ export async function saveVoiceModel(
   }
 
   return { id: data.id }
+}
+
+export async function previewVoice(
+  voiceId: string
+): Promise<{ error: string } | { audioBase64: string }> {
+  if (!voiceId.trim()) {
+    return { error: 'No voice selected.' }
+  }
+
+  const response = await fetch('https://api.fish.audio/v1/tts', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}`,
+      'Content-Type': 'application/json',
+      model: 's2.1-pro-free',
+    },
+    body: JSON.stringify({
+      text: VOICE_PREVIEW_SAMPLE,
+      format: 'mp3',
+      reference_id: voiceId,
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => null)
+    return {
+      error: fishAudioApiError(
+        response.status,
+        body,
+        'Could not preview this voice. Please try again.'
+      ),
+    }
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.includes('application/json')) {
+    const body = (await response.json()) as { audio_base64?: string }
+    if (typeof body.audio_base64 === 'string' && body.audio_base64.length > 0) {
+      return { audioBase64: body.audio_base64 }
+    }
+    return { error: 'Could not preview this voice. Please try again.' }
+  }
+
+  const buffer = await response.arrayBuffer()
+  if (buffer.byteLength === 0) {
+    return { error: 'Could not preview this voice. Please try again.' }
+  }
+
+  return { audioBase64: Buffer.from(buffer).toString('base64') }
 }
 
 export async function getCustomVoices(): Promise<VoiceSearchResult[]> {

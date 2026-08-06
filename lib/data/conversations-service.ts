@@ -10,12 +10,16 @@
 // which has no such taint, keeping it safe for both Next.js and worker contexts.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
+import {
+  buildCallerMessageContent,
+  shouldCreateCallerMessage,
+} from '@/lib/voice/caller-message-from-conversation'
 import type { Conversation, TranscriptMessage, CallGoal } from './conversations'
 
 export type { Conversation, TranscriptMessage, CallGoal }
 
 const CONVERSATION_COLUMNS =
-  'id, organization_id, agent_id, channel, outcome, category, summary, duration_seconds, ended_reason, transcript, call_goals, created_at'
+  'id, organization_id, agent_id, channel, outcome, category, summary, duration_seconds, ended_reason, transcript, call_goals, is_read, created_at, room_name, recording_path'
 
 type ConversationRow = {
   id: string
@@ -29,7 +33,10 @@ type ConversationRow = {
   ended_reason: string | null
   transcript: TranscriptMessage[]
   call_goals: CallGoal[]
+  is_read: boolean
   created_at: string
+  room_name: string | null
+  recording_path: string | null
 }
 
 function mapConversation(row: ConversationRow): Conversation {
@@ -45,8 +52,11 @@ function mapConversation(row: ConversationRow): Conversation {
     endedReason: row.ended_reason,
     transcript: row.transcript ?? [],
     callGoals: row.call_goals ?? [],
+    isRead: row.is_read,
     createdAt: row.created_at,
     agentName: null,
+    roomName: row.room_name,
+    recordingPath: row.recording_path,
   }
 }
 
@@ -55,6 +65,7 @@ export type CreateConversationInput = {
   agentId: string | null
   channel: 'voice_web' | 'phone' | 'chat'
   status: 'active'
+  roomName?: string
 }
 
 export async function createConversation(
@@ -68,6 +79,7 @@ export async function createConversation(
       agent_id: input.agentId,
       channel: input.channel,
       status: input.status,
+      room_name: input.roomName ?? null,
     })
     .select(CONVERSATION_COLUMNS)
     .single()
@@ -88,6 +100,7 @@ export async function updateConversationStatus(
     durationSeconds?: number
     endedReason?: string
     transcript?: TranscriptMessage[]
+    callGoals?: CallGoal[]
   },
   organizationId?: string
 ): Promise<void> {
@@ -99,6 +112,7 @@ export async function updateConversationStatus(
   if (patch.durationSeconds !== undefined) update.duration_seconds = patch.durationSeconds
   if (patch.endedReason !== undefined) update.ended_reason = patch.endedReason
   if (patch.transcript !== undefined) update.transcript = patch.transcript
+  if (patch.callGoals !== undefined) update.call_goals = patch.callGoals
 
   if (organizationId && patch.status === 'completed') {
     void dispatchWebhook(organizationId, 'conversation.completed', {
@@ -123,5 +137,41 @@ export async function updateConversationStatus(
   const { error } = await query
   if (error) {
     throw new Error(`Failed to update conversation ${id}: ${error.message}`)
+  }
+
+  if (
+    organizationId &&
+    (patch.status === 'completed' || patch.status === 'failed') &&
+    patch.outcome &&
+    shouldCreateCallerMessage(patch.outcome, patch.callGoals ?? [])
+  ) {
+    const { data: existing } = await supabase
+      .from('caller_messages')
+      .select('id')
+      .eq('conversation_id', id)
+      .maybeSingle()
+
+    if (!existing) {
+      const { summary, quotedLine } = buildCallerMessageContent(
+        patch.summary,
+        patch.transcript ?? [],
+        patch.callGoals ?? []
+      )
+
+      const { error: messageError } = await supabase.from('caller_messages').insert({
+        organization_id: organizationId,
+        conversation_id: id,
+        summary,
+        quoted_line: quotedLine,
+        is_read: false,
+      })
+
+      if (messageError) {
+        console.error(
+          `[conversations-service] failed to create caller message for conversation ${id}:`,
+          messageError.message
+        )
+      }
+    }
   }
 }

@@ -1,28 +1,31 @@
 import { redirect } from "next/navigation";
 import { getCurrentOrgAndUser } from "@/lib/data/organization";
 import { getAppointmentsForRange, getTimeOffForRange } from "@/lib/data/calendar";
+import {
+  getRangeForView,
+  parseCalendarDate,
+  parseCalendarView,
+} from "@/lib/calendar-range";
+import { getStaffForOrg } from "@/lib/data/staff";
 import { CalendarClient } from "./calendar-client";
 
-function getWeekRange(anchor: Date) {
-  const start = new Date(anchor);
-  start.setHours(0, 0, 0, 0);
-  const dayOffset = (start.getDay() + 6) % 7; // Monday = 0
-  start.setDate(start.getDate() - dayOffset);
-  const end = new Date(start);
-  end.setDate(end.getDate() + 7);
-  return { start, end };
-}
-
-export default async function CalendarPage() {
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ date?: string; view?: string }>;
+}) {
   const context = await getCurrentOrgAndUser();
   if (!context) redirect("/login");
 
-  const today = new Date();
-  const { start, end } = getWeekRange(today);
+  const params = await searchParams;
+  const anchor = parseCalendarDate(params.date);
+  const view = parseCalendarView(params.view);
+  const { start, end } = getRangeForView(anchor, view);
 
-  const [appointments, timeOff] = await Promise.all([
+  const [appointments, timeOff, staff] = await Promise.all([
     getAppointmentsForRange(context.org.id, start.toISOString(), end.toISOString()),
     getTimeOffForRange(context.org.id, start.toISOString(), end.toISOString()),
+    getStaffForOrg(),
   ]);
 
   return (
@@ -30,6 +33,8 @@ export default async function CalendarPage() {
       initialAppointments={appointments}
       initialTimeOff={timeOff}
       initialAnchorDate={start.toISOString()}
+      initialView={view}
+      staff={staff}
     />
   );
 }

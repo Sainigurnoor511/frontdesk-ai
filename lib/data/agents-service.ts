@@ -14,7 +14,7 @@ import type { AgentDetail } from './agents'
 export type { AgentDetail }
 
 const AGENT_DETAIL_COLUMNS =
-  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, is_default, created_at, updated_at'
+  'id, organization_id, name, business_name, industry, country, language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, llm_model, reasoning_effort, filter_background_speech, skip_knowledge_retrieval, allow_dtmf, hold_sound, typing_sound_enabled, secure_mode, identity_verification_enabled, is_default, created_at, updated_at'
 
 export async function getAgentByIdServiceRole(id: string): Promise<AgentDetail | null> {
   const supabase = createServiceRoleClient()
@@ -25,4 +25,15 @@ export async function getAgentByIdServiceRole(id: string): Promise<AgentDetail |
     .single()
 
   return data
+}
+
+export async function getAgentStaffPhoneServiceRole(agentId: string): Promise<string | null> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .from('agents')
+    .select('staff_phone_number')
+    .eq('id', agentId)
+    .single()
+
+  return data?.staff_phone_number ?? null
 }

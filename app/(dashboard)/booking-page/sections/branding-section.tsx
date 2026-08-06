@@ -2,12 +2,12 @@
 
 import { useRef, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { BookingSection, SettingsCard } from '../section-layout'
 import { createClient } from '@/lib/supabase/client'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateBranding } from '../actions'
@@ -86,14 +86,8 @@ export function BrandingSection({
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Branding</h2>
-        <p className="text-sm text-muted-foreground">Your logo and business identity.</p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-5 p-4">
+    <BookingSection>
+      <SettingsCard title="Branding" description="Your logo and business identity." contentClassName="space-y-5 p-4">
           <div className="space-y-2">
             <Label>Logo</Label>
             <div className="flex items-center gap-3">
@@ -145,10 +139,9 @@ export function BrandingSection({
               rows={4}
             />
           </div>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

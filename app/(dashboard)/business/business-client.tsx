@@ -13,7 +13,17 @@ import {
   Package,
   BookOpen,
   CircleQuestionMark,
+  Globe,
+  FileText,
+  Upload,
+  X,
+  Check,
+  Tag,
+  ArrowUpDown,
+  Clock,
+  Users,
 } from 'lucide-react'
+import { FilterMenuButton, FilterToggleButton } from '@/components/layout/filter-menu-button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -31,12 +41,19 @@ import {
 } from '@/components/ui/select'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -63,6 +80,7 @@ import type {
   BusinessAsset,
   BusinessProduct,
 } from '@/lib/data/business'
+import type { KnowledgeSource, Faq } from '@/lib/data/knowledge'
 import { toast } from 'sonner'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import {
@@ -79,6 +97,14 @@ import {
   deleteProduct,
   updateSchedulingSettings,
 } from './actions'
+import {
+  addKnowledgeWebsite,
+  uploadKnowledgeFile,
+  deleteKnowledgeSource,
+  createFaq,
+  updateFaq,
+  deleteFaq,
+} from './knowledge-actions'
 
 const TIMEZONES = [
   'UTC',
@@ -131,6 +157,8 @@ export function BusinessClient({
   assets,
   products,
   contactPhoneNumber,
+  knowledgeSources,
+  faqs,
   initialTab,
 }: {
   profile: BusinessProfile
@@ -139,6 +167,8 @@ export function BusinessClient({
   assets: BusinessAsset[]
   products: BusinessProduct[]
   contactPhoneNumber: string | null
+  knowledgeSources: KnowledgeSource[]
+  faqs: Faq[]
   initialTab?: string
 }) {
   const activeTab = BUSINESS_TAB_VALUES.includes(
@@ -188,11 +218,11 @@ export function BusinessClient({
         </TabsContent>
 
         <TabsContent value="knowledge" className="pt-4">
-          <KnowledgeSourcesTab />
+          <KnowledgeSourcesTab sources={knowledgeSources} />
         </TabsContent>
 
         <TabsContent value="faq" className="pt-4">
-          <FaqTab />
+          <FaqTab faqs={faqs} />
         </TabsContent>
       </Tabs>
     </div>
@@ -427,13 +457,17 @@ function AddLocationDialog({
       }}
     >
       <DialogContent className="sm:max-w-md">
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
           <DialogHeader>
             <DialogTitle>Add location</DialogTitle>
             <DialogDescription>Add a new location for your business.</DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-3">
+          <DialogBody>
+            <div className="space-y-3">
             <div className="space-y-1.5">
               <Label htmlFor="location-name">Name</Label>
               <Input
@@ -459,13 +493,16 @@ function AddLocationDialog({
             </div>
 
             {error && <p className="text-sm text-destructive">{error}</p>}
-          </div>
+            </div>
+          </DialogBody>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => onOpenChange(false)}>
+              <X />
               Cancel
             </Button>
-            <Button type="submit" disabled={isPending}>
+            <Button type="submit" className="gap-1.5" disabled={isPending}>
+              <Plus />
               Add location
             </Button>
           </DialogFooter>
@@ -496,6 +533,9 @@ const emptyServiceForm: ServiceFormState = {
 
 function ServicesTab({ services }: { services: Service[] }) {
   const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState<Service['serviceType'] | null>(null)
+  const [durationFilter, setDurationFilter] = useState<'short' | 'medium' | 'long' | null>(null)
+  const [priceSort, setPriceSort] = useState<'asc' | 'desc' | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<ServiceFormState>(emptyServiceForm)
   const [formError, setFormError] = useState<string | null>(null)
@@ -506,9 +546,29 @@ function ServicesTab({ services }: { services: Service[] }) {
 
   const filteredServices = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return services
-    return services.filter((service) => service.name.toLowerCase().includes(query))
-  }, [services, search])
+    let result = services
+    if (query) {
+      result = result.filter((service) => service.name.toLowerCase().includes(query))
+    }
+    if (typeFilter) {
+      result = result.filter((service) => service.serviceType === typeFilter)
+    }
+    if (durationFilter === 'short') {
+      result = result.filter((service) => service.durationMinutes <= 30)
+    } else if (durationFilter === 'medium') {
+      result = result.filter(
+        (service) => service.durationMinutes > 30 && service.durationMinutes <= 60
+      )
+    } else if (durationFilter === 'long') {
+      result = result.filter((service) => service.durationMinutes > 60)
+    }
+    if (priceSort) {
+      result = [...result].sort((a, b) =>
+        priceSort === 'asc' ? a.price - b.price : b.price - a.price
+      )
+    }
+    return result
+  }, [services, search, typeFilter, durationFilter, priceSort])
 
   function openAddDialog() {
     setForm(emptyServiceForm)
@@ -592,22 +652,53 @@ function ServicesTab({ services }: { services: Service[] }) {
               className="pl-8"
             />
           </div>
-          {/* TODO: wire these filters up to real filtering logic */}
-          <Button type="button" variant="outline" size="sm">
-            Type
-          </Button>
-          <Button type="button" variant="outline" size="sm">
-            Price
-          </Button>
-          <Button type="button" variant="outline" size="sm">
-            Duration
-          </Button>
-          <Button type="button" variant="outline" size="sm">
-            Staff
-          </Button>
-          <Button type="button" variant="outline" size="sm">
-            Assets
-          </Button>
+          <FilterMenuButton icon={Tag} label="Type" active={typeFilter !== null}>
+            <DropdownMenuItem onClick={() => setTypeFilter(null)}>All types</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTypeFilter('appointment')}>
+              Appointment
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTypeFilter('home_mobile')}>
+              Home / mobile
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTypeFilter('group_session')}>
+              Group session
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setTypeFilter('rental')}>Rental</DropdownMenuItem>
+          </FilterMenuButton>
+
+          <FilterMenuButton icon={ArrowUpDown} label="Price" active={priceSort !== null}>
+            <DropdownMenuItem onClick={() => setPriceSort(null)}>Default order</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPriceSort('asc')}>Low to high</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setPriceSort('desc')}>High to low</DropdownMenuItem>
+          </FilterMenuButton>
+
+          <FilterMenuButton icon={Clock} label="Duration" active={durationFilter !== null}>
+            <DropdownMenuItem onClick={() => setDurationFilter(null)}>Any duration</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDurationFilter('short')}>
+              Up to 30 min
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDurationFilter('medium')}>
+              31–60 min
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setDurationFilter('long')}>
+              Over 60 min
+            </DropdownMenuItem>
+          </FilterMenuButton>
+
+          <FilterToggleButton
+            icon={Users}
+            label="Staff"
+            disabled
+            title="Coming soon"
+            onClick={() => undefined}
+          />
+          <FilterToggleButton
+            icon={Box}
+            label="Assets"
+            disabled
+            title="Coming soon"
+            onClick={() => undefined}
+          />
         </div>
         <Button onClick={openAddDialog}>Add service</Button>
       </div>
@@ -638,12 +729,15 @@ function ServicesTab({ services }: { services: Service[] }) {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                <p className="font-medium">No matching services</p>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  Try a different search term.
-                </p>
-              </div>
+              <Empty className="border-0 py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Search />
+                  </EmptyMedia>
+                  <EmptyTitle>No matching services</EmptyTitle>
+                  <EmptyDescription>Try a different search term.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )
           ) : (
             <ul className="divide-y">
@@ -685,7 +779,10 @@ function ServicesTab({ services }: { services: Service[] }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DialogHeader>
               <DialogTitle>{isEditMode ? 'Edit service' : 'Add service'}</DialogTitle>
               <DialogDescription>
@@ -693,7 +790,8 @@ function ServicesTab({ services }: { services: Service[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <DialogBody>
+              <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="service-name">Name</Label>
                 <Input
@@ -762,13 +860,21 @@ function ServicesTab({ services }: { services: Service[] }) {
               </div>
 
               {formError && <p className="text-sm text-destructive">{formError}</p>}
-            </div>
+              </div>
+            </DialogBody>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setDialogOpen(false)}
+              >
+                <X />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" className="gap-1.5" disabled={isPending}>
+                {isEditMode ? <Check /> : <Plus />}
                 {isEditMode ? 'Save changes' : 'Add service'}
               </Button>
             </DialogFooter>
@@ -788,12 +894,16 @@ function ServicesTab({ services }: { services: Service[] }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5">
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={handleDelete}
               disabled={isPending}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -927,12 +1037,15 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                <p className="font-medium">No matching assets</p>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  Try a different search term.
-                </p>
-              </div>
+              <Empty className="border-0 py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Search />
+                  </EmptyMedia>
+                  <EmptyTitle>No matching assets</EmptyTitle>
+                  <EmptyDescription>Try a different search term.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )
           ) : (
             <ul className="divide-y">
@@ -974,7 +1087,10 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DialogHeader>
               <DialogTitle>{isEditMode ? 'Edit asset' : 'Add asset'}</DialogTitle>
               <DialogDescription>
@@ -982,7 +1098,8 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <DialogBody>
+              <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="asset-name">Name</Label>
                 <Input
@@ -1012,13 +1129,21 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
               </div>
 
               {formError && <p className="text-sm text-destructive">{formError}</p>}
-            </div>
+              </div>
+            </DialogBody>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setDialogOpen(false)}
+              >
+                <X />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" className="gap-1.5" disabled={isPending}>
+                {isEditMode ? <Check /> : <Plus />}
                 {isEditMode ? 'Save changes' : 'Add asset'}
               </Button>
             </DialogFooter>
@@ -1038,12 +1163,16 @@ function AssetsTab({ assets }: { assets: BusinessAsset[] }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5">
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={handleDelete}
               disabled={isPending}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1175,12 +1304,15 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
                 </EmptyContent>
               </Empty>
             ) : (
-              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                <p className="font-medium">No matching products</p>
-                <p className="max-w-sm text-sm text-muted-foreground">
-                  Try a different search term.
-                </p>
-              </div>
+              <Empty className="border-0 py-10">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Search />
+                  </EmptyMedia>
+                  <EmptyTitle>No matching products</EmptyTitle>
+                  <EmptyDescription>Try a different search term.</EmptyDescription>
+                </EmptyHeader>
+              </Empty>
             )
           ) : (
             <ul className="divide-y">
@@ -1223,7 +1355,10 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-md">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DialogHeader>
               <DialogTitle>{isEditMode ? 'Edit product' : 'Add product'}</DialogTitle>
               <DialogDescription>
@@ -1231,7 +1366,8 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-3">
+            <DialogBody>
+              <div className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="product-name">Name</Label>
                 <Input
@@ -1265,13 +1401,21 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
               </div>
 
               {formError && <p className="text-sm text-destructive">{formError}</p>}
-            </div>
+              </div>
+            </DialogBody>
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                className="gap-1.5"
+                onClick={() => setDialogOpen(false)}
+              >
+                <X />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" className="gap-1.5" disabled={isPending}>
+                {isEditMode ? <Check /> : <Plus />}
                 {isEditMode ? 'Save changes' : 'Add product'}
               </Button>
             </DialogFooter>
@@ -1291,12 +1435,16 @@ function ProductsTab({ products }: { products: BusinessProduct[] }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5">
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={handleDelete}
               disabled={isPending}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -1442,69 +1590,528 @@ function SchedulingTab({ profile }: { profile: BusinessProfile }) {
 
 // ---------------- Knowledge Sources Tab ----------------
 
-// TODO: this project already has website-scanning infrastructure
-// (see app/onboarding/actions.ts's startWebsiteScan and the agent_scan_jobs
-// table) that could be reused here to power real knowledge-source ingestion.
-// That integration is tied to the onboarding agent-creation flow today; wiring
-// this tab up to it is a separate follow-up task. For now this is UI only.
-function KnowledgeSourcesTab() {
+function knowledgeStatusLabel(status: KnowledgeSource['status']): string {
+  switch (status) {
+    case 'pending':
+      return 'Pending'
+    case 'indexing':
+      return 'Indexing'
+    case 'ready':
+      return 'Ready'
+    case 'failed':
+      return 'Failed'
+  }
+}
+
+function KnowledgeSourcesTab({ sources }: { sources: KnowledgeSource[] }) {
+  const [websiteDialogOpen, setWebsiteDialogOpen] = useState(false)
+  const [websiteName, setWebsiteName] = useState('')
+  const [websiteUrl, setWebsiteUrl] = useState('')
+  const [scanDepth, setScanDepth] = useState<'single' | 'quick' | 'deep'>('quick')
+  const [formError, setFormError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function handleUploadClick() {
+    const input = document.getElementById('knowledge-file-input') as HTMLInputElement | null
+    input?.click()
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.set('file', file)
+    startTransition(async () => {
+      const result = await uploadKnowledgeFile(formData)
+      if ('error' in result) {
+        toast.error(result.error)
+      } else {
+        toast.success('File uploaded — indexing started')
+      }
+      e.target.value = ''
+    })
+  }
+
+  function handleAddWebsite(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError(null)
+    startTransition(async () => {
+      const result = await addKnowledgeWebsite({
+        name: websiteName,
+        url: websiteUrl,
+        scanDepth,
+      })
+      if ('error' in result) {
+        setFormError(result.error)
+      } else {
+        toast.success('Website added — indexing started')
+        setWebsiteDialogOpen(false)
+        setWebsiteName('')
+        setWebsiteUrl('')
+        setScanDepth('quick')
+      }
+    })
+  }
+
+  function handleDelete(id: string) {
+    startTransition(async () => {
+      const result = await deleteKnowledgeSource(id)
+      if ('error' in result) toast.error(result.error)
+      else toast.success('Knowledge source removed')
+    })
+  }
+
+  if (sources.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <BookOpen />
+              </EmptyMedia>
+              <EmptyTitle>No knowledge sources yet</EmptyTitle>
+              <EmptyDescription>
+                Upload documents or add your website so your receptionist can answer
+                business-specific questions accurately.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <div className="grid w-full gap-2 text-left sm:grid-cols-3">
+                <InfoCard title="Upload text or markdown files" />
+                <InfoCard title="Crawl your website pages" />
+                <InfoCard title="Searchable during live calls" />
+              </div>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button onClick={handleUploadClick} disabled={isPending}>
+                  <Upload />
+                  Upload file
+                </Button>
+                <Button variant="outline" onClick={() => setWebsiteDialogOpen(true)} disabled={isPending}>
+                  <Globe />
+                  Add website
+                </Button>
+              </div>
+            </EmptyContent>
+          </Empty>
+          <input
+            id="knowledge-file-input"
+            type="file"
+            accept=".txt,.md,.markdown,.html,.htm"
+            className="hidden"
+            onChange={handleFileChange}
+          />
+        </CardContent>
+        <WebsiteSourceDialog
+          open={websiteDialogOpen}
+          onOpenChange={setWebsiteDialogOpen}
+          name={websiteName}
+          url={websiteUrl}
+          scanDepth={scanDepth}
+          error={formError}
+          isPending={isPending}
+          onNameChange={setWebsiteName}
+          onUrlChange={setWebsiteUrl}
+          onScanDepthChange={setScanDepth}
+          onSubmit={handleAddWebsite}
+        />
+      </Card>
+    )
+  }
+
   return (
-    <Card>
-      <CardContent className="py-10">
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <BookOpen />
-            </EmptyMedia>
-            <EmptyTitle>No knowledge sources yet</EmptyTitle>
-            <EmptyDescription>
-              Knowledge sources are where your receptionist learns about your business, so
-              it can answer callers accurately.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <div className="grid w-full gap-2 text-left sm:grid-cols-3">
-              <InfoCard title="Upload files like PDFs and docs" />
-              <InfoCard title="Add your website or specific pages" />
-              <InfoCard title="Your receptionist answers from them" />
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {sources.length} source{sources.length === 1 ? '' : 's'} indexed for call-time search
+        </p>
+        <div className="flex gap-2">
+          <Button size="sm" onClick={handleUploadClick} disabled={isPending}>
+            <Upload />
+            Upload file
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setWebsiteDialogOpen(true)} disabled={isPending}>
+            <Globe />
+            Add website
+          </Button>
+        </div>
+      </div>
+      <input
+        id="knowledge-file-input"
+        type="file"
+        accept=".txt,.md,.markdown,.html,.htm"
+        className="hidden"
+        onChange={handleFileChange}
+      />
+      <Card>
+        <CardContent className="p-0">
+          <ul className="divide-y">
+            {sources.map((source) => (
+              <li key={source.id} className="flex items-center gap-3 px-4 py-3">
+                {source.type === 'website' ? (
+                  <Globe className="size-4 shrink-0 text-muted-foreground" />
+                ) : (
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium">{source.name}</p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {source.type === 'website' ? source.sourceUrl : source.name}
+                  </p>
+                  {source.status === 'failed' && source.errorMessage && (
+                    <p className="mt-1 text-xs text-destructive">{source.errorMessage}</p>
+                  )}
+                </div>
+                <Badge
+                  variant={
+                    source.status === 'ready'
+                      ? 'default'
+                      : source.status === 'failed'
+                        ? 'destructive'
+                        : 'secondary'
+                  }
+                >
+                  {knowledgeStatusLabel(source.status)}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8"
+                  disabled={isPending}
+                  onClick={() => handleDelete(source.id)}
+                >
+                  <Trash />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+      <WebsiteSourceDialog
+        open={websiteDialogOpen}
+        onOpenChange={setWebsiteDialogOpen}
+        name={websiteName}
+        url={websiteUrl}
+        scanDepth={scanDepth}
+        error={formError}
+        isPending={isPending}
+        onNameChange={setWebsiteName}
+        onUrlChange={setWebsiteUrl}
+        onScanDepthChange={setScanDepth}
+        onSubmit={handleAddWebsite}
+      />
+    </div>
+  )
+}
+
+function WebsiteSourceDialog({
+  open,
+  onOpenChange,
+  name,
+  url,
+  scanDepth,
+  error,
+  isPending,
+  onNameChange,
+  onUrlChange,
+  onScanDepthChange,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  name: string
+  url: string
+  scanDepth: 'single' | 'quick' | 'deep'
+  error: string | null
+  isPending: boolean
+  onNameChange: (value: string) => void
+  onUrlChange: (value: string) => void
+  onScanDepthChange: (value: 'single' | 'quick' | 'deep') => void
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <DialogHeader>
+            <DialogTitle>Add website source</DialogTitle>
+            <DialogDescription>
+              We&apos;ll crawl your site and index the text for your receptionist to search during
+              calls.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="knowledge-website-name">Display name</Label>
+                <Input
+                  id="knowledge-website-name"
+                  value={name}
+                  onChange={(e) => onNameChange(e.target.value)}
+                  placeholder="Company website"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="knowledge-website-url">URL</Label>
+                <Input
+                  id="knowledge-website-url"
+                  type="url"
+                  value={url}
+                  onChange={(e) => onUrlChange(e.target.value)}
+                  placeholder="https://example.com"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Crawl depth</Label>
+                <Select value={scanDepth} onValueChange={(v) => onScanDepthChange(v as typeof scanDepth)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="single">Single page</SelectItem>
+                    <SelectItem value="quick">Quick (about 6 pages)</SelectItem>
+                    <SelectItem value="deep">Deep (about 20 pages)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
-            <Button className="mt-2">Add new</Button>
-          </EmptyContent>
-        </Empty>
-      </CardContent>
-    </Card>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => onOpenChange(false)}>
+              <X />
+              Cancel
+            </Button>
+            <Button type="submit" className="gap-1.5" disabled={isPending}>
+              <Globe />
+              Add website
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
 
 // ---------------- FAQ Tab ----------------
 
-// TODO: FAQs are meant to be auto-captured when the receptionist can't answer
-// a caller's question. That requires conversations + AI-answer-gap detection,
-// which doesn't exist yet. This tab is genuinely empty until that lands.
-function FaqTab() {
+function FaqTab({ faqs }: { faqs: Faq[] }) {
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [question, setQuestion] = useState('')
+  const [answer, setAnswer] = useState('')
+  const [formError, setFormError] = useState<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+
+  function openCreate() {
+    setEditingId(null)
+    setQuestion('')
+    setAnswer('')
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  function openEdit(faq: Faq) {
+    setEditingId(faq.id)
+    setQuestion(faq.question)
+    setAnswer(faq.answer)
+    setFormError(null)
+    setDialogOpen(true)
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setFormError(null)
+    startTransition(async () => {
+      const result = editingId
+        ? await updateFaq({ id: editingId, question, answer })
+        : await createFaq({ question, answer })
+      if ('error' in result) {
+        setFormError(result.error)
+      } else {
+        toast.success(editingId ? 'FAQ updated' : 'FAQ added')
+        setDialogOpen(false)
+      }
+    })
+  }
+
+  function handleDelete(id: string) {
+    startTransition(async () => {
+      const result = await deleteFaq(id)
+      if ('error' in result) toast.error(result.error)
+      else toast.success('FAQ removed')
+    })
+  }
+
+  if (faqs.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-10">
+          <Empty>
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <CircleQuestionMark />
+              </EmptyMedia>
+              <EmptyTitle>No FAQs yet</EmptyTitle>
+              <EmptyDescription>
+                Add common questions and answers your receptionist can search during calls.
+              </EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button onClick={openCreate}>Add FAQ</Button>
+            </EmptyContent>
+          </Empty>
+        </CardContent>
+        <FaqDialog
+          open={dialogOpen}
+          onOpenChange={setDialogOpen}
+          question={question}
+          answer={answer}
+          error={formError}
+          isPending={isPending}
+          isEdit={Boolean(editingId)}
+          onQuestionChange={setQuestion}
+          onAnswerChange={setAnswer}
+          onSubmit={handleSubmit}
+        />
+      </Card>
+    )
+  }
+
   return (
-    <Card>
-      <CardContent className="py-10">
-        <Empty>
-          <EmptyHeader>
-            <EmptyMedia variant="icon">
-              <CircleQuestionMark />
-            </EmptyMedia>
-            <EmptyTitle>No FAQs yet</EmptyTitle>
-            <EmptyDescription>
-              When your receptionist can&apos;t answer a caller&apos;s question, it shows up
-              here so you can fill the gap.
-            </EmptyDescription>
-          </EmptyHeader>
-          <EmptyContent>
-            <div className="grid w-full gap-2 text-left sm:grid-cols-1">
-              <InfoCard title="Captured when a caller asks something new" />
-              <InfoCard title="You add an answer once" />
-              <InfoCard title="Your receptionist reuses it next time" />
+    <div className="space-y-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          {faqs.length} FAQ{faqs.length === 1 ? '' : 's'} indexed for call-time search
+        </p>
+        <Button size="sm" onClick={openCreate} disabled={isPending}>
+          <Plus />
+          Add FAQ
+        </Button>
+      </div>
+      <Card>
+        <CardContent className="p-0">
+          <ul className="divide-y">
+            {faqs.map((faq) => (
+              <li key={faq.id} className="px-4 py-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-medium">{faq.question}</p>
+                    <p className="text-sm text-muted-foreground">{faq.answer}</p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <Button variant="ghost" size="icon" className="size-8" onClick={() => openEdit(faq)}>
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      disabled={isPending}
+                      onClick={() => handleDelete(faq.id)}
+                    >
+                      <Trash />
+                    </Button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+      <FaqDialog
+        open={dialogOpen}
+        onOpenChange={setDialogOpen}
+        question={question}
+        answer={answer}
+        error={formError}
+        isPending={isPending}
+        isEdit={Boolean(editingId)}
+        onQuestionChange={setQuestion}
+        onAnswerChange={setAnswer}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  )
+}
+
+function FaqDialog({
+  open,
+  onOpenChange,
+  question,
+  answer,
+  error,
+  isPending,
+  isEdit,
+  onQuestionChange,
+  onAnswerChange,
+  onSubmit,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  question: string
+  answer: string
+  error: string | null
+  isPending: boolean
+  isEdit: boolean
+  onQuestionChange: (value: string) => void
+  onAnswerChange: (value: string) => void
+  onSubmit: (e: React.FormEvent) => void
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <form
+          onSubmit={onSubmit}
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+        >
+          <DialogHeader>
+            <DialogTitle>{isEdit ? 'Edit FAQ' : 'Add FAQ'}</DialogTitle>
+            <DialogDescription>
+              FAQs are indexed into your knowledge base and searchable during live calls.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="faq-question">Question</Label>
+                <Input
+                  id="faq-question"
+                  value={question}
+                  onChange={(e) => onQuestionChange(e.target.value)}
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="faq-answer">Answer</Label>
+                <Textarea
+                  id="faq-answer"
+                  value={answer}
+                  onChange={(e) => onAnswerChange(e.target.value)}
+                  rows={4}
+                  required
+                />
+              </div>
+              {error && <p className="text-sm text-destructive">{error}</p>}
             </div>
-          </EmptyContent>
-        </Empty>
-      </CardContent>
-    </Card>
+          </DialogBody>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => onOpenChange(false)}>
+              <X />
+              Cancel
+            </Button>
+            <Button type="submit" className="gap-1.5" disabled={isPending}>
+              {isEdit ? <Check /> : <Plus />}
+              {isEdit ? 'Save changes' : 'Add FAQ'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

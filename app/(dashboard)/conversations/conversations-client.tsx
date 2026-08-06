@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState, useTransition } from 'react'
+import { useEffect, useMemo, useState, useTransition } from 'react'
+import dynamic from 'next/dynamic'
 import {
   MessageCircle,
   MessagesSquare,
@@ -11,37 +12,52 @@ import {
   Clock,
   SquareArrowOutUpRight,
   ChevronDown,
-  Play,
-  Undo2,
-  Redo2,
-  MoreHorizontal,
   Mail,
-  CheckCircle,
-  XCircle,
-  HelpCircle,
   Trash,
   UserPlus,
+  CalendarArrowDown,
+  CalendarArrowUp,
+  Target,
+  Eye,
+  Radio,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet'
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu'
+import { Label } from '@/components/ui/label'
+import { FilterMenuButton } from '@/components/layout/filter-menu-button'
 import type { Conversation, CallerMessage } from '@/lib/data/conversations'
 import {
   markMessageAsRead,
   markAllMessagesAsRead,
+  markAllConversationsAsRead,
   deleteMessage,
   createContactFromMessage,
 } from './actions'
 import { ConversationStatusBadge } from '@/components/conversations/conversation-status-badge'
+
+const ConversationDetailSheet = dynamic(
+  () =>
+    import('@/components/conversations/conversation-detail-sheet').then(
+      (module) => module.ConversationDetailSheet
+    ),
+  { ssr: false }
+)
 
 function formatRelativeTime(iso: string): string {
   const date = new Date(iso)
@@ -79,39 +95,6 @@ function conversationTitle(conversation: Conversation): string {
   return conversation.channel === 'phone' ? 'Call' : 'Conversation'
 }
 
-function FilterChip({ label }: { label: string }) {
-  return (
-    <Button variant="outline" size="sm" className="text-muted-foreground">
-      {label}
-    </Button>
-  )
-}
-
-function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]['status'] }) {
-  if (status === 'success') {
-    return (
-      <Badge variant="default" className="bg-green-600 text-white [a]:hover:bg-green-600/80">
-        <CheckCircle />
-        Success
-      </Badge>
-    )
-  }
-  if (status === 'failed') {
-    return (
-      <Badge variant="destructive">
-        <XCircle />
-        Failed
-      </Badge>
-    )
-  }
-  return (
-    <Badge variant="secondary">
-      <HelpCircle />
-      Unknown
-    </Badge>
-  )
-}
-
 export function ConversationsClient({
   conversations,
   messages,
@@ -121,24 +104,66 @@ export function ConversationsClient({
 }) {
   const [tab, setTab] = useState('conversations')
   const [search, setSearch] = useState('')
+  const [dateAfter, setDateAfter] = useState<string | null>(null)
+  const [dateBefore, setDateBefore] = useState<string | null>(null)
+  const [outcomeFilter, setOutcomeFilter] = useState<Conversation['outcome'] | null>(null)
+  const [readFilter, setReadFilter] = useState<'read' | 'unread' | null>(null)
+  const [channelFilter, setChannelFilter] = useState<Conversation['channel'] | null>(null)
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
-  const [detailTab, setDetailTab] = useState('overview')
   const [messageList, setMessageList] = useState(messages)
   const [isPending, startTransition] = useTransition()
+
+  useEffect(() => {
+    startTransition(async () => {
+      await markAllConversationsAsRead()
+    })
+  }, [])
 
   const unreadCount = messageList.filter((m) => !m.isRead).length
 
   const filteredConversations = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return conversations
-    return conversations.filter((c) =>
-      [c.summary ?? '', c.category ?? '', conversationTitle(c)]
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    )
-  }, [conversations, search])
+    return conversations.filter((c) => {
+      if (query) {
+        const haystack = [c.summary ?? '', c.category ?? '', conversationTitle(c)]
+          .join(' ')
+          .toLowerCase()
+        if (!haystack.includes(query)) return false
+      }
+
+      if (dateAfter) {
+        const after = new Date(dateAfter)
+        after.setHours(0, 0, 0, 0)
+        if (new Date(c.createdAt) < after) return false
+      }
+
+      if (dateBefore) {
+        const before = new Date(dateBefore)
+        before.setHours(23, 59, 59, 999)
+        if (new Date(c.createdAt) > before) return false
+      }
+
+      if (outcomeFilter && c.outcome !== outcomeFilter) return false
+      if (readFilter === 'read' && !c.isRead) return false
+      if (readFilter === 'unread' && c.isRead) return false
+      if (channelFilter && c.channel !== channelFilter) return false
+
+      return true
+    })
+  }, [
+    conversations,
+    search,
+    dateAfter,
+    dateBefore,
+    outcomeFilter,
+    readFilter,
+    channelFilter,
+  ])
+
+  function openConversation(conversation: Conversation) {
+    setSelected(conversation)
+  }
 
   function handleMarkAsRead(id: string) {
     setMessageList((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)))
@@ -177,7 +202,7 @@ export function ConversationsClient({
       <div>
         <h1 className="font-heading text-2xl font-semibold">Conversations</h1>
         <p className="mt-1 text-sm font-normal text-[#96989d]">
-          Review call transcripts, summaries, and messages left by callers.
+          Review calls and chats, and follow up on requests your receptionist could not complete.
         </p>
       </div>
 
@@ -207,25 +232,92 @@ export function ConversationsClient({
             </div>
           </div>
 
-          {/* TODO: wire these filters up to real query params / server-side filtering. */}
           <div className="flex flex-wrap gap-2">
-            <FilterChip label="Date after" />
-            <FilterChip label="Date before" />
-            <FilterChip label="Outcome" />
-            <FilterChip label="Conversation status" />
-            <FilterChip label="Channel" />
+            <FilterMenuButton
+              icon={CalendarArrowDown}
+              label="Date after"
+              active={dateAfter !== null}
+            >
+              <DropdownMenuLabel>Start date</DropdownMenuLabel>
+              <div className="px-2 pb-2">
+                <Label className="sr-only" htmlFor="conv-date-after">Date after</Label>
+                <input
+                  id="conv-date-after"
+                  type="date"
+                  value={dateAfter ?? ''}
+                  onChange={(e) => setDateAfter(e.target.value || null)}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDateAfter(null)}>Clear filter</DropdownMenuItem>
+            </FilterMenuButton>
+
+            <FilterMenuButton
+              icon={CalendarArrowUp}
+              label="Date before"
+              active={dateBefore !== null}
+            >
+              <DropdownMenuLabel>End date</DropdownMenuLabel>
+              <div className="px-2 pb-2">
+                <Label className="sr-only" htmlFor="conv-date-before">Date before</Label>
+                <input
+                  id="conv-date-before"
+                  type="date"
+                  value={dateBefore ?? ''}
+                  onChange={(e) => setDateBefore(e.target.value || null)}
+                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                />
+              </div>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setDateBefore(null)}>Clear filter</DropdownMenuItem>
+            </FilterMenuButton>
+
+            <FilterMenuButton icon={Target} label="Outcome" active={outcomeFilter !== null}>
+              <DropdownMenuItem onClick={() => setOutcomeFilter(null)}>All outcomes</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOutcomeFilter('successful')}>
+                Successful
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOutcomeFilter('failed')}>Failed</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setOutcomeFilter('unknown')}>Unknown</DropdownMenuItem>
+            </FilterMenuButton>
+
+            <FilterMenuButton icon={Eye} label="Status" active={readFilter !== null}>
+              <DropdownMenuItem onClick={() => setReadFilter(null)}>All conversations</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReadFilter('unread')}>Unread</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setReadFilter('read')}>Read</DropdownMenuItem>
+            </FilterMenuButton>
+
+            <FilterMenuButton icon={Radio} label="Channel" active={channelFilter !== null}>
+              <DropdownMenuItem onClick={() => setChannelFilter(null)}>All channels</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setChannelFilter('voice_web')}>
+                Voice chat on website
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setChannelFilter('phone')}>Phone call</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setChannelFilter('chat')}>
+                Text chat on website
+              </DropdownMenuItem>
+            </FilterMenuButton>
           </div>
 
           <Card>
             <CardContent className="p-0">
               {filteredConversations.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                  <MessagesSquare className="h-8 w-8 text-muted-foreground" />
-                  <p className="font-medium">No conversations yet</p>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Calls and chats with your receptionist will show up here.
-                  </p>
-                </div>
+                <Empty className="border-0 py-10">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <MessagesSquare />
+                    </EmptyMedia>
+                    <EmptyTitle>
+                      {conversations.length === 0 ? 'No conversations yet' : 'No matching conversations'}
+                    </EmptyTitle>
+                    <EmptyDescription>
+                      {conversations.length === 0
+                        ? 'Calls and chats with your receptionist will show up here.'
+                        : 'Try a different search term.'}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <ul className="divide-y">
                   {filteredConversations.map((conversation) => {
@@ -240,6 +332,9 @@ export function ConversationsClient({
                           className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/50"
                         >
                           <ChannelIcon channel={conversation.channel} />
+                          {!conversation.isRead && (
+                            <span className="size-2 shrink-0 rounded-full bg-primary" />
+                          )}
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="truncate font-medium">
@@ -271,15 +366,13 @@ export function ConversationsClient({
                               tabIndex={0}
                               onClick={(e) => {
                                 e.stopPropagation()
-                                setSelected(conversation)
-                                setDetailTab('overview')
+                                openConversation(conversation)
                               }}
                               onKeyDown={(e) => {
                                 if (e.key !== 'Enter' && e.key !== ' ') return
                                 e.stopPropagation()
                                 e.preventDefault()
-                                setSelected(conversation)
-                                setDetailTab('overview')
+                                openConversation(conversation)
                               }}
                               className="rounded p-0.5 hover:text-foreground"
                             >
@@ -336,6 +429,11 @@ export function ConversationsClient({
         </TabsContent>
 
         <TabsContent value="messages" className="space-y-4 pt-4">
+          <p className="text-sm text-muted-foreground">
+            When someone leaves your AI receptionist a message — on a call or in chat — it shows
+            up here. These are usually requests the caller wanted but the receptionist could not
+            finish (for example, booking a slot that was unavailable).
+          </p>
           {messageList.length > 0 && (
             <div className="flex justify-end">
               <Button
@@ -352,13 +450,18 @@ export function ConversationsClient({
           <Card>
             <CardContent className="p-0">
               {messageList.length === 0 ? (
-                <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                  <Mail className="h-8 w-8 text-muted-foreground" />
-                  <p className="font-medium">No messages yet</p>
-                  <p className="max-w-sm text-sm text-muted-foreground">
-                    Messages callers leave for you will show up here.
-                  </p>
-                </div>
+                <Empty className="border-0 py-10">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Mail />
+                    </EmptyMedia>
+                    <EmptyTitle>No messages yet</EmptyTitle>
+                    <EmptyDescription>
+                      When a caller asks for something your receptionist could not complete, the
+                      summary will appear here so you can follow up.
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <ul className="divide-y">
                   {messageList.map((message) => (
@@ -379,7 +482,7 @@ export function ConversationsClient({
                               {message.callerPhone}
                             </a>
                           )}
-                          <Badge variant="secondary">shared by caller</Badge>
+                          <Badge variant="secondary">Unresolved request</Badge>
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {formatRelativeTime(message.createdAt)}
@@ -437,170 +540,13 @@ export function ConversationsClient({
         </TabsContent>
       </Tabs>
 
-      <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelected(null)}>
-        <SheetContent side="right" className="w-full sm:max-w-xl">
-          {selected && (
-            <div className="flex h-full flex-col">
-              <SheetHeader>
-                <SheetTitle>
-                  Conversation with{' '}
-                  <span className="font-semibold">{selected.agentName ?? 'Receptionist Agent'}</span>
-                </SheetTitle>
-                <SheetDescription>
-                  {new Date(selected.createdAt).toLocaleString()}
-                </SheetDescription>
-              </SheetHeader>
-
-              <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-4">
-                {/* TODO: real audio playback - no recording storage yet, this is a static placeholder. */}
-                <div className="space-y-3">
-                  <div className="flex h-10 items-center gap-0.5">
-                    {Array.from({ length: 60 }).map((_, i) => (
-                      <span
-                        key={i}
-                        className="w-1 rounded-full bg-muted-foreground/30"
-                        style={{ height: `${8 + ((i * 7) % 28)}px` }}
-                      />
-                    ))}
-                  </div>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-3">
-                      <Button
-                        type="button"
-                        size="icon"
-                        className="size-8 rounded-full"
-                        disabled
-                      >
-                        <Play className="fill-current" />
-                      </Button>
-                      <span className="text-sm text-muted-foreground">1.0x</span>
-                      <Undo2 className="size-4 text-muted-foreground" />
-                      <Redo2 className="size-4 text-muted-foreground" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm text-muted-foreground">
-                        0:00 / {formatDuration(selected.durationSeconds)}
-                      </span>
-                      <Button type="button" variant="outline" size="icon" className="size-8" disabled>
-                        <MoreHorizontal />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-
-                <Tabs value={detailTab} onValueChange={setDetailTab}>
-                  <TabsList>
-                    <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="transcription">Transcription</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="overview" className="space-y-4 pt-4">
-                    {selected.summary && (
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Summary</p>
-                        <p className="text-sm text-muted-foreground">
-                          {selected.summary}
-                        </p>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="space-y-1">
-                        <p className="font-medium">Type</p>
-                        <p className="text-muted-foreground capitalize">
-                          {selected.channel.replace('_', ' ')}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium">Date</p>
-                        <p className="text-muted-foreground">
-                          {new Date(selected.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium">Duration</p>
-                        <p className="text-muted-foreground">
-                          {formatDuration(selected.durationSeconds)}
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        <p className="font-medium">How the call ended</p>
-                        <p className="text-muted-foreground">
-                          {selected.endedReason ?? 'Unknown'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {selected.callGoals.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium">Call goals</p>
-                          <p className="text-sm text-muted-foreground">
-                            {selected.callGoals.filter((g) => g.status === 'success').length} of{' '}
-                            {selected.callGoals.length} achieved
-                          </p>
-                        </div>
-                        <ul className="space-y-2">
-                          {selected.callGoals.map((goal, i) => (
-                            <li
-                              key={i}
-                              className="space-y-1 rounded-lg border p-3 text-sm"
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="font-medium">{goal.name}</p>
-                                <GoalStatusBadge status={goal.status} />
-                              </div>
-                              <p className="text-muted-foreground">{goal.reasoning}</p>
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </TabsContent>
-
-                  <TabsContent value="transcription" className="pt-4">
-                    {selected.transcript.length === 0 ? (
-                      <p className="py-8 text-center text-sm text-muted-foreground">
-                        No transcript available for this conversation.
-                      </p>
-                    ) : (
-                      <ul className="space-y-3">
-                        {selected.transcript.map((message, i) => (
-                          <li
-                            key={i}
-                            className={`flex flex-col ${
-                              message.role === 'caller' ? 'items-end' : 'items-start'
-                            }`}
-                          >
-                            <div className="max-w-[75%] space-y-1">
-                              <div
-                                className={`rounded-lg px-3 py-2 text-sm ${
-                                  message.role === 'caller'
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-muted'
-                                }`}
-                              >
-                                {message.text}
-                              </div>
-                              <p
-                                className={`text-xs text-muted-foreground ${
-                                  message.role === 'caller' ? 'text-right' : ''
-                                }`}
-                              >
-                                {formatDuration(message.timestampSeconds)}
-                              </p>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </TabsContent>
-                </Tabs>
-              </div>
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+      <ConversationDetailSheet
+        conversation={selected}
+        open={selected !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null)
+        }}
+      />
     </div>
   )
 }

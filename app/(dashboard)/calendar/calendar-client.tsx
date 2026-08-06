@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   ChevronLeft,
@@ -9,6 +10,11 @@ import {
   Funnel,
   Plus,
   CalendarOff,
+  X,
+  Pencil,
+  Check,
+  CalendarPlus,
+  Trash2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -19,7 +25,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -38,13 +50,21 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { DatePickerField } from "@/components/calendar/date-picker-field";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  formatCalendarDateParam,
+  getMonthGridDates,
+  getWeekDates,
+  type CalendarView,
+} from "@/lib/calendar-range";
 import { createAppointment, createTimeOff, cancelAppointment, updateAppointment } from "./actions";
 import type { AppointmentRow, TimeOffRow } from "@/lib/data/calendar";
+import type { StaffMember } from "@/lib/data/staff";
 import type { CreateAppointmentInput } from "@/lib/validations/calendar";
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const VIEWS = ["Week", "Day", "Month"] as const;
-type ViewMode = (typeof VIEWS)[number];
+const VIEWS: CalendarView[] = ["Week", "Day", "Month"];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const BUSINESS_START = 9;
@@ -65,15 +85,22 @@ function formatHourLabel(hour: number) {
   return `${String(displayHour).padStart(2, "0")}:00 ${period}`;
 }
 
-function getWeekDates(anchor: Date) {
-  const start = new Date(anchor);
-  const dayOffset = (start.getDay() + 6) % 7; // Monday = 0
-  start.setDate(start.getDate() - dayOffset);
-  return Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(start);
-    d.setDate(start.getDate() + i);
-    return d;
-  });
+
+function getTimezoneLabel(): string {
+  try {
+    const offsetPart = new Intl.DateTimeFormat("en-US", {
+      timeZoneName: "shortOffset",
+    })
+      .formatToParts(new Date())
+      .find((part) => part.type === "timeZoneName")?.value;
+    if (!offsetPart) return "Local";
+    const match = offsetPart.match(/^GMT([+-]\d+)(?::(\d{2}))?$/);
+    if (!match) return offsetPart === "GMT" ? "GMT+0:00" : offsetPart;
+    const [, hours, minutes = "00"] = match;
+    return `GMT${hours}:${minutes}`;
+  } catch {
+    return "Local";
+  }
 }
 
 function formatMonthYear(date: Date) {
@@ -111,21 +138,69 @@ type CalendarClientProps = {
   initialAppointments: AppointmentRow[];
   initialTimeOff: TimeOffRow[];
   initialAnchorDate: string;
+  initialView: CalendarView;
+  staff: StaffMember[];
 };
 
 export function CalendarClient({
   initialAppointments,
   initialTimeOff,
   initialAnchorDate,
+  initialView,
+  staff,
 }: CalendarClientProps) {
+  const router = useRouter();
+  const refreshCalendar = React.useCallback(() => {
+    router.refresh();
+  }, [router]);
+
   const [anchorDate, setAnchorDate] = React.useState(
     () => new Date(initialAnchorDate)
   );
-  const [view, setView] = React.useState<ViewMode>("Week");
+  const [view, setView] = React.useState<CalendarView>(initialView);
   const [newAppointmentOpen, setNewAppointmentOpen] = React.useState(false);
   const [newTimeOffOpen, setNewTimeOffOpen] = React.useState(false);
+  const [appointmentDraft, setAppointmentDraft] = React.useState<{
+    date: Date;
+    time: string;
+  } | null>(null);
+  const [staffFilterId, setStaffFilterId] = React.useState<string | "all">("all");
   const [selectedAppointment, setSelectedAppointment] =
     React.useState<AppointmentRow | null>(null);
+
+  const visibleAppointments = React.useMemo(() => {
+    if (staffFilterId === "all") return initialAppointments;
+    return initialAppointments.filter(
+      (appointment) => appointment.staff_id === staffFilterId
+    );
+  }, [initialAppointments, staffFilterId]);
+
+  function openNewAppointmentAt(date: Date, hour: number) {
+    setAppointmentDraft({
+      date,
+      time: `${String(hour).padStart(2, "0")}:00`,
+    });
+    setNewAppointmentOpen(true);
+  }
+
+  React.useEffect(() => {
+    setAnchorDate(new Date(initialAnchorDate));
+  }, [initialAnchorDate]);
+
+  React.useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
+
+  const navigateCalendar = React.useCallback(
+    (nextDate: Date, nextView: CalendarView = view) => {
+      setAnchorDate(nextDate);
+      setView(nextView);
+      router.push(
+        `/calendar?date=${formatCalendarDateParam(nextDate)}&view=${nextView}`
+      );
+    },
+    [router, view]
+  );
 
   const [today, setToday] = React.useState(() => new Date());
   React.useEffect(() => {
@@ -133,28 +208,39 @@ export function CalendarClient({
     return () => clearInterval(interval);
   }, []);
   const weekDates = React.useMemo(() => getWeekDates(anchorDate), [anchorDate]);
+  const displayDates = React.useMemo(() => {
+    if (view === "Day") return [anchorDate];
+    return weekDates;
+  }, [anchorDate, view, weekDates]);
+  const monthGridDates = React.useMemo(
+    () => getMonthGridDates(anchorDate),
+    [anchorDate]
+  );
+  const timezoneLabel = React.useMemo(() => getTimezoneLabel(), []);
   const currentHour = hourOfDay(today);
 
   const goToPrevious = () => {
     const next = new Date(anchorDate);
-    next.setDate(next.getDate() - 7);
-    setAnchorDate(next);
+    if (view === "Month") next.setMonth(next.getMonth() - 1);
+    else next.setDate(next.getDate() - (view === "Day" ? 1 : 7));
+    navigateCalendar(next);
   };
 
   const goToNext = () => {
     const next = new Date(anchorDate);
-    next.setDate(next.getDate() + 7);
-    setAnchorDate(next);
+    if (view === "Month") next.setMonth(next.getMonth() + 1);
+    else next.setDate(next.getDate() + (view === "Day" ? 1 : 7));
+    navigateCalendar(next);
   };
 
-  const goToToday = () => setAnchorDate(new Date(today));
+  const goToToday = () => navigateCalendar(new Date(today));
 
   const appointmentsByDay = React.useMemo(() => {
     const map = new Map<string, AppointmentRow[]>();
-    for (const date of weekDates) {
+    for (const date of displayDates) {
       map.set(date.toDateString(), []);
     }
-    for (const appointment of initialAppointments) {
+    for (const appointment of visibleAppointments) {
       const start = new Date(appointment.starts_at);
       const key = start.toDateString();
       if (map.has(key)) {
@@ -162,24 +248,36 @@ export function CalendarClient({
       }
     }
     return map;
-  }, [initialAppointments, weekDates]);
+  }, [visibleAppointments, displayDates]);
+
+  const appointmentsByMonthDay = React.useMemo(() => {
+    const map = new Map<string, AppointmentRow[]>();
+    for (const appointment of visibleAppointments) {
+      const start = new Date(appointment.starts_at);
+      const key = start.toDateString();
+      const existing = map.get(key) ?? [];
+      existing.push(appointment);
+      map.set(key, existing);
+    }
+    return map;
+  }, [visibleAppointments]);
 
   const timeOffByDay = React.useMemo(() => {
     const map = new Map<string, TimeOffRow[]>();
-    for (const date of weekDates) {
+    for (const date of displayDates) {
       map.set(date.toDateString(), []);
     }
     for (const timeOff of initialTimeOff) {
       const start = new Date(timeOff.starts_at);
       const end = new Date(timeOff.ends_at);
-      for (const date of weekDates) {
+      for (const date of displayDates) {
         if (date >= startOfDay(start) && date <= endOfDay(end)) {
           map.get(date.toDateString())?.push(timeOff);
         }
       }
     }
     return map;
-  }, [initialTimeOff, weekDates]);
+  }, [initialTimeOff, displayDates]);
 
   return (
     <div className="flex h-[calc(100svh-50px)] min-h-0 flex-col">
@@ -202,6 +300,15 @@ export function CalendarClient({
               <DropdownMenuItem onClick={goToToday}>
                 {formatMonthYear(today)}
               </DropdownMenuItem>
+              <div className="p-2">
+                <Calendar
+                  mode="single"
+                  selected={anchorDate}
+                  onSelect={(date) => {
+                    if (date) navigateCalendar(date);
+                  }}
+                />
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -252,7 +359,7 @@ export function CalendarClient({
             />
             <DropdownMenuContent align="start">
               {VIEWS.map((v) => (
-                <DropdownMenuItem key={v} onClick={() => setView(v)}>
+                <DropdownMenuItem key={v} onClick={() => navigateCalendar(anchorDate, v)}>
                   {v}
                 </DropdownMenuItem>
               ))}
@@ -261,7 +368,13 @@ export function CalendarClient({
         </div>
 
         <div className="flex shrink-0 items-center gap-2">
-          <Dialog open={newAppointmentOpen} onOpenChange={setNewAppointmentOpen}>
+          <Dialog
+            open={newAppointmentOpen}
+            onOpenChange={(open) => {
+              setNewAppointmentOpen(open);
+              if (!open) setAppointmentDraft(null);
+            }}
+          >
             <DialogTrigger
               render={
                 <Button
@@ -275,8 +388,18 @@ export function CalendarClient({
               }
             />
             <NewAppointmentDialog
-              defaultDate={anchorDate}
-              onClose={() => setNewAppointmentOpen(false)}
+              key={
+                appointmentDraft
+                  ? `${appointmentDraft.date.toISOString()}-${appointmentDraft.time}`
+                  : "default"
+              }
+              defaultDate={appointmentDraft?.date ?? anchorDate}
+              defaultTime={appointmentDraft?.time ?? "09:00"}
+              onClose={() => {
+                setNewAppointmentOpen(false);
+                setAppointmentDraft(null);
+              }}
+              onSuccess={refreshCalendar}
             />
           </Dialog>
 
@@ -296,32 +419,123 @@ export function CalendarClient({
             <NewTimeOffDialog
               defaultDate={anchorDate}
               onClose={() => setNewTimeOffOpen(false)}
+              onSuccess={refreshCalendar}
             />
           </Dialog>
 
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Filters"
-            title="Filters"
-            className="-mr-2 h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground"
-          >
-            <Funnel className="size-4" />
-          </Button>
+          <Popover>
+            <PopoverTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Filters"
+                  title="Filters"
+                  className="-mr-2 h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground"
+                >
+                  <Funnel className="size-4" />
+                </Button>
+              }
+            />
+            <PopoverContent className="w-56 space-y-3">
+              <div className="space-y-1.5">
+                <Label>Staff member</Label>
+                <Select
+                  value={staffFilterId}
+                  onValueChange={(value) => setStaffFilterId(value ?? "all")}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="All staff" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All staff</SelectItem>
+                    {staff.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        {member.displayName ?? member.fullName}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {staff.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  Add staff to filter appointments by team member.
+                </p>
+              )}
+            </PopoverContent>
+          </Popover>
         </div>
       </div>
 
-      {/* Week grid */}
+      {/* Calendar body */}
       <div className="min-h-0 flex-1 overflow-hidden">
+        {view === "Month" ? (
+          <div className="scrollbar-thin h-full overflow-y-auto p-4">
+            <div className="mb-3 grid grid-cols-7 gap-1 text-center text-xs font-medium text-muted-foreground">
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => (
+                <div key={day}>{day}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {monthGridDates.map((date) => {
+                const inMonth = date.getMonth() === anchorDate.getMonth();
+                const isToday = isSameDay(date, today);
+                const dayAppointments =
+                  appointmentsByMonthDay.get(date.toDateString()) ?? [];
+                return (
+                  <button
+                    key={date.toISOString()}
+                    type="button"
+                    onClick={() => navigateCalendar(date, "Day")}
+                    className={cn(
+                      "flex min-h-[88px] flex-col rounded-lg border p-2 text-left transition-colors hover:bg-muted/50",
+                      !inMonth && "opacity-40",
+                      isToday && "border-foreground/30 bg-muted/30"
+                    )}
+                  >
+                    <span
+                      className={cn(
+                        "mb-1 text-xs font-medium",
+                        isToday ? "text-foreground" : "text-muted-foreground"
+                      )}
+                    >
+                      {date.getDate()}
+                    </span>
+                    {dayAppointments.slice(0, 2).map((appointment) => (
+                      <span
+                        key={appointment.id}
+                        className="truncate rounded bg-primary/10 px-1 py-0.5 text-[10px] text-foreground"
+                      >
+                        {appointment.title}
+                      </span>
+                    ))}
+                    {dayAppointments.length > 2 && (
+                      <span className="text-[10px] text-muted-foreground">
+                        +{dayAppointments.length - 2} more
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
         <div className="scrollbar-thin h-full overflow-y-auto">
-          <div className="grid grid-cols-[80px_repeat(7,1fr)]">
+          <div
+            className={cn(
+              "grid",
+              view === "Day"
+                ? "grid-cols-[80px_1fr]"
+                : "grid-cols-[80px_repeat(7,1fr)]"
+            )}
+          >
             {/* Header row */}
             <div className="sticky top-0 z-20 flex h-8 shrink-0 items-center justify-center border-b border-border bg-background px-2">
               <span className="whitespace-nowrap text-[11px] font-medium text-muted-foreground">
-                GMT+5:30
+                {timezoneLabel}
               </span>
             </div>
-            {weekDates.map((date) => {
+            {displayDates.map((date) => {
               const isToday = isSameDay(date, today);
               return (
                 <div
@@ -354,7 +568,7 @@ export function CalendarClient({
                 All day
               </span>
             </div>
-            {weekDates.map((date) => {
+            {displayDates.map((date) => {
               const dayTimeOff = timeOffByDay.get(date.toDateString()) ?? [];
               return (
                 <div
@@ -394,7 +608,7 @@ export function CalendarClient({
                       </div>
                     )}
                   </div>
-                  {weekDates.map((date) => {
+                  {displayDates.map((date) => {
                     const isToday = isSameDay(date, today);
                     const isBeforeToday = date < today && !isToday;
                     const isAfterToday = date > today && !isToday;
@@ -420,8 +634,17 @@ export function CalendarClient({
                     return (
                       <div
                         key={`${date.toISOString()}-${hour}`}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => openNewAppointmentAt(date, hour)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openNewAppointmentAt(date, hour);
+                          }
+                        }}
                         className={cn(
-                          "relative h-[90px] border-b border-r last:border-r-0",
+                          "relative h-[90px] cursor-pointer border-b border-r last:border-r-0",
                           isTimeOff
                             ? "bg-amber-500/10 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
                             : isBusinessHour
@@ -468,7 +691,10 @@ export function CalendarClient({
                               key={appointment.id}
                               role="button"
                               tabIndex={0}
-                              onClick={() => setSelectedAppointment(appointment)}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setSelectedAppointment(appointment);
+                              }}
                               onKeyDown={(e) => {
                                 if (e.key === "Enter" || e.key === " ") {
                                   e.preventDefault();
@@ -500,6 +726,7 @@ export function CalendarClient({
             })}
           </div>
         </div>
+        )}
       </div>
 
       <Dialog
@@ -512,6 +739,7 @@ export function CalendarClient({
           <AppointmentDetailDialog
             appointment={selectedAppointment}
             onClose={() => setSelectedAppointment(null)}
+            onSuccess={refreshCalendar}
           />
         )}
       </Dialog>
@@ -564,10 +792,12 @@ function AppointmentFormFields({
   state,
   update,
   baseDate,
+  onDateChange,
 }: {
   state: AppointmentFormState;
   update: (patch: Partial<AppointmentFormState>) => void;
   baseDate: Date;
+  onDateChange?: (date: Date) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -601,9 +831,13 @@ function AppointmentFormFields({
 
       <div className="space-y-1.5">
         <Label>Date</Label>
-        <Button variant="outline" className="w-full justify-start font-normal">
-          {formatFullDate(baseDate)}
-        </Button>
+        {onDateChange ? (
+          <DatePickerField value={baseDate} onChange={onDateChange} />
+        ) : (
+          <Button variant="outline" className="w-full justify-start font-normal">
+            {formatFullDate(baseDate)}
+          </Button>
+        )}
       </div>
 
       <div className="space-y-1.5">
@@ -671,24 +905,34 @@ function AppointmentFormFields({
 function NewAppointmentDialog({
   onClose,
   defaultDate,
+  defaultTime = "09:00",
+  onSuccess,
 }: {
   onClose: () => void;
   defaultDate: Date;
+  defaultTime?: string;
+  onSuccess: () => void;
 }) {
+  const [appointmentDate, setAppointmentDate] = React.useState(defaultDate);
   const [state, setState] = React.useState<AppointmentFormState>({
     title: "",
     clientName: "",
     clientPhone: "",
     duration: 60,
-    time: "09:00",
+    time: defaultTime,
     notes: "",
     internalNotes: "",
   });
   const [submitting, setSubmitting] = React.useState(false);
 
+  React.useEffect(() => {
+    setAppointmentDate(defaultDate);
+    setState((current) => ({ ...current, time: defaultTime }));
+  }, [defaultDate, defaultTime]);
+
   const handleCreate = async () => {
     setSubmitting(true);
-    const result = await createAppointment(buildAppointmentInput(state, defaultDate));
+    const result = await createAppointment(buildAppointmentInput(state, appointmentDate));
     setSubmitting(false);
 
     if ("error" in result) {
@@ -696,7 +940,9 @@ function NewAppointmentDialog({
       return;
     }
 
+    toast.success("Appointment created");
     onClose();
+    onSuccess();
   };
 
   return (
@@ -708,17 +954,22 @@ function NewAppointmentDialog({
         </DialogDescription>
       </DialogHeader>
 
-      <AppointmentFormFields
-        state={state}
-        update={(patch) => setState((s) => ({ ...s, ...patch }))}
-        baseDate={defaultDate}
-      />
+      <DialogBody>
+        <AppointmentFormFields
+          state={state}
+          update={(patch) => setState((s) => ({ ...s, ...patch }))}
+          baseDate={appointmentDate}
+          onDateChange={setAppointmentDate}
+        />
+      </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" className="gap-1.5" onClick={onClose}>
+          <X />
           Cancel
         </Button>
-        <Button onClick={handleCreate} disabled={submitting}>
+        <Button className="gap-1.5" onClick={handleCreate} disabled={submitting}>
+          <CalendarPlus />
           Create appointment
         </Button>
       </DialogFooter>
@@ -738,9 +989,11 @@ function DetailRow({ label, value }: { label: string; value: string }) {
 function AppointmentDetailDialog({
   appointment,
   onClose,
+  onSuccess,
 }: {
   appointment: AppointmentRow;
   onClose: () => void;
+  onSuccess: () => void;
 }) {
   const [editing, setEditing] = React.useState(false);
   const [confirmingCancel, setConfirmingCancel] = React.useState(false);
@@ -756,14 +1009,19 @@ function AppointmentDetailDialog({
       return;
     }
 
+    toast.success("Appointment cancelled");
     onClose();
+    onSuccess();
   };
 
   if (editing) {
     return (
       <AppointmentEditContent
         appointment={appointment}
-        onDone={onClose}
+        onDone={() => {
+          onClose();
+          onSuccess();
+        }}
         onBack={() => setEditing(false)}
       />
     );
@@ -786,44 +1044,54 @@ function AppointmentDetailDialog({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-3">
-        <DetailRow label="Client" value={appointment.client_name} />
-        {appointment.client_phone && (
-          <DetailRow label="Phone" value={appointment.client_phone} />
-        )}
-        <DetailRow label="Duration" value={`${durationMinutes} min`} />
-        {appointment.notes && (
-          <DetailRow label="Notes" value={appointment.notes} />
-        )}
-        {appointment.internal_notes && (
-          <DetailRow label="Internal notes" value={appointment.internal_notes} />
-        )}
-        <DetailRow label="Status" value={status} />
-      </div>
+      <DialogBody>
+        <div className="space-y-3">
+          <DetailRow label="Client" value={appointment.client_name} />
+          {appointment.client_phone && (
+            <DetailRow label="Phone" value={appointment.client_phone} />
+          )}
+          <DetailRow label="Duration" value={`${durationMinutes} min`} />
+          {appointment.notes && (
+            <DetailRow label="Notes" value={appointment.notes} />
+          )}
+          {appointment.internal_notes && (
+            <DetailRow label="Internal notes" value={appointment.internal_notes} />
+          )}
+          <DetailRow label="Status" value={status} />
+        </div>
+      </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" className="gap-1.5" onClick={onClose}>
+          <X />
           Close
         </Button>
         {confirmingCancel ? (
           <>
-            <Button variant="outline" onClick={() => setConfirmingCancel(false)}>
+            <Button variant="outline" className="gap-1.5" onClick={() => setConfirmingCancel(false)}>
+              <X />
               Keep
             </Button>
             <Button
               variant="destructive"
+              className="gap-1.5"
               onClick={handleCancel}
               disabled={cancelling}
             >
+              <Trash2 />
               {cancelling ? "Cancelling…" : "Yes, cancel appointment"}
             </Button>
           </>
         ) : (
           <>
-            <Button variant="destructive" onClick={() => setConfirmingCancel(true)}>
+            <Button variant="destructive" className="gap-1.5" onClick={() => setConfirmingCancel(true)}>
+              <Trash2 />
               Cancel appointment
             </Button>
-            <Button onClick={() => setEditing(true)}>Edit</Button>
+            <Button className="gap-1.5" onClick={() => setEditing(true)}>
+              <Pencil />
+              Edit
+            </Button>
           </>
         )}
       </DialogFooter>
@@ -841,6 +1109,7 @@ function AppointmentEditContent({
   onBack: () => void;
 }) {
   const start = new Date(appointment.starts_at);
+  const [appointmentDate, setAppointmentDate] = React.useState(start);
   const [state, setState] = React.useState<AppointmentFormState>(() => ({
     title: appointment.title,
     clientName: appointment.client_name,
@@ -860,7 +1129,7 @@ function AppointmentEditContent({
     setSubmitting(true);
     const result = await updateAppointment(
       appointment.id,
-      buildAppointmentInput(state, start)
+      buildAppointmentInput(state, appointmentDate)
     );
     setSubmitting(false);
 
@@ -869,6 +1138,7 @@ function AppointmentEditContent({
       return;
     }
 
+    toast.success("Appointment updated");
     onDone();
   };
 
@@ -881,20 +1151,26 @@ function AppointmentEditContent({
         </DialogDescription>
       </DialogHeader>
 
-      <AppointmentFormFields
-        state={state}
-        update={(patch) => setState((s) => ({ ...s, ...patch }))}
-        baseDate={start}
-      />
+      <DialogBody>
+        <AppointmentFormFields
+          state={state}
+          update={(patch) => setState((s) => ({ ...s, ...patch }))}
+          baseDate={appointmentDate}
+          onDateChange={setAppointmentDate}
+        />
+      </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onBack}>
+        <Button variant="outline" className="gap-1.5" onClick={onBack}>
+          <ChevronLeft />
           Back
         </Button>
-        <Button variant="outline" onClick={onDone}>
+        <Button variant="outline" className="gap-1.5" onClick={onDone}>
+          <X />
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={submitting}>
+        <Button className="gap-1.5" onClick={handleSave} disabled={submitting}>
+          <Check />
           Save changes
         </Button>
       </DialogFooter>
@@ -905,20 +1181,24 @@ function AppointmentEditContent({
 function NewTimeOffDialog({
   onClose,
   defaultDate,
+  onSuccess,
 }: {
   onClose: () => void;
   defaultDate: Date;
+  onSuccess: () => void;
 }) {
   const [scope, setScope] = React.useState<"company" | "staff" | "asset">(
     "company"
   );
   const [name, setName] = React.useState("");
   const [reason, setReason] = React.useState("");
+  const [startDate, setStartDate] = React.useState(defaultDate);
+  const [endDate, setEndDate] = React.useState(defaultDate);
   const [submitting, setSubmitting] = React.useState(false);
 
   const handleAdd = async () => {
-    const startsAt = startOfDay(defaultDate);
-    const endsAt = endOfDay(defaultDate);
+    const startsAt = startOfDay(startDate);
+    const endsAt = endOfDay(endDate < startDate ? startDate : endDate);
 
     setSubmitting(true);
     const result = await createTimeOff({
@@ -936,7 +1216,9 @@ function NewTimeOffDialog({
       return;
     }
 
+    toast.success("Time off added");
     onClose();
+    onSuccess();
   };
 
   return (
@@ -949,66 +1231,66 @@ function NewTimeOffDialog({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-4">
-        <div className="space-y-1.5">
-          <Label>Scope</Label>
-          <Select
-            value={scope}
-            onValueChange={(value) =>
-              setScope(value as "company" | "staff" | "asset")
-            }
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select scope..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="company">Company-wide</SelectItem>
-              <SelectItem value="staff">Staff</SelectItem>
-              <SelectItem value="asset">Asset</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label>Name</Label>
-          <Input
-            placeholder="e.g., Christmas Day, Half Day Friday"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
+      <DialogBody>
+        <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Start date</Label>
-            <Button variant="outline" className="w-full justify-start font-normal">
-              {formatFullDate(defaultDate)}
-            </Button>
+            <Label>Scope</Label>
+            <Select
+              value={scope}
+              onValueChange={(value) =>
+                setScope(value as "company" | "staff" | "asset")
+              }
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select scope..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="company">Company-wide</SelectItem>
+                <SelectItem value="staff">Staff</SelectItem>
+                <SelectItem value="asset">Asset</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <div className="space-y-1.5">
-            <Label>End date</Label>
-            <Button variant="outline" className="w-full justify-start font-normal">
-              {formatFullDate(defaultDate)}
-            </Button>
-          </div>
-        </div>
 
-        <div className="space-y-1.5">
-          <Label>Reason</Label>
-          <Input
-            placeholder="e.g., Vacation, Renovation, Sick leave"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-          />
+          <div className="space-y-1.5">
+            <Label>Name</Label>
+            <Input
+              placeholder="e.g., Christmas Day, Half Day Friday"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Start date</Label>
+              <DatePickerField value={startDate} onChange={setStartDate} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>End date</Label>
+              <DatePickerField value={endDate} onChange={setEndDate} />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Reason</Label>
+            <Input
+              placeholder="e.g., Vacation, Renovation, Sick leave"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
+          </div>
         </div>
-      </div>
+      </DialogBody>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" className="gap-1.5" onClick={onClose}>
+          <X />
           Cancel
         </Button>
-        <Button onClick={handleAdd} disabled={submitting}>
-          Add
+        <Button className="gap-1.5" onClick={handleAdd} disabled={submitting}>
+          <Plus />
+          Add time off
         </Button>
       </DialogFooter>
     </DialogContent>

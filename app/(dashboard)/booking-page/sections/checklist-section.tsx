@@ -2,16 +2,18 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { BookingSection, SettingsCard } from '../section-layout'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
+import { usePreviewDraft } from '../preview-draft-context'
 import { updateConfirmationRules } from '../actions'
 
 export function ChecklistSection({ config }: { config: BookingPageConfig }) {
+  const { reportDraft } = usePreviewDraft()
   const [, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [requireEmailVerification, setRequireEmailVerification] = useState(config.requireEmailVerification)
@@ -51,14 +53,12 @@ export function ChecklistSection({ config }: { config: BookingPageConfig }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Confirmation rules</h2>
-        <p className="text-sm text-muted-foreground">How bookings get confirmed and cancelled.</p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-5 p-4">
+    <BookingSection>
+      <SettingsCard
+        title="Confirmation rules"
+        description="How bookings get confirmed and cancelled."
+        contentClassName="space-y-5 p-4"
+      >
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium">Require email verification</p>
@@ -66,7 +66,13 @@ export function ChecklistSection({ config }: { config: BookingPageConfig }) {
                 Customer must confirm their email before the booking is finalized.
               </p>
             </div>
-            <Switch checked={requireEmailVerification} onCheckedChange={setRequireEmailVerification} />
+            <Switch
+              checked={requireEmailVerification}
+              onCheckedChange={(value) => {
+                setRequireEmailVerification(value)
+                reportDraft({ config: { requireEmailVerification: value } })
+              }}
+            />
           </div>
 
           <div className="flex items-center justify-between gap-4">
@@ -76,7 +82,13 @@ export function ChecklistSection({ config }: { config: BookingPageConfig }) {
                 Off requires a staff member to manually approve each booking.
               </p>
             </div>
-            <Switch checked={autoConfirmBookings} onCheckedChange={setAutoConfirmBookings} />
+            <Switch
+              checked={autoConfirmBookings}
+              onCheckedChange={(value) => {
+                setAutoConfirmBookings(value)
+                reportDraft({ config: { autoConfirmBookings: value } })
+              }}
+            />
           </div>
 
           <div className="space-y-2">
@@ -87,7 +99,11 @@ export function ChecklistSection({ config }: { config: BookingPageConfig }) {
               min={0}
               max={720}
               value={cancellationNoticeHours}
-              onChange={(e) => setCancellationNoticeHours(Number(e.target.value))}
+              onChange={(e) => {
+                const value = Number(e.target.value)
+                setCancellationNoticeHours(value)
+                reportDraft({ config: { cancellationNoticeHours: value } })
+              }}
             />
           </div>
 
@@ -96,15 +112,18 @@ export function ChecklistSection({ config }: { config: BookingPageConfig }) {
             <Textarea
               id="cancellation-policy"
               value={cancellationPolicyText}
-              onChange={(e) => setCancellationPolicyText(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value
+                setCancellationPolicyText(value)
+                reportDraft({ config: { cancellationPolicyText: value.trim() || null } })
+              }}
               rows={4}
               placeholder="Shown to customers when they try to cancel or reschedule."
             />
           </div>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

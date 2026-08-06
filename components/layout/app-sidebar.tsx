@@ -109,8 +109,6 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
 
 const allNavItems: NavItem[] = navSections.flatMap((section) => section.items)
 
-const DUMMY_PHONE_NUMBER = '+1 (415) 555-0100'
-
 function CallReceptionistPill({
   phoneNumber,
   onClick,
@@ -142,6 +140,7 @@ function CallReceptionistPill({
 export function AppSidebar({
   agent,
   hiddenItems,
+  unreadConversationCount = 0,
 }: {
   agent: {
     id: string
@@ -150,6 +149,7 @@ export function AppSidebar({
     staffPhoneNumber: string | null
   } | null
   hiddenItems: string[]
+  unreadConversationCount?: number
 }) {
   const pathname = usePathname()
   const [lockLayout, setLockLayout] = useState(false)
@@ -206,10 +206,22 @@ export function AppSidebar({
         </SidebarMenu>
         {agent && (
           <SidebarMenu>
-            <CallReceptionistPill
-              phoneNumber={agent.staffPhoneNumber ?? DUMMY_PHONE_NUMBER}
-              onClick={() => setCallOpen(true)}
-            />
+            {agent.staffPhoneNumber ? (
+              <CallReceptionistPill
+                phoneNumber={agent.staffPhoneNumber}
+                onClick={() => setCallOpen(true)}
+              />
+            ) : (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="h-8 justify-center rounded-[10px] border border-dashed"
+                  render={<Link href="/phone-numbers" />}
+                >
+                  <Phone className="size-4" />
+                  <span>Add phone number</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
           </SidebarMenu>
         )}
       </SidebarHeader>
@@ -251,6 +263,13 @@ export function AppSidebar({
                           </Badge>
                         )}
                       </SidebarMenuButton>
+                      {item.url === '/conversations' && unreadConversationCount > 0 && (
+                        <SidebarMenuBadge
+                          className="min-w-5 rounded-full bg-primary px-0 text-[10px] font-semibold text-primary-foreground"
+                        >
+                          {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
+                        </SidebarMenuBadge>
+                      )}
                       {sidebarState !== 'collapsed' && (
                         <button
                           type="button"
@@ -274,8 +293,6 @@ export function AppSidebar({
         <SidebarGroup className="pt-3">
           <SidebarGroupContent>
             <SidebarMenu>
-              {/* Conversations badge (unread count) intentionally omitted here — no
-                  live unread-count data source is wired into this component yet. */}
               <SidebarMenuItem>
                 <DropdownMenu>
                   <DropdownMenuTrigger render={<SidebarMenuButton />}>

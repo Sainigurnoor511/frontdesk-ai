@@ -156,3 +156,25 @@ export async function updateFeatureSettings(
   revalidatePath('/settings')
   return { success: true }
 }
+
+export async function sendPasswordResetEmail(): Promise<ActionResult> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user?.email) {
+    return { error: 'Could not determine your email address.' }
+  }
+
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000'
+  const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
+    redirectTo: `${siteUrl}/callback`,
+  })
+
+  if (error) {
+    return { error: 'Could not send password reset email. Please try again.' }
+  }
+
+  return { success: true }
+}

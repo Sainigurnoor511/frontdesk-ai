@@ -16,6 +16,18 @@ export type Integration = {
   description: string
   settingsDescription: string
   isAdvanced?: boolean
+  availability: 'available' | 'coming_soon'
+}
+
+const AVAILABLE_INTEGRATION_SLUGS = new Set(['webhook-tool', 'google-calendar'])
+
+function withAvailability(
+  items: Omit<Integration, 'availability'>[]
+): Integration[] {
+  return items.map((item) => ({
+    ...item,
+    availability: AVAILABLE_INTEGRATION_SLUGS.has(item.slug) ? 'available' : 'coming_soon',
+  }))
 }
 
 export const integrationCategories: IntegrationCategory[] = [
@@ -30,7 +42,7 @@ export const integrationCategories: IntegrationCategory[] = [
   'Telephony',
 ]
 
-export const integrationCatalog: Integration[] = [
+export const integrationCatalog: Integration[] = withAvailability([
   {
     slug: 'calendly',
     name: 'Calendly',
@@ -193,7 +205,7 @@ export const integrationCatalog: Integration[] = [
     settingsDescription:
       'With this enabled, callers are matched to or created as Zoho CRM contacts and call activity is logged automatically.',
   },
-]
+])
 
 const integrationIconPaths: Record<string, string> = {
   calendly: '/integrations/calendly.svg',

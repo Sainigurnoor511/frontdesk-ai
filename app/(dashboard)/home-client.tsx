@@ -16,6 +16,14 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { Orb } from '@/components/ui/orb'
 import {
@@ -39,16 +47,26 @@ type Metrics = {
   newClients: number
 }
 
+function formatTrendSubtitle(current: number, prior: number): string {
+  if (current === 0 && prior === 0) return 'No activity yet'
+  if (prior === 0) return `${current} this period`
+  const change = ((current - prior) / prior) * 100
+  const sign = change >= 0 ? '+' : ''
+  return `${sign}${Math.round(change)}% vs prior 7 days`
+}
+
 function StatTile({
   href,
   label,
   value,
+  trendSubtitle,
   icon: TileIcon,
   iconClassName,
 }: {
   href: string
   label: string
   value: string
+  trendSubtitle: string
   icon: LucideIcon
   iconClassName: string
 }) {
@@ -61,7 +79,7 @@ function StatTile({
             {label}
           </p>
           <p className="font-heading text-2xl font-semibold">{value}</p>
-          <p className="text-xs text-muted-foreground">no prior data</p>
+          <p className="text-xs text-muted-foreground">{trendSubtitle}</p>
         </CardContent>
       </Card>
     </Link>
@@ -88,12 +106,14 @@ export function HomeClient({
   agent,
   businessName,
   metrics,
+  priorMetrics,
   latestCalls,
   upcomingAppointments,
 }: {
   agent: Agent | null
   businessName: string | null
   metrics: Metrics
+  priorMetrics: Metrics
   latestCalls: Conversation[]
   upcomingAppointments: AppointmentRow[]
 }) {
@@ -126,7 +146,13 @@ export function HomeClient({
               managing your calendar.
             </p>
             <div className="flex gap-2 pt-1">
-              <Button variant="outline" size="sm" className="gap-1.5">
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                nativeButton={false}
+                render={<Link href="/guides" />}
+              >
                 <PlayCircle />
                 Watch video
               </Button>
@@ -215,6 +241,7 @@ export function HomeClient({
           href="/analytics?tab=calls"
           label="Calls (7d)"
           value={String(metrics.calls)}
+          trendSubtitle={formatTrendSubtitle(metrics.calls, priorMetrics.calls)}
           icon={Phone}
           iconClassName="text-blue-500"
         />
@@ -222,6 +249,7 @@ export function HomeClient({
           href="/analytics?tab=services"
           label="Bookings (7d)"
           value={String(metrics.bookings)}
+          trendSubtitle={formatTrendSubtitle(metrics.bookings, priorMetrics.bookings)}
           icon={CalendarCheck}
           iconClassName="text-violet-500"
         />
@@ -229,6 +257,7 @@ export function HomeClient({
           href="/analytics?tab=services"
           label="Revenue (7d)"
           value={`$${metrics.revenue}`}
+          trendSubtitle={formatTrendSubtitle(metrics.revenue, priorMetrics.revenue)}
           icon={TrendingUp}
           iconClassName="text-emerald-500"
         />
@@ -236,6 +265,7 @@ export function HomeClient({
           href="/analytics?tab=clients"
           label="New Clients (7d)"
           value={String(metrics.newClients)}
+          trendSubtitle={formatTrendSubtitle(metrics.newClients, priorMetrics.newClients)}
           icon={UserPlus}
           iconClassName="text-amber-500"
         />
@@ -257,17 +287,25 @@ export function HomeClient({
               )}
             </div>
             {latestCalls.length === 0 ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  No calls yet. Your recent calls will appear here.
-                </p>
-                <Link
-                  href="/phone-numbers"
-                  className="text-sm font-medium text-foreground underline underline-offset-4"
-                >
-                  Start receiving calls
-                </Link>
-              </>
+              <Empty className="border-0 py-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Phone />
+                  </EmptyMedia>
+                  <EmptyTitle>No calls yet</EmptyTitle>
+                  <EmptyDescription>
+                    Your recent calls will appear here.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Link
+                    href="/phone-numbers"
+                    className="text-sm font-medium text-foreground underline underline-offset-4"
+                  >
+                    Start receiving calls
+                  </Link>
+                </EmptyContent>
+              </Empty>
             ) : (
               <Table>
                 <TableHeader>
@@ -316,16 +354,25 @@ export function HomeClient({
               )}
             </div>
             {upcomingAppointments.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-6 text-center">
-                <CalendarDays className="size-6 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">No upcoming events this week.</p>
-                <Link
-                  href="/calendar"
-                  className="text-sm font-medium text-foreground underline underline-offset-4"
-                >
-                  Open Calendar
-                </Link>
-              </div>
+              <Empty className="border-0 py-6">
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <CalendarDays />
+                  </EmptyMedia>
+                  <EmptyTitle>No upcoming events this week</EmptyTitle>
+                  <EmptyDescription>
+                    Appointments on your calendar will show up here.
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Link
+                    href="/calendar"
+                    className="text-sm font-medium text-foreground underline underline-offset-4"
+                  >
+                    Open Calendar
+                  </Link>
+                </EmptyContent>
+              </Empty>
             ) : (
               <ul className="divide-y">
                 {upcomingAppointments.map((appt) => (

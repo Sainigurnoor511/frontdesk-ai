@@ -57,12 +57,13 @@ export async function getTimeOffForRange(
   endsAt: string
 ): Promise<TimeOffRow[]> {
   const supabase = await createClient()
+  // Include blocks that overlap the range, not only those starting inside it.
   const { data, error } = await supabase
     .from('time_off')
     .select('*')
     .eq('organization_id', orgId)
-    .gte('starts_at', startsAt)
     .lte('starts_at', endsAt)
+    .gte('ends_at', startsAt)
 
   if (error || !data) return []
 

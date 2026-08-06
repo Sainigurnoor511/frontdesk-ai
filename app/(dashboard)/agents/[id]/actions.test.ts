@@ -22,6 +22,7 @@ import {
   toggleFavoriteVoice,
   designVoiceCandidates,
   saveVoiceModel,
+  previewVoice,
 } from './actions'
 
 vi.mock('next/cache', () => ({
@@ -459,9 +460,37 @@ describe('designVoiceCandidates', () => {
   })
 
   it('returns an error on a non-ok response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    } as Response)
     const result = await designVoiceCandidates('A warm narrator', 'en')
     expect(result).toEqual({ error: 'Could not generate voice candidates. Please try again.' })
+  })
+
+  it('returns a credit error on 402', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 402,
+      json: async () => ({ message: 'Insufficient balance' }),
+    } as Response)
+    const result = await designVoiceCandidates('A warm narrator', 'en')
+    expect(result).toEqual({
+      error:
+        'Your Fish Audio account needs credits for this feature. Top up your balance and try again.',
+    })
+  })
+
+  it('returns an error when no candidates are returned', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ candidates: [] }),
+    } as unknown as Response)
+    const result = await designVoiceCandidates('A warm narrator', 'en')
+    expect(result).toEqual({
+      error: 'No voice candidates were returned. Try a different description.',
+    })
   })
 })
 
@@ -507,8 +536,32 @@ describe('saveVoiceModel', () => {
   })
 
   it('returns an error on a non-ok response', async () => {
-    global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 500 } as Response)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+    } as Response)
     const result = await saveVoiceModel('AAAA', 'My Custom Voice', 'en')
     expect(result).toEqual({ error: 'Could not save the new voice. Please try again.' })
+  })
+})
+
+describe('previewVoice', () => {
+  it('returns an error for a blank voice id', async () => {
+    const result = await previewVoice('   ')
+    expect(result).toEqual({ error: 'No voice selected.' })
+  })
+
+  it('returns base64 audio from a raw mp3 response', async () => {
+    const bytes = new Uint8Array([1, 2, 3])
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'audio/mpeg' },
+      arrayBuffer: async () => bytes.buffer,
+    } as unknown as Response)
+
+    const result = await previewVoice('voice-1')
+
+    expect(result).toEqual({ audioBase64: Buffer.from(bytes).toString('base64') })
   })
 })

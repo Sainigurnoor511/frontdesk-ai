@@ -103,7 +103,7 @@ export function EditorSidebar({
     <nav
       role="tablist"
       aria-orientation="vertical"
-      className="sticky top-2 z-10 flex w-auto shrink-0 flex-col items-center gap-1 self-start rounded-[10px] border bg-background p-1 transform-gpu"
+      className="sticky top-2 z-10 flex w-auto shrink-0 flex-col items-center gap-1 self-start rounded-lg border bg-background p-1 transform-gpu"
     >
       <SectionLabel>Global</SectionLabel>
       {GLOBAL_SECTIONS.map((item) => (

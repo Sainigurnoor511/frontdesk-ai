@@ -6,9 +6,13 @@ import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-opena
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildSystemPrompt, buildToneTag } from '@/lib/voice/agent-context'
 import { buildBookingTools } from '@/lib/voice/booking-tools'
+import { buildKnowledgeTools } from '@/lib/voice/knowledge-tools'
 import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
+import { resolveGroqModel } from '@/lib/data/agent-advanced-options'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { updateConversationStatus } from '@/lib/data/conversations-service'
+import { CallTranscriptCollector } from '@/lib/voice/call-transcript-collector'
+import { generateCallSummary } from '@/lib/voice/generate-call-summary'
 
 /**
  * JSON payload set on the LiveKit room's metadata at creation time by
@@ -42,6 +46,27 @@ function parseRoomMetadata(raw: string | undefined): RoomMetadata | null {
   }
 }
 
+function describeSessionEvent(ev: unknown): string {
+  if (!ev || typeof ev !== 'object') return String(ev)
+  const record = ev as Record<string, unknown>
+  const parts: string[] = []
+  if ('reason' in record) parts.push(`reason=${String(record.reason)}`)
+  if ('source' in record) parts.push(`source=${String(record.source)}`)
+  if ('type' in record) parts.push(`type=${String(record.type)}`)
+  if ('error' in record && record.error) {
+    const err = record.error
+    parts.push(
+      `error=${err instanceof Error ? err.message : JSON.stringify(err)}`
+    )
+  }
+  if (parts.length > 0) return parts.join(', ')
+  try {
+    return JSON.stringify(ev)
+  } catch {
+    return String(ev)
+  }
+}
+
 async function entrypoint(ctx: agents.JobContext) {
   await ctx.connect()
 
@@ -57,7 +82,10 @@ async function entrypoint(ctx: agents.JobContext) {
   const startedAt = Date.now()
   let finished = false
   let organizationId: string | undefined
+  let businessName: string | null | undefined
   let maxDurationTimer: NodeJS.Timeout | undefined
+  const transcriptCollector = new CallTranscriptCollector(startedAt)
+
   const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
     if (finished) return
     finished = true
@@ -66,6 +94,21 @@ async function entrypoint(ctx: agents.JobContext) {
       maxDurationTimer = undefined
     }
     const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
+    const transcript = transcriptCollector.getMessages()
+
+    let summary: string | undefined
+    if (transcript.length > 0) {
+      try {
+        const generated = await generateCallSummary(transcript, { businessName })
+        if (generated) summary = generated
+      } catch (err) {
+        console.error(
+          `[voice-agent] summary generation failed for conversation ${conversationId}:`,
+          err
+        )
+      }
+    }
+
     try {
       await updateConversationStatus(
         conversationId,
@@ -73,6 +116,8 @@ async function entrypoint(ctx: agents.JobContext) {
           status,
           outcome: status === 'completed' ? 'successful' : 'failed',
           durationSeconds,
+          transcript,
+          ...(summary ? { summary } : {}),
           ...(endedReason ? { endedReason } : {}),
         },
         organizationId
@@ -91,6 +136,7 @@ async function entrypoint(ctx: agents.JobContext) {
       return
     }
     organizationId = agentDetail.organization_id
+    businessName = agentDetail.business_name ?? agentDetail.name
 
     // Newly created accounts have no `voice_id` yet. Falling back to a
     // deterministic catalog voice (matched to the agent's language) keeps the
@@ -100,18 +146,24 @@ async function entrypoint(ctx: agents.JobContext) {
     const voiceId = agentDetail.voice_id ?? defaultVoiceIdForLanguage(agentDetail.language)
     const toneTag = buildToneTag(agentDetail.tone_traits)
 
+    const groqModel = resolveGroqModel(agentDetail.llm_model ?? 'gemini-3-flash')
+
     const session = new agents.AgentSession({
       stt: OpenAISTT.withGroq(),
-      llm: OpenAILLM.withGroq({ model: 'llama-3.3-70b-versatile' }),
+      llm: OpenAILLM.withGroq({ model: groqModel }),
       tts: new FishAudioTTS(voiceId, { tag: toneTag }),
     })
+
+    transcriptCollector.attach(session)
 
     ctx.room.on('disconnected', () => {
       void finalizeConversation('completed')
     })
 
     session.on(agents.AgentSessionEventTypes.Error, (ev) => {
-      console.error(`[voice-agent] session error for conversation ${conversationId}:`, ev)
+      console.error(
+        `[voice-agent] session error for conversation ${conversationId} (${describeSessionEvent(ev)})`
+      )
       void finalizeConversation('failed', 'session_error')
     })
 
@@ -125,9 +177,14 @@ async function entrypoint(ctx: agents.JobContext) {
     // instead of waiting on a room-level event that may never come.
     session.on(agents.AgentSessionEventTypes.Close, (ev) => {
       if (ev.error) {
-        console.error(`[voice-agent] session closed with error for conversation ${conversationId}:`, ev.error)
+        console.error(
+          `[voice-agent] session closed with error for conversation ${conversationId} (${describeSessionEvent(ev)})`
+        )
         void finalizeConversation('failed', 'session_closed_with_error')
       } else {
+        console.info(
+          `[voice-agent] session closed for conversation ${conversationId} (${describeSessionEvent(ev)})`
+        )
         void finalizeConversation('completed')
       }
       void ctx.room.disconnect()
@@ -137,15 +194,22 @@ async function entrypoint(ctx: agents.JobContext) {
       await finalizeConversation('completed')
     })
 
+    const knowledgeTools = agentDetail.skip_knowledge_retrieval
+      ? {}
+      : buildKnowledgeTools({ organizationId: agentDetail.organization_id })
+
     await session.start({
       room: ctx.room,
       agent: new agents.Agent({
         instructions: buildSystemPrompt(agentDetail),
-        tools: buildBookingTools({
-          organizationId: agentDetail.organization_id,
-          agentId,
-          conversationId,
-        }),
+        tools: {
+          ...buildBookingTools({
+            organizationId: agentDetail.organization_id,
+            agentId,
+            conversationId,
+          }),
+          ...knowledgeTools,
+        },
       }),
     })
 

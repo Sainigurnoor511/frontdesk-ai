@@ -11,8 +11,21 @@ import {
   Bot,
   Webhook,
   PhoneForwarded,
+  Plus,
+  X,
+  Check,
+  Unplug,
+  Settings2,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +39,7 @@ import {
 } from '@/components/ui/select'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -242,7 +256,10 @@ export function IntegrationsClient({
             Connect external tools and services to your account.
           </p>
         </div>
-        <Button onClick={openBrowseDialog}>Add integration</Button>
+        <Button className="gap-1.5" onClick={openBrowseDialog}>
+          <Plus />
+          Add integration
+        </Button>
       </div>
 
       {connectedIntegrations.length > 0 && (
@@ -271,38 +288,45 @@ export function IntegrationsClient({
 
       {connectedIntegrations.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center gap-6 py-16 text-center">
-            <div className="space-y-2">
-              <Plug className="mx-auto h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No integrations yet</p>
-              <p className="max-w-md text-sm text-muted-foreground">
-                Integrations connect your receptionist to the tools you already
-                use, so it can work with your existing systems.
-              </p>
-            </div>
-
-            <div className="grid w-full max-w-2xl gap-3 sm:grid-cols-3">
-              <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
-                <CalendarCheck className="h-5 w-5 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Sync your calendar to avoid double-booking
-                </p>
-              </div>
-              <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
-                <PhoneCall className="h-5 w-5 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Bring your own phone numbers
-                </p>
-              </div>
-              <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
-                <PlugZap className="h-5 w-5 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  Connect CRMs, payments and more
-                </p>
-              </div>
-            </div>
-
-            <Button onClick={openBrowseDialog}>Browse integrations</Button>
+          <CardContent className="p-0">
+            <Empty className="border-0 py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <Plug />
+                </EmptyMedia>
+                <EmptyTitle>No integrations yet</EmptyTitle>
+                <EmptyDescription>
+                  Integrations connect your receptionist to the tools you already use, so it can
+                  work with your existing systems.
+                </EmptyDescription>
+              </EmptyHeader>
+              <EmptyContent>
+                <div className="grid w-full gap-3 sm:grid-cols-3">
+                  <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
+                    <CalendarCheck className="h-5 w-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Sync your calendar to avoid double-booking
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
+                    <PhoneCall className="h-5 w-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Bring your own phone numbers
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center gap-2 rounded-lg border p-4 text-center">
+                    <PlugZap className="h-5 w-5 text-muted-foreground" />
+                    <p className="text-sm text-muted-foreground">
+                      Connect CRMs, payments and more
+                    </p>
+                  </div>
+                </div>
+                <Button className="gap-1.5" onClick={openBrowseDialog}>
+                  <Plus />
+                  Browse integrations
+                </Button>
+              </EmptyContent>
+            </Empty>
           </CardContent>
         </Card>
       ) : (
@@ -324,8 +348,10 @@ export function IntegrationsClient({
                 <Button
                   variant="outline"
                   size="sm"
+                  className="gap-1.5"
                   onClick={() => openIntegrationDialog(integration)}
                 >
+                  <Settings2 />
                   Configure
                 </Button>
               </div>
@@ -336,7 +362,7 @@ export function IntegrationsClient({
 
       {/* Browse integrations catalog dialog */}
       <Dialog open={browseOpen} onOpenChange={setBrowseOpen}>
-        <DialogContent className="flex max-h-[85vh] w-full max-w-3xl flex-col sm:max-w-3xl">
+        <DialogContent className="w-full sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Browse integrations</DialogTitle>
             <DialogDescription>
@@ -344,7 +370,8 @@ export function IntegrationsClient({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="relative">
+          <DialogBody className="flex flex-col gap-4">
+            <div className="relative">
             <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search integrations"
@@ -379,9 +406,15 @@ export function IntegrationsClient({
 
             <div className="flex-1 overflow-y-auto">
               {filteredCatalog.length === 0 ? (
-                <p className="py-8 text-center text-sm text-muted-foreground">
-                  No integrations match your search.
-                </p>
+                <Empty className="border-0 py-8">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <Search />
+                    </EmptyMedia>
+                    <EmptyTitle>No integrations match your search</EmptyTitle>
+                    <EmptyDescription>Try a different search or category.</EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
               ) : (
                 <div className="grid gap-2 sm:grid-cols-2">
                   {filteredCatalog.map((integration) => (
@@ -404,6 +437,16 @@ export function IntegrationsClient({
                               Advanced
                             </Badge>
                           )}
+                          {integration.availability === 'coming_soon' && (
+                            <Badge variant="secondary" className="shrink-0">
+                              Coming soon
+                            </Badge>
+                          )}
+                          {integration.availability === 'available' && (
+                            <Badge variant="outline" className="shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
+                              Available
+                            </Badge>
+                          )}
                           {enabledIntegrationSlugs.has(integration.slug) && (
                             <Badge variant="secondary" className="shrink-0">
                               Connected
@@ -420,6 +463,7 @@ export function IntegrationsClient({
               )}
             </div>
           </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
 
@@ -448,11 +492,17 @@ export function IntegrationsClient({
                 </div>
               </DialogHeader>
 
-              <div className="space-y-1.5 rounded-lg border p-3">
+              <DialogBody className="space-y-4">
+                <div className="space-y-1.5 rounded-lg border p-3">
                 <p className="text-sm font-medium">Settings</p>
                 <p className="text-sm text-muted-foreground">
                   {selectedIntegration.settingsDescription}
                 </p>
+                {selectedIntegration.availability === 'coming_soon' && (
+                  <p className="text-sm text-muted-foreground">
+                    This integration is not available to connect yet. Check back soon.
+                  </p>
+                )}
               </div>
 
               {selectedIntegration.slug === WEBHOOK_SLUG && (
@@ -509,13 +559,16 @@ export function IntegrationsClient({
               {webhookConfigError && (
                 <p className="text-sm text-destructive">{webhookConfigError}</p>
               )}
+              </DialogBody>
 
               <DialogFooter>
                 <Button
                   type="button"
                   variant="outline"
+                  className="gap-1.5"
                   onClick={() => setSelectedIntegration(null)}
                 >
+                  <X />
                   Cancel
                 </Button>
                 {selectedIntegration.slug === WEBHOOK_SLUG ? (
@@ -524,27 +577,37 @@ export function IntegrationsClient({
                       <Button
                         type="button"
                         variant="destructive"
+                        className="gap-1.5"
                         disabled={isPending}
                         onClick={handleDisable}
                       >
+                        <Unplug />
                         Disable
                       </Button>
                     )}
-                    <Button type="button" disabled={isPending} onClick={handleSaveWebhook}>
+                    <Button type="button" className="gap-1.5" disabled={isPending} onClick={handleSaveWebhook}>
+                      <Check />
                       Save
                     </Button>
                   </>
+                ) : selectedIntegration.availability === 'coming_soon' ? (
+                  <Button type="button" disabled>
+                    Coming soon
+                  </Button>
                 ) : isSelectedEnabled ? (
                   <Button
                     type="button"
                     variant="destructive"
+                    className="gap-1.5"
                     disabled={isPending}
                     onClick={handleDisable}
                   >
+                    <Unplug />
                     Disable
                   </Button>
                 ) : (
-                  <Button type="button" disabled={isPending} onClick={handleEnable}>
+                  <Button type="button" className="gap-1.5" disabled={isPending} onClick={handleEnable}>
+                    <Plug />
                     Enable
                   </Button>
                 )}

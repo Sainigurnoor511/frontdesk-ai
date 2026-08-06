@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useTransition } from 'react'
-import { Plus, Trash2 } from 'lucide-react'
+import { Plus, Trash2, ContactRound } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
@@ -15,6 +14,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import {
+  Empty,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
+import { BookingSection, SettingsCard } from '../section-layout'
 import type { BookingPageConfig, CustomField } from '@/lib/data/booking-page-config'
 import { updateForms } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
@@ -62,18 +69,23 @@ export function FormsSection({ config }: { config: BookingPageConfig }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Forms</h2>
-        <p className="text-sm text-muted-foreground">
-          Extra fields shown on the contact step, beyond name, email, and phone.
-        </p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-4 p-4">
+    <BookingSection>
+      <SettingsCard
+        title="Forms"
+        description="Extra fields shown on the contact step, beyond name, email, and phone."
+      >
           {fields.length === 0 && (
-            <p className="text-sm text-muted-foreground">No custom fields yet.</p>
+            <Empty className="border-0 py-6">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <ContactRound />
+                </EmptyMedia>
+                <EmptyTitle>No custom fields yet</EmptyTitle>
+                <EmptyDescription>
+                  Add fields to collect extra information on the contact step.
+                </EmptyDescription>
+              </EmptyHeader>
+            </Empty>
           )}
 
           {fields.map((field) => (
@@ -142,10 +154,9 @@ export function FormsSection({ config }: { config: BookingPageConfig }) {
             <Plus className="size-4" />
             Add field
           </Button>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

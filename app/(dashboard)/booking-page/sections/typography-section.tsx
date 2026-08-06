@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -12,6 +11,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { BookingSection, SettingsCard } from '../section-layout'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { updateTypography } from '../actions'
 import { usePreviewDraft } from '../preview-draft-context'
@@ -100,14 +100,12 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Typography</h2>
-        <p className="text-sm text-muted-foreground">Fonts and text sizing for your public booking page.</p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-5 p-4">
+    <BookingSection>
+      <SettingsCard
+        title="Typography"
+        description="Fonts and text sizing for your public booking page."
+        contentClassName="space-y-5 p-4"
+      >
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="heading-font">Heading font</Label>
@@ -216,10 +214,9 @@ export function TypographySection({ config }: { config: BookingPageConfig }) {
               </Select>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

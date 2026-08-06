@@ -34,10 +34,14 @@ export function ManageBookingFlow({
   organizationId,
   theme = 'light',
   accent = '#4F46E5',
+  cancellationPolicyText = null,
+  cancellationNoticeHours = 24,
 }: {
   organizationId: string
   theme?: 'light' | 'dark'
   accent?: string
+  cancellationPolicyText?: string | null
+  cancellationNoticeHours?: number
 }) {
   const isDark = theme === 'dark'
   const [step, setStep] = useState<Step>('lookup')
@@ -46,6 +50,7 @@ export function ManageBookingFlow({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PublicAppointmentSummary[]>([])
   const [selected, setSelected] = useState<PublicAppointmentSummary | null>(null)
+  const [confirmingCancelId, setConfirmingCancelId] = useState<string | null>(null)
   const [date, setDate] = useState<Date | undefined>(undefined)
   const [slots, setSlots] = useState<{ startsAt: string; endsAt: string }[]>([])
   const [slotsLoading, setSlotsLoading] = useState(false)
@@ -167,27 +172,58 @@ export function ManageBookingFlow({
       <Card className={cardClass}>
         <CardContent className="divide-y p-0">
           {appointments.map((appointment) => (
-            <div key={appointment.id} className="flex items-center justify-between gap-4 px-4 py-3">
-              <div>
-                <p className="text-sm font-medium">{appointment.title}</p>
-                <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
-                  {formatDateTime(appointment.startsAt)}
-                </p>
+            <div key={appointment.id} className="space-y-3 px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">{appointment.title}</p>
+                  <p className={cn('text-xs', isDark ? 'text-zinc-400' : 'text-muted-foreground')}>
+                    {formatDateTime(appointment.startsAt)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => startReschedule(appointment)}>
+                    Reschedule
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={loading}
+                    onClick={() => setConfirmingCancelId(appointment.id)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
               </div>
-              <div className="flex shrink-0 gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => startReschedule(appointment)}>
-                  Reschedule
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={loading}
-                  onClick={() => handleCancel(appointment)}
-                >
-                  Cancel
-                </Button>
-              </div>
+              {confirmingCancelId === appointment.id && (
+                <div className="space-y-2 rounded-lg border p-3">
+                  {cancellationPolicyText && (
+                    <p className="text-xs text-muted-foreground">{cancellationPolicyText}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Cancellations require at least {cancellationNoticeHours} hours notice.
+                  </p>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setConfirmingCancelId(null)}
+                    >
+                      Keep appointment
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      size="sm"
+                      disabled={loading}
+                      onClick={() => void handleCancel(appointment)}
+                    >
+                      Confirm cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </CardContent>

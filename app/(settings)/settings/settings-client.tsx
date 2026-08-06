@@ -42,7 +42,7 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 import type { OrganizationSettings } from '@/lib/data/settings'
-import { updateNotificationSettings, updateFeatureSettings, updateLanguage } from './actions'
+import { updateNotificationSettings, updateFeatureSettings, updateLanguage, sendPasswordResetEmail } from './actions'
 
 type Tab = 'account' | 'notifications' | 'features'
 
@@ -171,6 +171,19 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
     toast.success('Language saved.')
   }
 
+  async function handleChangePassword() {
+    const result = await sendPasswordResetEmail()
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+    toast.success(`Password reset link sent to ${email}.`)
+  }
+
+  function handleEnable2fa() {
+    toast.message('Two-factor authentication is coming soon.')
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-6 border-b py-6 first:pt-0">
@@ -184,7 +197,7 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
             <p className="text-sm text-muted-foreground">{email}</p>
           </div>
           {/* TODO: Supabase password reset flow is a separate feature - not wired up in this pass. */}
-          <Button type="button" variant="outline" size="sm">
+          <Button type="button" variant="outline" size="sm" onClick={handleChangePassword}>
             Change Password
           </Button>
         </div>
@@ -201,7 +214,7 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
           </p>
         </div>
         {/* TODO: real 2FA setup (enrollment, verification codes) is out of scope for this pass. */}
-        <Button type="button" variant="outline" size="sm" className="shrink-0">
+        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={handleEnable2fa}>
           Enable 2FA
         </Button>
       </div>

@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useTransition } from 'react'
+import type { VariantProps } from 'class-variance-authority'
 import { ArrowUp, WandSparkles } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button, type buttonVariants } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Textarea } from '@/components/ui/textarea'
 import { generateAdditionalInstructions } from '@/app/(dashboard)/agents/[id]/actions'
@@ -11,12 +12,14 @@ type InstructionsGeneratorPopoverProps = {
   businessName?: string | null
   industry?: string | null
   onGenerated: (text: string) => void
+  triggerSize?: VariantProps<typeof buttonVariants>['size']
 }
 
 export function InstructionsGeneratorPopover({
   businessName,
   industry,
   onGenerated,
+  triggerSize = 'icon',
 }: InstructionsGeneratorPopoverProps) {
   const [open, setOpen] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -50,13 +53,12 @@ export function InstructionsGeneratorPopover({
           <Button
             type="button"
             variant="outline"
-            size="icon"
-            className="size-8"
+            size={triggerSize}
             aria-label="Generate with AI"
           />
         }
       >
-        <WandSparkles className="size-4" />
+        <WandSparkles />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80 p-3">
         <Textarea

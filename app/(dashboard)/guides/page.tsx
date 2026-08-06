@@ -6,6 +6,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -48,7 +49,7 @@ export default function GuidesPage() {
       </div>
 
       <Dialog open={openGuide !== null} onOpenChange={(open) => !open && setOpenGuide(null)}>
-        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-lg">
+        <DialogContent className="sm:max-w-lg">
           {openGuide && (
             <>
               <DialogHeader>
@@ -59,19 +60,21 @@ export default function GuidesPage() {
                 <DialogDescription>{openGuide.description}</DialogDescription>
               </DialogHeader>
 
-              <ol className="space-y-3 border-t pt-3">
-                {openGuide.steps.map((step, i) => (
-                  <li key={step.title} className="flex gap-3">
-                    <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                      {i + 1}
-                    </span>
-                    <div className="space-y-0.5">
-                      <p className="text-sm font-medium">{step.title}</p>
-                      <p className="text-sm text-muted-foreground">{step.description}</p>
-                    </div>
-                  </li>
-                ))}
-              </ol>
+              <DialogBody>
+                <ol className="space-y-3">
+                  {openGuide.steps.map((step, i) => (
+                    <li key={step.title} className="flex gap-3">
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                        {i + 1}
+                      </span>
+                      <div className="space-y-0.5">
+                        <p className="text-sm font-medium">{step.title}</p>
+                        <p className="text-sm text-muted-foreground">{step.description}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </DialogBody>
             </>
           )}
         </DialogContent>

@@ -24,6 +24,7 @@ import {
   getCustomVoices,
   toggleFavoriteVoice,
   updateAgentGeneral,
+  previewVoice,
   type VoiceSearchResult,
 } from './actions'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
@@ -52,8 +53,16 @@ export function VoicesTab({
   const [languageFilter, setLanguageFilter] = useState<string | null>(null)
   const [genderFilter, setGenderFilter] = useState<string | null>(null)
   const [ageFilter, setAgeFilter] = useState<string | null>(null)
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [playingId, setPlayingId] = useState<string | null>(null)
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null)
+  const [previewCache, setPreviewCache] = useState<Record<string, string>>({})
   const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    setSelectedAgentId(agent.id)
+    setCurrentVoiceId(agent.voice_id ?? '')
+  }, [agent.id, agent.voice_id])
 
   useEffect(() => {
     void getFavoriteVoiceIds().then(setFavorites)
@@ -76,18 +85,20 @@ export function VoicesTab({
   }, [query, languageFilter])
 
   const baseList: VoiceSearchResult[] = query ? results : [...customVoices, ...voiceCatalog]
-  const filtered = baseList.filter((voice) => {
-    if (languageFilter && voice.language !== languageFilter) return false
-    if (genderFilter && voice.gender !== genderFilter) return false
-    if (ageFilter && voice.age !== ageFilter) return false
-    return true
-  })
+  const filtered = baseList
+    .filter((voice) => {
+      if (languageFilter && voice.language !== languageFilter) return false
+      if (genderFilter && voice.gender !== genderFilter) return false
+      if (ageFilter && voice.age !== ageFilter) return false
+      if (favoritesOnly && !favorites.includes(voice.id)) return false
+      return true
+    })
 
   const currentVoice = [...customVoices, ...voiceCatalog, ...results].find(
     (v) => v.id === currentVoiceId
   )
 
-  function togglePreview(voice: VoiceCatalogEntry) {
+  async function togglePreview(voice: VoiceCatalogEntry) {
     if (!audioRef.current) audioRef.current = new Audio()
     const audio = audioRef.current
     if (playingId === voice.id) {
@@ -95,8 +106,19 @@ export function VoicesTab({
       setPlayingId(null)
       return
     }
+
+    let src = voice.previewUrl || previewCache[voice.id]
+    if (!src) {
+      setPreviewLoadingId(voice.id)
+      const result = await previewVoice(voice.id)
+      setPreviewLoadingId(null)
+      if ('error' in result) return
+      src = `data:audio/mpeg;base64,${result.audioBase64}`
+      setPreviewCache((prev) => ({ ...prev, [voice.id]: src }))
+    }
+
     audio.pause()
-    audio.src = voice.previewUrl
+    audio.src = src
     audio.onended = () => setPlayingId(null)
     void audio.play()
     setPlayingId(voice.id)
@@ -216,6 +238,20 @@ export function VoicesTab({
             ))}
           </SelectContent>
         </Select>
+        <button
+          type="button"
+          onClick={() => setFavoritesOnly((prev) => !prev)}
+          className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm transition-colors ${
+            favoritesOnly
+              ? 'border-yellow-400/50 bg-yellow-400/10 text-foreground'
+              : 'border-input bg-transparent text-muted-foreground hover:bg-muted'
+          }`}
+        >
+          <Star
+            className={`size-3.5 ${favoritesOnly ? 'fill-yellow-400 text-yellow-400' : ''}`}
+          />
+          Favorites
+        </button>
       </div>
 
       <div className="space-y-1">
@@ -244,8 +280,8 @@ export function VoicesTab({
               <VoiceOrbButton
                 id={voice.id}
                 playing={playingId === voice.id}
-                onToggle={() => togglePreview(voice)}
-                className="size-8"
+                onToggle={() => void togglePreview(voice)}
+                className={`size-8 ${previewLoadingId === voice.id ? 'opacity-50' : ''}`}
               />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-medium">{voice.label}</p>

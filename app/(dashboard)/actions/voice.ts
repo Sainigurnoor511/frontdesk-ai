@@ -3,6 +3,7 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import { createClient } from '@/lib/supabase/server'
 import { createConversation, updateConversationStatus } from '@/lib/data/conversations-service'
+import { startCallRecording } from '@/lib/voice/recording'
 import { startDashboardCallSchema, type StartDashboardCallInput } from '@/lib/validations/voice'
 
 const MAX_CALL_SECONDS = 300
@@ -40,6 +41,7 @@ export async function startDashboardCall(
     agentId: parsed.data.agentId,
     channel: 'voice_web',
     status: 'active',
+    roomName,
   })
 
   try {
@@ -57,6 +59,8 @@ export async function startDashboardCall(
       emptyTimeout: MAX_CALL_SECONDS,
       departureTimeout: 30,
     })
+
+    void startCallRecording(roomName, conversation.id)
 
     const at = new AccessToken(process.env.LIVEKIT_API_KEY!, process.env.LIVEKIT_API_SECRET!, {
       identity: `dashboard-${user.id}`,

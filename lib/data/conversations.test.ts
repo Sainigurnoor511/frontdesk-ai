@@ -69,7 +69,10 @@ describe('getConversationsForOrg', () => {
           ended_reason: 'caller_hangup',
           transcript: [{ role: 'agent', text: 'Hello', timestampSeconds: 0 }],
           call_goals: [{ name: 'Book appointment', status: 'success', reasoning: 'Done' }],
+          is_read: false,
           created_at: '2026-01-01T00:00:00.000Z',
+          room_name: 'org-1:call:abc',
+          recording_path: 'conv-1.ogg',
         },
       ],
     })
@@ -104,7 +107,10 @@ describe('getConversationsForOrg', () => {
         endedReason: 'caller_hangup',
         transcript: [{ role: 'agent', text: 'Hello', timestampSeconds: 0 }],
         callGoals: [{ name: 'Book appointment', status: 'success', reasoning: 'Done' }],
+        isRead: false,
         createdAt: '2026-01-01T00:00:00.000Z',
+        roomName: 'org-1:call:abc',
+        recordingPath: 'conv-1.ogg',
       },
     ])
   })
@@ -259,6 +265,8 @@ describe('createConversation', () => {
       transcript: [],
       call_goals: [],
       created_at: '2026-08-02T00:00:00Z',
+      room_name: 'org-1:call:room-1',
+      recording_path: null,
     }
 
     const single = vi.fn().mockResolvedValue({ data: mockRow, error: null })
@@ -272,6 +280,7 @@ describe('createConversation', () => {
       agentId: 'agent-1',
       channel: 'voice_web',
       status: 'active',
+      roomName: 'org-1:call:room-1',
     })
 
     expect(from).toHaveBeenCalledWith('conversations')
@@ -281,9 +290,12 @@ describe('createConversation', () => {
         agent_id: 'agent-1',
         channel: 'voice_web',
         status: 'active',
+        room_name: 'org-1:call:room-1',
       })
     )
     expect(result.id).toBe('conv-1')
+    expect(result.roomName).toBe('org-1:call:room-1')
+    expect(result.recordingPath).toBeNull()
   })
 })
 

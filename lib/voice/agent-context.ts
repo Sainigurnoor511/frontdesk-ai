@@ -24,6 +24,15 @@ export function buildSystemPrompt(agent: AgentDetail): string {
     agent.personality_notes ? `Personality: ${agent.personality_notes}` : null,
     agent.additional_instructions,
     agent.tone_traits.length > 0 ? `Tone: ${agent.tone_traits.join(', ')}` : null,
+    agent.secure_mode
+      ? 'Secure mode is enabled: only look up or edit client records when the caller ID matches the number on file, or after identity has been verified through the verification tool.'
+      : null,
+    agent.identity_verification_enabled
+      ? 'Identity verification is available: you may send a one-time code by SMS or email to the contact on file and verify the caller before accessing or editing their client record.'
+      : null,
+    agent.allow_dtmf
+      ? 'You may play DTMF touch tones during the call when needed to navigate phone menus or carrier prompts (for example, press 1 to accept a screened call). Use them only when the situation clearly requires keypad input.'
+      : null,
     bookingGuidance,
   ].filter((part): part is string => Boolean(part))
 

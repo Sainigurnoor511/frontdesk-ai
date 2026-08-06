@@ -3,6 +3,7 @@
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 import { headers } from 'next/headers'
 import { createConversation, updateConversationStatus } from '@/lib/data/conversations-service'
+import { startCallRecording } from '@/lib/voice/recording'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
 import { startPublicCallSchema, type StartPublicCallInput } from '@/lib/validations/voice'
 import { getAvailableSlots } from '@/lib/data/availability-engine'
@@ -96,6 +97,7 @@ export async function startPublicCall(
     agentId: parsed.data.agentId,
     channel: 'voice_web',
     status: 'active',
+    roomName,
   })
 
   try {
@@ -113,6 +115,8 @@ export async function startPublicCall(
       emptyTimeout: MAX_CALL_SECONDS,
       departureTimeout: 30,
     })
+
+    void startCallRecording(roomName, conversation.id)
 
     // Identity is just an opaque id — no need to embed the (possibly
     // spoofed) IP header value into a string other participants can see.

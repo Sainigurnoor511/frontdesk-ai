@@ -3,8 +3,8 @@
 import { useState, useTransition } from 'react'
 import { Phone } from 'lucide-react'
 import { toast } from 'sonner'
-import { Card, CardContent } from '@/components/ui/card'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
+import { BookingSection, SettingsCard } from '../section-layout'
 import { cn } from '@/lib/utils'
 import {
   BOOKING_ACCENT_PRESETS,
@@ -63,14 +63,8 @@ export function ThemeSection({
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold">Theme</h2>
-        <p className="text-sm text-muted-foreground">Light or dark mode, and your accent color.</p>
-      </div>
-
-      <Card>
-        <CardContent className="space-y-5 p-4">
+    <BookingSection>
+      <SettingsCard title="Theme" description="Light or dark mode, and your accent color." contentClassName="space-y-5 p-4">
           <div className="space-y-2">
             <span className="text-sm font-medium">Theme</span>
             <div className="flex items-center gap-2">
@@ -151,10 +145,9 @@ export function ThemeSection({
               </button>
             </div>
           </div>
-        </CardContent>
-      </Card>
+      </SettingsCard>
 
       <UnsavedChangesBar show={dirty} saving={saving} onSave={handleSave} onCancel={handleCancel} />
-    </div>
+    </BookingSection>
   )
 }

@@ -2,9 +2,12 @@
 
 import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { Send } from 'lucide-react'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
@@ -54,24 +57,27 @@ export function FeedbackDialog({
           <DialogTitle>Help us make the product better</DialogTitle>
         </DialogHeader>
 
-        <Textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="What's on your mind?"
-          className="min-h-28"
-        />
+        <DialogBody>
+          <Textarea
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="What's on your mind?"
+            className="min-h-28"
+          />
+        </DialogBody>
 
-        <div className="flex items-center justify-between pt-1">
+        <DialogFooter className="sm:justify-between">
           <a
             href="mailto:support@frontdesk.ai"
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             Or contact our support team directly
           </a>
-          <Button disabled={!message.trim() || pending} onClick={handleSubmit}>
+          <Button className="gap-1.5" disabled={!message.trim() || pending} onClick={handleSubmit}>
+            <Send />
             Submit
           </Button>
-        </div>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )

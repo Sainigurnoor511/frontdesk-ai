@@ -5,6 +5,7 @@ import { getServices, getBusinessProfile } from '@/lib/data/business'
 import { getPublicAgentsForOrg } from '@/lib/data/agents'
 import { getStaffForBookingPage } from '@/lib/data/availability-engine'
 import { getPublicBookingPageConfig } from '@/lib/data/booking-page-config'
+import { getAgentStaffPhoneServiceRole } from '@/lib/data/agents-service'
 import { BookingPagePublicClient } from './booking-page-public-client'
 
 export default async function PublicBookingPage({
@@ -36,6 +37,10 @@ export default async function PublicBookingPage({
   if (!previewMode && (!settings.id || !settings.bookingPageEnabled)) notFound()
 
   const agent = agents[0] ?? null
+  const staffPhoneNumber =
+    config.showPhoneFallback && agent
+      ? await getAgentStaffPhoneServiceRole(agent.id)
+      : null
 
   return (
     <BookingPagePublicClient
@@ -45,6 +50,7 @@ export default async function PublicBookingPage({
       staff={config.showStaffSelection ? staff : []}
       agentId={agent?.id ?? null}
       agentName={agent ? (agent.businessName ?? agent.name) : org.name}
+      staffPhoneNumber={staffPhoneNumber}
       theme={settings.bookingPageTheme}
       accent={settings.bookingPageAccent}
       config={config}

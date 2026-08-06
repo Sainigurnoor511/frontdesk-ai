@@ -7,6 +7,47 @@ import {
   createContactFromMessageSchema,
 } from '@/lib/validations/conversation'
 
+export async function markAllConversationsAsRead(): Promise<
+  { error: string } | { success: true }
+> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return { error: 'You must be signed in to update conversations.' }
+  }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+
+  if (!member) {
+    return { error: 'Could not determine organization.' }
+  }
+
+  const { error } = await supabase
+    .from('conversations')
+    .update({ is_read: true })
+    .eq('organization_id', member.organization_id)
+    .eq('is_read', false)
+
+  if (error) {
+    // Graceful when migration 37 (is_read) has not been applied yet.
+    if (error.code === '42703' || error.message?.includes('is_read')) {
+      return { success: true }
+    }
+    return { error: 'Could not update conversations. Please try again.' }
+  }
+
+  revalidatePath('/conversations')
+  revalidatePath('/', 'layout')
+  return { success: true }
+}
+
 export async function markMessageAsRead(
   id: string
 ): Promise<{ error: string } | { success: true }> {
@@ -45,6 +86,7 @@ export async function markMessageAsRead(
   }
 
   revalidatePath('/conversations')
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 
@@ -81,6 +123,7 @@ export async function markAllMessagesAsRead(): Promise<
   }
 
   revalidatePath('/conversations')
+  revalidatePath('/', 'layout')
   return { success: true }
 }
 
@@ -197,4 +240,31 @@ export async function createContactFromMessage(
 
   revalidatePath('/conversations')
   return { success: true }
+}
+
+export async function getRecordingUrl(conversationId: string): Promise<string | null> {
+  const supabase = await createSupabaseClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return null
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) return null
+
+  const { data: conversation } = await supabase
+    .from('conversations')
+    .select('recording_path')
+    .eq('id', conversationId)
+    .eq('organization_id', member.organization_id)
+    .single()
+
+  if (!conversation?.recording_path) return null
+
+  // Same-origin proxy avoids CORS issues for playback and waveform decode.
+  return `/api/conversations/${conversationId}/recording`
 }

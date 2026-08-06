@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
 import {
   Pencil,
@@ -13,6 +14,10 @@ import {
   CircleQuestionMark,
   ChevronDown,
   Trash,
+  Phone,
+  Settings2,
+  X,
+  Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -37,6 +42,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -83,6 +89,7 @@ import { VoicePicker } from '@/components/voice/voice-picker'
 import { InstructionsGeneratorPopover } from '@/components/agents/instructions-generator-popover'
 import { CopyButton } from '@/components/ui/copy-button'
 import { VoicesTab } from './voices-tab'
+import { AdvancedSettingsTab } from './advanced-settings-tab'
 
 const TONE_TRAITS = [
   'Professional',
@@ -350,27 +357,35 @@ export function AgentDetailClient({
               receptionist are released back to the workspace pool.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="edit-receptionist-name">Display name</Label>
-            <Input
-              id="edit-receptionist-name"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-          </div>
-          {editError && <p className="text-sm text-destructive">{editError}</p>}
+          <DialogBody>
+            <div className="space-y-2">
+              <Label htmlFor="edit-receptionist-name">Display name</Label>
+              <Input
+                id="edit-receptionist-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+            </div>
+            {editError && <p className="text-sm text-destructive">{editError}</p>}
+          </DialogBody>
           <DialogFooter className="sm:justify-between">
             <Button
               type="button"
               variant="outline"
-              className="text-destructive hover:text-destructive"
+              className="gap-1.5 text-destructive hover:text-destructive"
               disabled={agents.length <= 1}
               onClick={() => setDeleteConfirmOpen(true)}
             >
               <Trash />
               Delete
             </Button>
-            <Button type="button" onClick={handleSaveEdit} disabled={isSavingEdit || !editName.trim()}>
+            <Button
+              type="button"
+              className="gap-1.5"
+              onClick={handleSaveEdit}
+              disabled={isSavingEdit || !editName.trim()}
+            >
+              <Check />
               Save
             </Button>
           </DialogFooter>
@@ -387,12 +402,16 @@ export function AgentDetailClient({
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5" disabled={isDeleting}>
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-white hover:bg-destructive/90"
+              className="gap-1.5 bg-destructive text-white hover:bg-destructive/90"
               disabled={isDeleting}
               onClick={handleDelete}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
@@ -408,21 +427,30 @@ export function AgentDetailClient({
               you can change the voice, prompt, and phone numbers after creation.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label htmlFor="add-receptionist-name">Display name</Label>
-            <Input
-              id="add-receptionist-name"
-              value={addName}
-              onChange={(e) => setAddName(e.target.value)}
-              placeholder="e.g. Weekend receptionist"
-            />
-          </div>
-          {addError && <p className="text-sm text-destructive">{addError}</p>}
+          <DialogBody>
+            <div className="space-y-2">
+              <Label htmlFor="add-receptionist-name">Display name</Label>
+              <Input
+                id="add-receptionist-name"
+                value={addName}
+                onChange={(e) => setAddName(e.target.value)}
+                placeholder="e.g. Weekend receptionist"
+              />
+            </div>
+            {addError && <p className="text-sm text-destructive">{addError}</p>}
+          </DialogBody>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setAddOpen(false)}>
+            <Button type="button" variant="outline" className="gap-1.5" onClick={() => setAddOpen(false)}>
+              <X />
               Cancel
             </Button>
-            <Button type="button" onClick={handleAddReceptionist} disabled={isAdding || !addName.trim()}>
+            <Button
+              type="button"
+              className="gap-1.5"
+              onClick={handleAddReceptionist}
+              disabled={isAdding || !addName.trim()}
+            >
+              <Plus />
               Add receptionist
             </Button>
           </DialogFooter>
@@ -456,7 +484,7 @@ export function AgentDetailClient({
                     maxLength={MAX_INSTRUCTIONS_LENGTH}
                     rows={12}
                     placeholder="e.g. If someone asks about parking, mention the free parking lot behind the building."
-                    className="min-h-48 resize-none rounded-none border-0 focus-visible:ring-0"
+                    className="field-sizing-fixed min-h-48 max-h-48 resize-none overflow-y-auto rounded-none border-0 focus-visible:ring-0"
                   />
                   <div className="flex items-center justify-between border-t bg-muted/40 px-3 py-2">
                     <span className="text-xs tabular-nums text-muted-foreground">
@@ -467,32 +495,11 @@ export function AgentDetailClient({
                         businessName={agent.business_name}
                         industry={agent.industry}
                         onGenerated={(text) => setAdditionalInstructions(text)}
+                        triggerSize="icon-xs"
                       />
-                      <CopyButton value={additionalInstructions} />
+                      <CopyButton value={additionalInstructions} size="icon-xs" />
                     </div>
                   </div>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <SectionHeading
-                  title="Tone & personality"
-                  description="Pick the traits your receptionist should embody on calls. All optional."
-                />
-                <div className="flex flex-wrap gap-2">
-                  {TONE_TRAITS.map((trait) => {
-                    const active = toneTraits.includes(trait)
-                    return (
-                      <Badge
-                        key={trait}
-                        variant={active ? 'default' : 'outline'}
-                        render={<button type="button" onClick={() => toggleTrait(trait)} />}
-                        className="h-8 cursor-pointer rounded-lg px-2.5 text-sm"
-                      >
-                        {trait}
-                      </Badge>
-                    )
-                  })}
                 </div>
               </div>
 
@@ -538,6 +545,28 @@ export function AgentDetailClient({
                   onSearch={handleVoiceSearch}
                   placeholder="Select a voice"
                 />
+              </div>
+
+              <div className="space-y-2">
+                <SectionHeading
+                  title="Tone & personality"
+                  description="Pick the traits your receptionist should embody on calls. All optional."
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {TONE_TRAITS.map((trait) => {
+                    const active = toneTraits.includes(trait)
+                    return (
+                      <Badge
+                        key={trait}
+                        variant={active ? 'default' : 'outline'}
+                        render={<button type="button" onClick={() => toggleTrait(trait)} />}
+                        className="cursor-pointer rounded-md"
+                      >
+                        {trait}
+                      </Badge>
+                    )
+                  })}
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -670,7 +699,12 @@ export function AgentDetailClient({
                 </Card>
               </div>
               {/* TODO: build the rules engine */}
-              <Button disabled>Add rule</Button>
+              <div className="flex flex-wrap justify-center gap-2">
+                <Button onClick={() => setActiveTab('general')}>Edit instructions</Button>
+                <Button variant="outline" onClick={() => setActiveTab('call-settings')}>
+                  Call routing
+                </Button>
+              </div>
             </EmptyContent>
           </Empty>
         </TabsContent>
@@ -747,11 +781,7 @@ export function AgentDetailClient({
 
         {/* Advanced settings tab */}
         <TabsContent value="advanced" className="pt-6">
-          <Card>
-            <CardContent className="py-8 text-center text-muted-foreground">
-              Advanced configuration options are coming soon.
-            </CardContent>
-          </Card>
+          <AdvancedSettingsTab agent={agent} />
         </TabsContent>
       </Tabs>
     </div>

@@ -17,9 +17,25 @@ export function getDateRange(option: DateRangeOption) {
   return { startDate: start.toISOString(), endDate: end.toISOString() }
 }
 
+export function getPriorDateRange(option: DateRangeOption) {
+  const days = RANGE_DAYS[option] ?? 7
+  const currentStart = new Date()
+  currentStart.setDate(currentStart.getDate() - (days - 1))
+  currentStart.setHours(0, 0, 0, 0)
+
+  const priorEnd = new Date(currentStart.getTime() - 1)
+  const priorStart = new Date(priorEnd)
+  priorStart.setDate(priorStart.getDate() - (days - 1))
+  priorStart.setHours(0, 0, 0, 0)
+
+  return { startDate: priorStart.toISOString(), endDate: priorEnd.toISOString() }
+}
+
+export type ConversationChannel = 'voice_web' | 'phone' | 'chat'
+
 export type OverviewMetrics = {
-  // TODO: revenue tracking is not wired up yet — there is no pricing-per-booking
-  // or payments table. This is genuinely $0, not a placeholder for a missing query.
+  // Revenue sums service.price for confirmed appointments with a service_id in range.
+  // Actual payment processing (Stripe) is not wired — this is catalog price, not collected revenue.
   revenue: number
   bookings: number
   newClients: number
@@ -45,50 +61,120 @@ export async function getOverviewMetrics(
 ): Promise<OverviewMetrics> {
   const supabase = await createClient()
 
-  const [bookingsResult, newClientsResult, cancellationsResult] = await Promise.all([
-    supabase
-      .from('appointments')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', organizationId)
-      .eq('status', 'confirmed')
-      .gte('starts_at', startDate)
-      .lte('starts_at', endDate),
-    supabase
-      .from('clients')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', organizationId)
-      .gte('created_at', startDate)
-      .lte('created_at', endDate),
-    supabase
-      .from('appointments')
-      .select('id', { count: 'exact', head: true })
-      .eq('organization_id', organizationId)
-      .eq('status', 'cancelled')
-      .gte('starts_at', startDate)
-      .lte('starts_at', endDate),
-  ])
+  const [bookingsResult, newClientsResult, cancellationsResult, revenueResult] =
+    await Promise.all([
+      supabase
+        .from('appointments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .eq('status', 'confirmed')
+        .gte('starts_at', startDate)
+        .lte('starts_at', endDate),
+      supabase
+        .from('clients')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .gte('created_at', startDate)
+        .lte('created_at', endDate),
+      supabase
+        .from('appointments')
+        .select('id', { count: 'exact', head: true })
+        .eq('organization_id', organizationId)
+        .eq('status', 'cancelled')
+        .gte('starts_at', startDate)
+        .lte('starts_at', endDate),
+      supabase
+        .from('appointments')
+        .select('service_id, services(price)')
+        .eq('organization_id', organizationId)
+        .eq('status', 'confirmed')
+        .gte('starts_at', startDate)
+        .lte('starts_at', endDate)
+        .not('service_id', 'is', null),
+    ])
+
+  const revenue = (revenueResult.data ?? []).reduce((sum, row) => {
+    const service = row.services as { price: number } | { price: number }[] | null
+    const price = Array.isArray(service) ? service[0]?.price : service?.price
+    return sum + (price ?? 0)
+  }, 0)
 
   return {
-    revenue: 0,
+    revenue: Math.round(revenue * 100) / 100,
     bookings: bookingsResult.count ?? 0,
     newClients: newClientsResult.count ?? 0,
     cancellations: cancellationsResult.count ?? 0,
   }
 }
 
-export async function getCallStats(
+export async function getBookingCountsByService(
   organizationId: string,
   startDate: string,
   endDate: string
+): Promise<Record<string, number>> {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('appointments')
+    .select('service_id')
+    .eq('organization_id', organizationId)
+    .eq('status', 'confirmed')
+    .gte('starts_at', startDate)
+    .lte('starts_at', endDate)
+    .not('service_id', 'is', null)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    if (!row.service_id) continue
+    counts[row.service_id] = (counts[row.service_id] ?? 0) + 1
+  }
+  return counts
+}
+
+export async function getBookingCountsByStaff(
+  organizationId: string,
+  startDate: string,
+  endDate: string
+): Promise<Record<string, number>> {
+  const supabase = await createClient()
+
+  const { data } = await supabase
+    .from('appointments')
+    .select('staff_id')
+    .eq('organization_id', organizationId)
+    .eq('status', 'confirmed')
+    .gte('starts_at', startDate)
+    .lte('starts_at', endDate)
+    .not('staff_id', 'is', null)
+
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    if (!row.staff_id) continue
+    counts[row.staff_id] = (counts[row.staff_id] ?? 0) + 1
+  }
+  return counts
+}
+
+export async function getCallStats(
+  organizationId: string,
+  startDate: string,
+  endDate: string,
+  channel?: ConversationChannel | 'all'
 ): Promise<CallStats> {
   const supabase = await createClient()
 
-  const { data: conversations } = await supabase
+  let query = supabase
     .from('conversations')
     .select('outcome, duration_seconds')
     .eq('organization_id', organizationId)
     .gte('created_at', startDate)
     .lte('created_at', endDate)
+
+  if (channel && channel !== 'all') {
+    query = query.eq('channel', channel)
+  }
+
+  const { data: conversations } = await query
 
   const rows = conversations ?? []
   const totalCalls = rows.length
@@ -108,16 +194,23 @@ export async function getCallStats(
 export async function getCallVolumeByDay(
   organizationId: string,
   startDate: string,
-  endDate: string
+  endDate: string,
+  channel?: ConversationChannel | 'all'
 ): Promise<CallVolumeDay[]> {
   const supabase = await createClient()
 
-  const { data: conversations } = await supabase
+  let query = supabase
     .from('conversations')
     .select('created_at')
     .eq('organization_id', organizationId)
     .gte('created_at', startDate)
     .lte('created_at', endDate)
+
+  if (channel && channel !== 'all') {
+    query = query.eq('channel', channel)
+  }
+
+  const { data: conversations } = await query
 
   const rows = conversations ?? []
 

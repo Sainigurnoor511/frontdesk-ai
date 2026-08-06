@@ -92,14 +92,22 @@ function ReceptionistPanel({
   agentId,
   agentName,
   backgroundImageUrl,
+  backgroundVideoUrl,
   showPhoneFallback,
+  staffPhoneNumber,
+  callWidgetPosition = 'center',
+  autoGreetOnLoad = false,
   fullBleed = false,
 }: {
   organizationId: string
   agentId: string
   agentName: string
   backgroundImageUrl: string | null
+  backgroundVideoUrl: string | null
   showPhoneFallback: boolean
+  staffPhoneNumber: string | null
+  callWidgetPosition?: 'bottom-left' | 'bottom-right' | 'center'
+  autoGreetOnLoad?: boolean
   fullBleed?: boolean
 }) {
   const [chatMessage, setChatMessage] = useState('')
@@ -108,6 +116,19 @@ function ReceptionistPanel({
   )
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'
+
+  useEffect(() => {
+    if (autoGreetOnLoad && status === 'idle') {
+      void connect()
+    }
+  }, [autoGreetOnLoad, connect, status])
+
+  const orbPositionClass =
+    callWidgetPosition === 'bottom-left'
+      ? 'items-start justify-end pl-6 pb-6'
+      : callWidgetPosition === 'bottom-right'
+        ? 'items-end justify-end pr-6 pb-6'
+        : 'items-center justify-center'
 
   function handleCallClick() {
     if (isConnected) {
@@ -126,14 +147,26 @@ function ReceptionistPanel({
   return (
     <div
       className={cn(
-        'relative flex flex-col items-center justify-between overflow-hidden bg-cover bg-center px-4 py-10',
+        'relative flex flex-col justify-between overflow-hidden bg-cover bg-center px-4 py-10',
         fullBleed ? 'min-h-svh' : 'h-full min-h-[600px]'
       )}
-      style={{ backgroundImage: backgroundImageUrl ? `url(${backgroundImageUrl})` : undefined }}
+      style={backgroundImageUrl && !backgroundVideoUrl ? { backgroundImage: `url(${backgroundImageUrl})` } : undefined}
     >
-      {backgroundImageUrl && <div className="absolute inset-0 bg-black/10" aria-hidden="true" />}
+      {backgroundVideoUrl && (
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          className="absolute inset-0 size-full object-cover"
+          src={backgroundVideoUrl}
+        />
+      )}
+      {(backgroundImageUrl || backgroundVideoUrl) && (
+        <div className="absolute inset-0 bg-black/10" aria-hidden="true" />
+      )}
 
-      <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-2">
+      <div className={cn('relative z-10 flex flex-1 flex-col gap-2', orbPositionClass)}>
         <div className="relative">
           <div className="flex size-44 items-center justify-center overflow-hidden rounded-full shadow-xl">
             <Orb agentState={isConnected ? 'listening' : null} seed={1} />
@@ -150,10 +183,18 @@ function ReceptionistPanel({
           </button>
         </div>
 
-        {showPhoneFallback && (
-          <p className={cn('mt-6 text-sm', backgroundImageUrl ? 'text-white/90' : 'text-muted-foreground')}>
-            Or call
-          </p>
+        {showPhoneFallback && staffPhoneNumber && (
+          <a
+            href={`tel:${staffPhoneNumber.replace(/\s/g, '')}`}
+            className={cn(
+              'mt-2 rounded-full border px-4 py-1.5 text-sm font-medium backdrop-blur-sm',
+              backgroundImageUrl || backgroundVideoUrl
+                ? 'border-white/30 bg-white/20 text-white'
+                : 'border-border bg-background text-foreground'
+            )}
+          >
+            Or call {staffPhoneNumber}
+          </a>
         )}
       </div>
 
@@ -189,6 +230,7 @@ export function BookingPagePublicClient({
   staff,
   agentId,
   agentName,
+  staffPhoneNumber = null,
   theme: initialTheme = 'light',
   accent: initialAccent = '#4F46E5',
   config: initialConfig,
@@ -201,6 +243,7 @@ export function BookingPagePublicClient({
   staff: BookingPageStaff[]
   agentId: string | null
   agentName: string
+  staffPhoneNumber?: string | null
   theme?: 'light' | 'dark'
   accent?: string
   config: BookingPageConfig
@@ -208,6 +251,7 @@ export function BookingPagePublicClient({
   timezone?: string
 }) {
   const [theme, setTheme] = useState(initialTheme)
+  const [accent, setAccent] = useState(initialAccent)
   const [config, setConfig] = useState(initialConfig)
   const [tab, setTab] = useState<'book' | 'manage'>('book')
   const [mobilePanel, setMobilePanel] = useState<'steps' | 'assistant'>('steps')
@@ -224,6 +268,7 @@ export function BookingPagePublicClient({
 
       if (data.type === BOOKING_PAGE_PREVIEW_MESSAGE_TYPE) {
         if (data.theme) setTheme(data.theme)
+        if (data.accent) setAccent(data.accent)
         if (data.config) setConfig((prev) => ({ ...prev, ...data.config }))
         return
       }
@@ -250,7 +295,11 @@ export function BookingPagePublicClient({
       agentId={agentId}
       agentName={agentName}
       backgroundImageUrl={config.backgroundImageUrl}
+      backgroundVideoUrl={config.backgroundVideoUrl}
       showPhoneFallback={config.showPhoneFallback}
+      staffPhoneNumber={staffPhoneNumber}
+      callWidgetPosition={config.callWidgetPosition}
+      autoGreetOnLoad={config.autoGreetOnLoad}
     />
   )
 
@@ -305,13 +354,19 @@ export function BookingPagePublicClient({
         services={services}
         staff={staff}
         theme={theme}
-        accent={initialAccent}
+        accent={accent}
         showServiceDescriptions={config.showServiceDescriptions}
         showPrices={config.showPrices}
         customFields={config.customFields}
       />
     ) : (
-      <ManageBookingFlow organizationId={organizationId} theme={theme} accent={initialAccent} />
+      <ManageBookingFlow
+        organizationId={organizationId}
+        theme={theme}
+        accent={accent}
+        cancellationPolicyText={config.cancellationPolicyText}
+        cancellationNoticeHours={config.cancellationNoticeHours}
+      />
     )
   )
 

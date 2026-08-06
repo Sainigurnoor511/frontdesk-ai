@@ -6,8 +6,22 @@ import {
   Search,
   Pencil,
   Trash,
+  Plus,
+  X,
+  Check,
+  UserCheck,
+  Headset,
 } from 'lucide-react'
+import { FilterToggleButton } from '@/components/layout/filter-menu-button'
 import { Card, CardContent } from '@/components/ui/card'
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -15,6 +29,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import {
   Dialog,
+  DialogBody,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -79,13 +94,16 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
 
   const filteredStaff = useMemo(() => {
     const query = search.trim().toLowerCase()
-    if (!query) return staff
-    return staff.filter((member) =>
-      [member.fullName, member.displayName ?? '', member.email ?? '']
-        .join(' ')
-        .toLowerCase()
-        .includes(query)
-    )
+    let result = staff
+    if (query) {
+      result = result.filter((member) =>
+        [member.fullName, member.displayName ?? '', member.email ?? '']
+          .join(' ')
+          .toLowerCase()
+          .includes(query)
+      )
+    }
+    return result
   }, [staff, search])
 
   function openAddDialog() {
@@ -165,7 +183,10 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
             one based on their hours and skills.
           </p>
         </div>
-        <Button onClick={openAddDialog}>Add staff member</Button>
+        <Button className="gap-1.5" onClick={openAddDialog}>
+          <Plus />
+          Add staff member
+        </Button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -178,42 +199,54 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
             className="pl-8"
           />
         </div>
-        <Button
-          type="button"
-          variant={presenceFilter === 'available' ? 'secondary' : 'outline'}
-          size="sm"
+        <FilterToggleButton
+          icon={UserCheck}
+          label="Available now"
+          active={presenceFilter === 'available'}
+          disabled
+          title="Live presence tracking is coming soon"
           onClick={() =>
             setPresenceFilter((current) => (current === 'available' ? null : 'available'))
           }
-        >
-          Available now
-        </Button>
-        <Button
-          type="button"
-          variant={presenceFilter === 'in-session' ? 'secondary' : 'outline'}
-          size="sm"
+        />
+        <FilterToggleButton
+          icon={Headset}
+          label="In session"
+          active={presenceFilter === 'in-session'}
+          disabled
+          title="Live presence tracking is coming soon"
           onClick={() =>
             setPresenceFilter((current) => (current === 'in-session' ? null : 'in-session'))
           }
-        >
-          In session
-        </Button>
+        />
       </div>
 
       <Card>
         <CardContent className="p-0">
           {filteredStaff.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-              <UserCog className="h-8 w-8 text-muted-foreground" />
-              <p className="font-medium">No staff yet</p>
-              <p className="max-w-sm text-sm text-muted-foreground">
-                Staff are the people who deliver your services. Add your team so
-                your receptionist can book the right person.
-              </p>
-              <Button onClick={openAddDialog} className="mt-2">
-                Add staff
-              </Button>
-            </div>
+            <Empty className="border-0 py-10">
+              <EmptyHeader>
+                <EmptyMedia variant="icon">
+                  <UserCog />
+                </EmptyMedia>
+                <EmptyTitle>
+                  {staff.length === 0 ? 'No staff yet' : 'No matching staff'}
+                </EmptyTitle>
+                <EmptyDescription>
+                  {staff.length === 0
+                    ? 'Staff are the people who deliver your services. Add your team so your receptionist can book the right person.'
+                    : 'Try a different search term.'}
+                </EmptyDescription>
+              </EmptyHeader>
+              {staff.length === 0 && (
+                <EmptyContent>
+                  <Button className="gap-1.5" onClick={openAddDialog}>
+                    <Plus />
+                    Add staff
+                  </Button>
+                </EmptyContent>
+              )}
+            </Empty>
           ) : (
             <ul className="divide-y">
               {filteredStaff.map((member) => (
@@ -259,7 +292,10 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-lg">
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form
+            onSubmit={handleSubmit}
+            className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          >
             <DialogHeader>
               <DialogTitle>
                 {isEditMode ? 'Edit staff member' : 'Add staff member'}
@@ -271,10 +307,9 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
               </DialogDescription>
             </DialogHeader>
 
-            {/* Working hours and Services sub-tabs are deferred — they depend on
-                per-staff Availability and a Services table that don't exist yet. */}
-            <div className="max-h-[60vh] space-y-4 overflow-y-auto pr-1">
-              <div className="space-y-3">
+            <DialogBody>
+              <div className="space-y-4">
+                <div className="space-y-3">
                 <h3 className="text-sm font-semibold">Basic info</h3>
 
                 <div className="space-y-1.5">
@@ -366,17 +401,21 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
               </div>
 
               {formError && <p className="text-sm text-destructive">{formError}</p>}
-            </div>
+              </div>
+            </DialogBody>
 
             <DialogFooter>
               <Button
                 type="button"
                 variant="outline"
+                className="gap-1.5"
                 onClick={() => setDialogOpen(false)}
               >
+                <X />
                 Cancel
               </Button>
-              <Button type="submit" disabled={isPending}>
+              <Button type="submit" className="gap-1.5" disabled={isPending}>
+                {isEditMode ? <Check /> : <Plus />}
                 {isEditMode ? 'Save changes' : 'Add staff member'}
               </Button>
             </DialogFooter>
@@ -397,12 +436,16 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel className="gap-1.5">
+              <X />
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              className="gap-1.5 bg-destructive text-destructive-foreground hover:bg-destructive/80"
               onClick={handleDelete}
               disabled={isPending}
             >
+              <Trash />
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>

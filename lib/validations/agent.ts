@@ -63,6 +63,20 @@ export const updateAgentCallSettingsSchema = z.object({
 })
 export type UpdateAgentCallSettingsInput = z.infer<typeof updateAgentCallSettingsSchema>
 
+export const updateAgentAdvancedSettingsSchema = z.object({
+  agentId: z.string().uuid(),
+  llmModel: z.enum(['gemini-3-flash', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b']),
+  reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']),
+  filterBackgroundSpeech: z.boolean(),
+  skipKnowledgeRetrieval: z.boolean(),
+  allowDtmf: z.boolean(),
+  holdSound: z.enum(['default', 'office', 'soft_music', 'none']),
+  typingSoundEnabled: z.boolean(),
+  secureMode: z.boolean(),
+  identityVerificationEnabled: z.boolean(),
+})
+export type UpdateAgentAdvancedSettingsInput = z.infer<typeof updateAgentAdvancedSettingsSchema>
+
 export const renameAgentSchema = z.object({
   agentId: z.string().uuid(),
   name: z.string().min(1, 'Display name is required').max(200),

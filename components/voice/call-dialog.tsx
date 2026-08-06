@@ -62,7 +62,7 @@ export function CallDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex max-h-[80vh] max-w-[512px] flex-col gap-0 overflow-hidden rounded-3xl p-0 sm:max-w-[512px]"
+        className="flex max-h-[min(90vh,720px)] max-w-[512px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[512px]"
       >
         <div className="flex shrink-0 items-center justify-between px-4 py-3">
           {isConnected ? (
@@ -83,13 +83,13 @@ export function CallDialog({
 
         <div className="scrollbar-none flex-1 overflow-y-auto px-4">
           {!isEnded && (
-            <div className="flex flex-col items-center py-6 text-center">
+            <div className="flex flex-col items-center text-center">
               <h2 className="text-lg font-semibold">{agentName}</h2>
               <p className="mt-1 text-sm text-muted-foreground">
                 {isConnected ? 'Voice call active' : 'Start a call or chat to your receptionist'}
               </p>
 
-              <div className="relative mt-6">
+              <div className="relative mt-4">
                 <div className="size-44 overflow-hidden rounded-full">
                   <Orb agentState={agentState} seed={1} />
                 </div>
@@ -115,14 +115,14 @@ export function CallDialog({
                 )}
               </div>
 
-              <p className="mt-6 h-4 text-sm text-muted-foreground">
-                {isConnecting ? 'Connecting…' : ''}
-              </p>
+              {isConnecting && (
+                <p className="mt-2 text-sm text-muted-foreground">Connecting…</p>
+              )}
 
               {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
 
               {staffPhoneNumber && !isConnected && (
-                <div className="mt-5 flex flex-col items-center gap-2">
+                <div className="mt-2 flex flex-col items-center gap-1.5">
                   <p className="text-sm text-muted-foreground">Or call</p>
                   <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
                     {staffPhoneNumber}

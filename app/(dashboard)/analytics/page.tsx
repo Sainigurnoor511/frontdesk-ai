@@ -8,6 +8,8 @@ import {
   getCallVolumeByDay,
   getConversionRate,
   getClientStats,
+  getBookingCountsByService,
+  getBookingCountsByStaff,
   getDateRange,
 } from '@/lib/data/analytics'
 import { AnalyticsClient } from './analytics-client'
@@ -22,13 +24,15 @@ export default async function AnalyticsPage({
 
   const { startDate, endDate } = getDateRange('7d')
 
-  const [overview, callStats, callVolume, conversionRate, clientStats, services, staff, locations] =
+  const [overview, callStats, callVolume, conversionRate, clientStats, bookingCountsByService, bookingCountsByStaff, services, staff, locations] =
     await Promise.all([
       getOverviewMetrics(context.org.id, startDate, endDate),
       getCallStats(context.org.id, startDate, endDate),
       getCallVolumeByDay(context.org.id, startDate, endDate),
       getConversionRate(context.org.id, startDate, endDate),
       getClientStats(context.org.id, startDate, endDate),
+      getBookingCountsByService(context.org.id, startDate, endDate),
+      getBookingCountsByStaff(context.org.id, startDate, endDate),
       getServices(context.org.id),
       getStaffForOrg(),
       getLocations(context.org.id),
@@ -40,7 +44,15 @@ export default async function AnalyticsPage({
     <AnalyticsClient
       initialRange="7d"
       initialTab={tab}
-      initialData={{ overview, callStats, callVolume, conversionRate, clientStats }}
+      initialData={{
+        overview,
+        callStats,
+        callVolume,
+        conversionRate,
+        clientStats,
+        bookingCountsByService,
+        bookingCountsByStaff,
+      }}
       services={services}
       staff={staff}
       locations={locations}
