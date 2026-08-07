@@ -107,14 +107,28 @@ const MAX_INSTRUCTIONS_LENGTH = 8000
 function SectionHeading({
   title,
   description,
+  compact = false,
 }: {
   title: string
   description?: string
+  compact?: boolean
 }) {
   return (
     <div className="space-y-1">
-      <h2 className="font-heading text-xl font-semibold">{title}</h2>
-      {description && <p className="text-sm text-muted-foreground">{description}</p>}
+      <h2
+        className={
+          compact
+            ? 'text-sm font-medium text-foreground'
+            : 'font-heading text-xl font-semibold'
+        }
+      >
+        {title}
+      </h2>
+      {description && (
+        <p className={compact ? 'text-xs text-muted-foreground' : 'text-sm text-muted-foreground'}>
+          {description}
+        </p>
+      )}
     </div>
   )
 }
@@ -505,6 +519,7 @@ export function AgentDetailClient({
 
               <div className="space-y-2">
                 <SectionHeading
+                  compact
                   title="First message"
                   description="The first message the receptionist will say. If empty, the receptionist waits for user."
                 />
@@ -512,12 +527,12 @@ export function AgentDetailClient({
                   <Textarea
                     value={firstMessage}
                     onChange={(e) => setFirstMessage(e.target.value)}
-                    rows={3}
+                    rows={2}
                     placeholder="Enter the first message..."
-                    className="resize-none rounded-none border-0 focus-visible:ring-0"
+                    className="resize-none rounded-none border-0 text-sm focus-visible:ring-0"
                   />
-                  <div className="flex items-center justify-end border-t bg-muted/40 px-3 py-2">
-                    <CopyButton value={firstMessage} />
+                  <div className="flex items-center justify-end border-t bg-muted/40 px-3 py-1.5">
+                    <CopyButton value={firstMessage} size="icon-xs" />
                   </div>
                 </div>
               </div>

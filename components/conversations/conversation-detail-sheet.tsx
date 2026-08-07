@@ -154,7 +154,10 @@ export function ConversationDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-4xl">
+      <SheetContent
+        side="right"
+        className="flex flex-col gap-0 p-0 data-[side=right]:!w-[699.2px] data-[side=right]:!max-w-[699.2px]"
+      >
         {conversation && (
           <>
             <SheetHeader className="shrink-0 border-b px-6 py-5 pr-12">
@@ -165,7 +168,7 @@ export function ConversationDetailSheet({
 
             <div className="flex min-h-0 flex-1 flex-col">
               {isVoiceConversation(conversation.channel) && (
-                <div className="shrink-0 border-b px-6 py-4">
+                <div className="shrink-0 px-6 py-4">
                   {recordingLoading ? (
                     <SkeletonRecordingPlayer />
                   ) : (

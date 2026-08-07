@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
-import { TriangleAlert } from 'lucide-react'
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 
 export default function DashboardError({
@@ -14,18 +13,17 @@ export default function DashboardError({
 }) {
   useEffect(() => {
     console.error(error)
+    toast.error(error.message || 'We could not load this page. Please try again.')
   }, [error])
 
   return (
-    <Alert variant="destructive">
-      <TriangleAlert className="h-4 w-4" />
-      <AlertTitle>Something went wrong</AlertTitle>
-      <AlertDescription className="space-y-2">
-        <p>We couldn&apos;t load this page. Please try again.</p>
-        <Button size="sm" variant="outline" onClick={reset}>
-          Retry
-        </Button>
-      </AlertDescription>
-    </Alert>
+    <div className="flex flex-col items-center justify-center gap-3 py-16 text-center">
+      <p className="text-sm text-muted-foreground">
+        Something went wrong loading this page.
+      </p>
+      <Button size="sm" variant="outline" onClick={reset}>
+        Retry
+      </Button>
+    </div>
   )
 }

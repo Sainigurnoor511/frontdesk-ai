@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from 'react'
 import dynamic from 'next/dynamic'
+import { toast } from 'sonner'
 import {
   MessageCircle,
   MessagesSquare,
@@ -36,11 +37,13 @@ import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu'
-import { Label } from '@/components/ui/label'
-import { FilterMenuButton } from '@/components/layout/filter-menu-button'
+import { DateFilterButton, FilterMenuButton } from '@/components/layout/filter-menu-button'
+import {
+  isOnOrAfterFilterDate,
+  isOnOrBeforeFilterDate,
+  parseFilterDateInput,
+} from '@/lib/conversations/date-filters'
 import type { Conversation, CallerMessage } from '@/lib/data/conversations'
 import {
   markMessageAsRead,
@@ -116,9 +119,28 @@ export function ConversationsClient({
 
   useEffect(() => {
     startTransition(async () => {
-      await markAllConversationsAsRead()
+      const result = await markAllConversationsAsRead()
+      if (result && 'error' in result) {
+        toast.error(result.error)
+      }
     })
   }, [])
+
+  function setDateAfterSafe(value: string | null) {
+    if (value && dateBefore && parseFilterDateInput(value) > parseFilterDateInput(dateBefore)) {
+      toast.error('Date after must be on or before date before.')
+      return
+    }
+    setDateAfter(value)
+  }
+
+  function setDateBeforeSafe(value: string | null) {
+    if (value && dateAfter && parseFilterDateInput(dateAfter) > parseFilterDateInput(value)) {
+      toast.error('Date after must be on or before date before.')
+      return
+    }
+    setDateBefore(value)
+  }
 
   const unreadCount = messageList.filter((m) => !m.isRead).length
 
@@ -132,17 +154,9 @@ export function ConversationsClient({
         if (!haystack.includes(query)) return false
       }
 
-      if (dateAfter) {
-        const after = new Date(dateAfter)
-        after.setHours(0, 0, 0, 0)
-        if (new Date(c.createdAt) < after) return false
-      }
+      if (dateAfter && !isOnOrAfterFilterDate(c.createdAt, dateAfter)) return false
 
-      if (dateBefore) {
-        const before = new Date(dateBefore)
-        before.setHours(23, 59, 59, 999)
-        if (new Date(c.createdAt) > before) return false
-      }
+      if (dateBefore && !isOnOrBeforeFilterDate(c.createdAt, dateBefore)) return false
 
       if (outcomeFilter && c.outcome !== outcomeFilter) return false
       if (readFilter === 'read' && !c.isRead) return false
@@ -168,32 +182,37 @@ export function ConversationsClient({
   function handleMarkAsRead(id: string) {
     setMessageList((prev) => prev.map((m) => (m.id === id ? { ...m, isRead: true } : m)))
     startTransition(async () => {
-      await markMessageAsRead(id)
+      const result = await markMessageAsRead(id)
+      if ('error' in result) toast.error(result.error)
     })
   }
 
   function handleMarkAllAsRead() {
     setMessageList((prev) => prev.map((m) => ({ ...m, isRead: true })))
     startTransition(async () => {
-      await markAllMessagesAsRead()
+      const result = await markAllMessagesAsRead()
+      if ('error' in result) toast.error(result.error)
     })
   }
 
   function handleDelete(id: string) {
     setMessageList((prev) => prev.filter((m) => m.id !== id))
     startTransition(async () => {
-      await deleteMessage(id)
+      const result = await deleteMessage(id)
+      if ('error' in result) toast.error(result.error)
     })
   }
 
   function handleCreateContact(id: string) {
     startTransition(async () => {
       const result = await createContactFromMessage(id)
-      if ('success' in result) {
-        setMessageList((prev) =>
-          prev.map((m) => (m.id === id ? { ...m, isRead: true } : m))
-        )
+      if ('error' in result) {
+        toast.error(result.error)
+        return
       }
+      setMessageList((prev) =>
+        prev.map((m) => (m.id === id ? { ...m, isRead: true } : m))
+      )
     })
   }
 
@@ -233,45 +252,23 @@ export function ConversationsClient({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <FilterMenuButton
+            <DateFilterButton
               icon={CalendarArrowDown}
               label="Date after"
               active={dateAfter !== null}
-            >
-              <DropdownMenuLabel>Start date</DropdownMenuLabel>
-              <div className="px-2 pb-2">
-                <Label className="sr-only" htmlFor="conv-date-after">Date after</Label>
-                <input
-                  id="conv-date-after"
-                  type="date"
-                  value={dateAfter ?? ''}
-                  onChange={(e) => setDateAfter(e.target.value || null)}
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                />
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDateAfter(null)}>Clear filter</DropdownMenuItem>
-            </FilterMenuButton>
+              value={dateAfter}
+              onChange={setDateAfterSafe}
+              inputId="conv-date-after"
+            />
 
-            <FilterMenuButton
+            <DateFilterButton
               icon={CalendarArrowUp}
               label="Date before"
               active={dateBefore !== null}
-            >
-              <DropdownMenuLabel>End date</DropdownMenuLabel>
-              <div className="px-2 pb-2">
-                <Label className="sr-only" htmlFor="conv-date-before">Date before</Label>
-                <input
-                  id="conv-date-before"
-                  type="date"
-                  value={dateBefore ?? ''}
-                  onChange={(e) => setDateBefore(e.target.value || null)}
-                  className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
-                />
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setDateBefore(null)}>Clear filter</DropdownMenuItem>
-            </FilterMenuButton>
+              value={dateBefore}
+              onChange={setDateBeforeSafe}
+              inputId="conv-date-before"
+            />
 
             <FilterMenuButton icon={Target} label="Outcome" active={outcomeFilter !== null}>
               <DropdownMenuItem onClick={() => setOutcomeFilter(null)}>All outcomes</DropdownMenuItem>
@@ -314,7 +311,7 @@ export function ConversationsClient({
                     <EmptyDescription>
                       {conversations.length === 0
                         ? 'Calls and chats with your receptionist will show up here.'
-                        : 'Try a different search term.'}
+                        : 'Try adjusting your filters or search term.'}
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>

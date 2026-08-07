@@ -29,6 +29,11 @@ function formatTime(seconds: number): string {
 
 const SPEEDS = [1, 1.5, 2, 0.5] as const
 const BAR_COUNT = 140
+const FLAT_PEAK = 0.06
+
+function flatWaveformPeaks(): number[] {
+  return Array.from({ length: BAR_COUNT }, () => FLAT_PEAK)
+}
 
 async function decodeWaveformPeaks(recordingUrl: string): Promise<number[]> {
   const AudioContextCtor =
@@ -127,9 +132,7 @@ export function CallAudioPlayer({
       canvas.width = width
       canvas.height = height
 
-      const bars =
-        peaks ??
-        Array.from({ length: BAR_COUNT }, (_, i) => 0.15 + ((i * 11) % 17) / 40)
+      const bars = peaks ?? flatWaveformPeaks()
       const barWidth = width / bars.length
       const progress = duration > 0 ? currentTime / duration : 0
 
