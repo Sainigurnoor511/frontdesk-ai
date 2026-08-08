@@ -19,6 +19,10 @@ const worker = new Worker<WebhookDeliverJobData>(
   { connection: redisConnection, concurrency: 5 }
 )
 
+worker.on('completed', (job) => {
+  console.log(`Webhook job ${job.id} completed (event=${job.data.event})`)
+})
+
 worker.on('failed', (job, err) => {
   console.error(`Webhook deliver job ${job?.id} (${job?.data.event}) failed:`, err)
 })

@@ -43,6 +43,10 @@ const worker = new Worker<ScanWebsiteJobData>(
   { connection: redisConnection }
 )
 
+worker.on('completed', (job) => {
+  console.log(`Scan job ${job.id} completed (scanJobId=${job.data.scanJobId}, url=${job.data.url})`)
+})
+
 worker.on('failed', (job, err) => {
   console.error(`Scan job ${job?.id} failed:`, err)
 })

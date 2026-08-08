@@ -57,14 +57,17 @@ export async function startPublicCall(
   // production). Without a configured secret, the widget is never rendered
   // on the public page, so requiring a token here would break local dev.
   // DISABLED for now — see booking-page-public-client.tsx (showTurnstile).
-  if (false && process.env.TURNSTILE_SECRET_KEY) {
-    if (!parsed.data.turnstileToken) {
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
+  if (false && turnstileSecret) {
+    const verifiedSecret = turnstileSecret!
+    if (!input.turnstileToken) {
       return { error: 'Verification failed. Please refresh and try again.' }
     }
+    const verifiedToken = input.turnstileToken!
 
     const verifyForm = new URLSearchParams()
-    verifyForm.append('secret', process.env.TURNSTILE_SECRET_KEY)
-    verifyForm.append('response', parsed.data.turnstileToken)
+    verifyForm.append('secret', verifiedSecret)
+    verifyForm.append('response', verifiedToken)
     if (ip && ip !== 'unknown') verifyForm.append('remoteip', ip)
 
     const verifyResponse = await fetch(
@@ -180,15 +183,18 @@ export async function createPublicAppointment(
     headersList.get('x-real-ip') ??
     'unknown'
 
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
   // DISABLED for now — see booking-page-public-client.tsx (showTurnstile).
-  if (false && process.env.TURNSTILE_SECRET_KEY) {
-    if (!parsed.data.turnstileToken) {
+  if (false && turnstileSecret) {
+    const verifiedSecret = turnstileSecret!
+    if (!input.turnstileToken) {
       return { error: 'Verification failed. Please refresh and try again.' }
     }
+    const verifiedToken = input.turnstileToken!
 
     const verifyForm = new URLSearchParams()
-    verifyForm.append('secret', process.env.TURNSTILE_SECRET_KEY)
-    verifyForm.append('response', parsed.data.turnstileToken)
+    verifyForm.append('secret', verifiedSecret)
+    verifyForm.append('response', verifiedToken)
     if (ip && ip !== 'unknown') verifyForm.append('remoteip', ip)
 
     const verifyResponse = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {

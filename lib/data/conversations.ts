@@ -1,5 +1,7 @@
 import { normalizeRecordingPath } from '@/lib/conversations/recording-path'
 import { createClient } from '@/lib/supabase/server'
+import { createServiceRoleClient } from '@/lib/supabase/service-role'
+import { getEgressRecordingForRoom } from '@/lib/voice/recording'
 
 export type TranscriptMessage = {
   role: 'agent' | 'caller'
@@ -272,16 +274,33 @@ export async function getConversationRecordingUrl(conversationId: string): Promi
 
   const { data: conversation } = await supabase
     .from('conversations')
-    .select('recording_path')
+    .select('recording_path, room_name')
     .eq('id', conversationId)
     .eq('organization_id', member.organization_id)
     .single()
 
-  if (!conversation?.recording_path) return null
+  let recordingPath = conversation?.recording_path ?? null
 
-  const storagePath = normalizeRecordingPath(conversation.recording_path)
+  if (!recordingPath && conversation?.room_name) {
+    const egressPath = await getEgressRecordingForRoom(conversation.room_name)
+    if (egressPath) {
+      recordingPath = egressPath
+      await supabase
+        .from('conversations')
+        .update({ recording_path: egressPath })
+        .eq('id', conversationId)
+    }
+  }
 
-  const { data: signed, error } = await supabase.storage
+  if (!recordingPath) return null
+
+  const storagePath = normalizeRecordingPath(recordingPath)
+
+  // The `call-recordings` bucket has no end-user storage RLS policies — signing
+  // must use the service-role client. Authorization is enforced above via the
+  // user-scoped client (org membership + conversation ownership).
+  const serviceRole = createServiceRoleClient()
+  const { data: signed, error } = await serviceRole.storage
     .from('call-recordings')
     .createSignedUrl(storagePath, 3600)
 

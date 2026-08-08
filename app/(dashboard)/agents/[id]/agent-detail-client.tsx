@@ -15,7 +15,8 @@ import {
   ChevronDown,
   Trash,
   Phone,
-  Settings2,
+  PhoneOff,
+  Ban,
   X,
   Check,
 } from 'lucide-react'
@@ -78,7 +79,12 @@ import {
   setDefaultAgent,
   duplicateAgent,
   deleteAgent,
+  getNewPhoneNumber,
+  releasePhoneNumber,
+  blockPhoneNumber,
+  unblockPhoneNumber,
 } from './actions'
+import type { BlockedPhoneNumber, PhoneNumber } from '@/lib/data/phone-numbers'
 import {
   voiceCatalog,
   languageOptions,
@@ -139,10 +145,14 @@ export function AgentDetailClient({
   agent,
   agents,
   initialTab,
+  phoneNumbers: initialPhoneNumbers,
+  blockedNumbers: initialBlockedNumbers,
 }: {
   agent: AgentDetail
   agents: Agent[]
   initialTab?: string
+  phoneNumbers: PhoneNumber[]
+  blockedNumbers: BlockedPhoneNumber[]
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<(typeof TAB_VALUES)[number]>(
@@ -246,6 +256,68 @@ export function AgentDetailClient({
   const [holdMusic, setHoldMusic] = useState(agent.hold_music ?? '')
   const [callSettingsError, setCallSettingsError] = useState<string | null>(null)
   const [isSavingCallSettings, startCallSettingsTransition] = useTransition()
+
+  // Phone number management state
+  const [phoneNumbers, setPhoneNumbers] = useState(initialPhoneNumbers)
+  const [blockedNumbers, setBlockedNumbers] = useState(initialBlockedNumbers)
+  const [areaCode, setAreaCode] = useState('')
+  const [blockNumber, setBlockNumber] = useState('')
+  const [phoneNumberError, setPhoneNumberError] = useState<string | null>(null)
+  const [blockedNumberError, setBlockedNumberError] = useState<string | null>(null)
+  const [isGettingNumber, startGetNumberTransition] = useTransition()
+  const [releasingId, setReleasingId] = useState<string | null>(null)
+  const [unblockingId, setUnblockingId] = useState<string | null>(null)
+  const [isBlocking, startBlockTransition] = useTransition()
+
+  function handleGetNewNumber() {
+    setPhoneNumberError(null)
+    startGetNumberTransition(async () => {
+      const result = await getNewPhoneNumber(agent.id, { areaCode })
+      if ('error' in result) {
+        setPhoneNumberError(result.error)
+        return
+      }
+      setPhoneNumbers((prev) => [result.phoneNumber, ...prev])
+      setAreaCode('')
+    })
+  }
+
+  async function handleRelease(phoneNumberId: string) {
+    setPhoneNumberError(null)
+    setReleasingId(phoneNumberId)
+    const result = await releasePhoneNumber(agent.id, { phoneNumberId })
+    setReleasingId(null)
+    if ('error' in result) {
+      setPhoneNumberError(result.error)
+      return
+    }
+    setPhoneNumbers((prev) => prev.filter((pn) => pn.id !== phoneNumberId))
+  }
+
+  function handleBlockNumber() {
+    setBlockedNumberError(null)
+    startBlockTransition(async () => {
+      const result = await blockPhoneNumber(agent.id, { number: blockNumber })
+      if ('error' in result) {
+        setBlockedNumberError(result.error)
+        return
+      }
+      setBlockedNumbers((prev) => [result.blockedNumber, ...prev])
+      setBlockNumber('')
+    })
+  }
+
+  async function handleUnblock(blockedNumberId: string) {
+    setBlockedNumberError(null)
+    setUnblockingId(blockedNumberId)
+    const result = await unblockPhoneNumber(agent.id, { blockedNumberId })
+    setUnblockingId(null)
+    if ('error' in result) {
+      setBlockedNumberError(result.error)
+      return
+    }
+    setBlockedNumbers((prev) => prev.filter((bn) => bn.id !== blockedNumberId))
+  }
 
   function toggleTrait(trait: string) {
     setToneTraits((prev) =>
@@ -725,29 +797,180 @@ export function AgentDetailClient({
 
         {/* Call settings tab */}
         <TabsContent value="call-settings" className="pt-6">
-          <div className="max-w-md space-y-6">
-            <div className="space-y-2">
-              <SectionHeading title="Call routing" description="Control how incoming calls are answered and routed." />
+          <div className="max-w-2xl space-y-10">
+            {/* Phone numbers */}
+            <div className="space-y-4">
+              <SectionHeading
+                title="Phone numbers"
+                description="Numbers that route incoming calls to this receptionist. Each plan tier supports a different maximum number of phones."
+              />
+              {phoneNumbers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                  No phone numbers assigned to this receptionist.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {phoneNumbers.map((pn) => (
+                    <li
+                      key={pn.id}
+                      className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Phone className="size-4 shrink-0 text-muted-foreground" />
+                        {pn.number}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={releasingId === pn.id}
+                        onClick={() => handleRelease(pn.id)}
+                      >
+                        <PhoneOff />
+                        Release
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex items-end gap-2">
+                <div className="w-40 space-y-1.5">
+                  <Label htmlFor="area-code">Area code (optional)</Label>
+                  <Input
+                    id="area-code"
+                    value={areaCode}
+                    onChange={(e) => setAreaCode(e.target.value)}
+                    placeholder="415"
+                    maxLength={3}
+                  />
+                </div>
+                <Button type="button" onClick={handleGetNewNumber} disabled={isGettingNumber}>
+                  <Plus />
+                  {isGettingNumber ? 'Getting number…' : 'Get a new phone number'}
+                </Button>
+              </div>
+
+              {phoneNumberError && <p className="text-sm text-destructive">{phoneNumberError}</p>}
+
+              <p className="text-sm text-muted-foreground">
+                Connect{' '}
+                <Link href="/integrations" className="text-foreground underline underline-offset-4">
+                  Twilio or SIP Trunk
+                </Link>{' '}
+                to use your own phone numbers.
+              </p>
+            </div>
+
+            {/* Answering mode */}
+            <div className="space-y-4">
+              <SectionHeading
+                title="Answering mode"
+                description="Decide who should answer inbound calls first."
+              />
+              <div className="space-y-1.5">
+                <Label>Who answers first</Label>
+                <Select
+                  value={answeringMode}
+                  onValueChange={(value) =>
+                    setAnsweringMode(value as 'staff_first' | 'agent_first')
+                  }
+                >
+                  <SelectTrigger className="w-full max-w-xs">
+                    <SelectValue placeholder="Who answers first" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="agent_first">Receptionist first</SelectItem>
+                    <SelectItem value="staff_first">Call transfer</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Transfer rules */}
+            <div className="space-y-4">
+              <SectionHeading
+                title="Transfer rules"
+                description="Create rules for when the receptionist should transfer calls to staff members."
+              />
+              <p className="text-sm text-muted-foreground">
+                Transfer rules live alongside your other rules. Go to the Rules tab to manage them.
+              </p>
+              <Button type="button" variant="outline" onClick={() => setActiveTab('rules')}>
+                Go to the Rules tab
+              </Button>
+            </div>
+
+            {/* Blocked phone numbers */}
+            <div className="space-y-4">
+              <SectionHeading
+                title="Blocked phone numbers"
+                description="Block incoming calls from a phone number"
+              />
+              {blockedNumbers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-muted-foreground">
+                  No blocked numbers yet. Block one to get started.
+                </div>
+              ) : (
+                <ul className="space-y-2">
+                  {blockedNumbers.map((bn) => (
+                    <li
+                      key={bn.id}
+                      className="flex items-center justify-between rounded-xl border border-border px-3 py-2.5"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        <Ban className="size-4 shrink-0 text-muted-foreground" />
+                        {bn.number}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={unblockingId === bn.id}
+                        onClick={() => handleUnblock(bn.id)}
+                      >
+                        <X />
+                        Unblock
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="flex items-end gap-2">
+                <div className="w-full max-w-xs space-y-1.5">
+                  <Label htmlFor="block-number">Phone number</Label>
+                  <Input
+                    id="block-number"
+                    value={blockNumber}
+                    onChange={(e) => setBlockNumber(e.target.value)}
+                    placeholder="+14155551234"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleBlockNumber}
+                  disabled={isBlocking || !blockNumber.trim()}
+                >
+                  <Ban />
+                  {isBlocking ? 'Blocking…' : 'Block a number'}
+                </Button>
+              </div>
+
+              {blockedNumberError && (
+                <p className="text-sm text-destructive">{blockedNumberError}</p>
+              )}
+            </div>
+
+            {/* Call routing */}
+            <div className="space-y-4 border-t border-border pt-10">
+              <SectionHeading
+                title="Call routing"
+                description="Control how incoming calls are answered and routed."
+              />
 
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label>Answering mode</Label>
-                  <Select
-                    value={answeringMode}
-                    onValueChange={(value) =>
-                      setAnsweringMode(value as 'staff_first' | 'agent_first')
-                    }
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Select answering mode" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="staff_first">Staff first</SelectItem>
-                      <SelectItem value="agent_first">Receptionist first</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
                 <div className="space-y-1.5">
                   <Label htmlFor="staff-phone">Staff phone number</Label>
                   <Input

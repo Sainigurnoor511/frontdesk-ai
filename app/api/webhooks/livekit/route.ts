@@ -1,6 +1,7 @@
 import { WebhookReceiver } from 'livekit-server-sdk'
 import { normalizeRecordingPath } from '@/lib/conversations/recording-path'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
+import { readEgressFilename } from '@/lib/voice/recording'
 
 const receiver = new WebhookReceiver(
   process.env.LIVEKIT_API_KEY!,
@@ -25,12 +26,12 @@ export async function POST(request: Request): Promise<Response> {
 
   const egressInfo = event.egressInfo
   const roomName = egressInfo?.roomName
-  const filename = egressInfo?.fileResults?.[0]?.filename
+  const filename = egressInfo ? readEgressFilename(egressInfo) : null
 
   if (!roomName || !filename) {
     console.error('[livekit-webhook] egress_ended missing roomName or filename', {
       roomName,
-      hasFileResults: Boolean(egressInfo?.fileResults?.length),
+      filename,
     })
     return new Response('ok', { status: 200 })
   }

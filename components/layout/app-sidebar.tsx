@@ -61,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { Orb } from '@/components/ui/orb'
+import { ThinkingOrb } from 'thinking-orbs'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
 
@@ -128,7 +128,7 @@ function CallReceptionistPill({
         }}
       >
         <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
-          <Orb seed={1} />
+          <ThinkingOrb state="composing" size={20} style={{ width: '110%', height: '110%' }} />
         </div>
         {state !== 'collapsed' && <span>{phoneNumber}</span>}
         {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto" />}

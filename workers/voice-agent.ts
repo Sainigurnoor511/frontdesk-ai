@@ -2,6 +2,7 @@ import { config } from 'dotenv'
 config({ path: '.env.local' })
 
 import * as agents from '@livekit/agents'
+import { initVad } from '@livekit/local-inference'
 import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-openai'
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildSystemPrompt, buildToneTag } from '@/lib/voice/agent-context'
@@ -27,6 +28,22 @@ type RoomMetadata = {
 }
 
 const MAX_CALL_SECONDS = 300
+
+/**
+ * Preloads the Silero VAD model in the worker process so the first call in a
+ * freshly started process doesn't pay model-load latency on its critical path.
+ * Best-effort — a failure just means the model loads lazily on first use.
+ */
+function prewarmVoiceModels(): void {
+  try {
+    initVad()
+    console.info('[voice-agent] Silero VAD model prewarmed')
+  } catch (err) {
+    console.warn('[voice-agent] failed to prewarm Silero VAD model:', err)
+  }
+}
+
+prewarmVoiceModels()
 
 function parseRoomMetadata(raw: string | undefined): RoomMetadata | null {
   if (!raw) return null
@@ -152,6 +169,23 @@ async function entrypoint(ctx: agents.JobContext) {
       stt: OpenAISTT.withGroq(),
       llm: OpenAILLM.withGroq({ model: groqModel }),
       tts: new FishAudioTTS(voiceId, { tag: toneTag }),
+      // Explicit Silero VAD + VAD-based turn handling instead of the implicit
+      // defaults: faster turn endpointing (respond sooner after the caller
+      // stops speaking) and VAD-cued interruptions that never load the heavy
+      // EOT model. `aecWarmupDuration` keeps interruptions suppressed briefly
+      // at call start so echo cancellation can converge.
+      vad: new agents.inference.VAD({
+        model: 'silero',
+        minSpeechDuration: 120,
+        minSilenceDuration: 350,
+        prefixPaddingDuration: 500,
+      }),
+      turnHandling: {
+        turnDetection: 'vad',
+        endpointing: { minDelay: 300, maxDelay: 2500 },
+        interruption: { mode: 'vad', minDuration: 400 },
+      },
+      aecWarmupDuration: 3000,
     })
 
     transcriptCollector.attach(session)
@@ -234,5 +268,9 @@ export default agents.defineAgent({ entry: entrypoint })
 agents.cli.runApp(
   new agents.WorkerOptions({
     agent: import.meta.filename,
+    // In dev mode each job spawns a fresh child process that must import the
+    // whole agent graph (LiveKit, fastembed, supabase, ...) inside the init
+    // window. The default 10s is tight on a cold `tsx` start on Windows.
+    initializeProcessTimeout: 60_000,
   })
 )

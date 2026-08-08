@@ -6,9 +6,10 @@ import {
   RoomEvent,
   Track,
   type RemoteTrack,
+  type RoomOptions,
   type TranscriptionSegment,
 } from 'livekit-client'
-import type { AgentState } from '@/components/ui/orb'
+export type AgentState = null | 'thinking' | 'listening' | 'talking'
 
 type CallStatus = 'idle' | 'connecting' | 'connected' | 'ended' | 'error'
 
@@ -17,6 +18,22 @@ export type TranscriptMessage = {
   speaker: 'agent' | 'user'
   text: string
   final: boolean
+}
+
+/**
+ * Explicit browser audio processing — without these, WebRTC leaves echo
+ * cancellation, noise suppression and automatic gain control at browser
+ * defaults, which makes calls sound distant and lets background noise leak
+ * through. All three are universally supported and cheap.
+ */
+const ROOM_OPTIONS: RoomOptions = {
+  adaptiveStream: false,
+  dynacast: false,
+  audioCaptureDefaults: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+  },
 }
 
 export function useVoiceCall(
@@ -45,19 +62,14 @@ export function useVoiceCall(
     attachedTracksRef.current = []
   }, [])
 
-  const connect = useCallback(async () => {
-    setStatus('connecting')
-    setErrorMessage(null)
-    setTranscript([])
+  /**
+   * Creates (once) and returns the shared Room instance, wiring up event
+   * listeners a single time so reconnect after a hangup reuses them.
+   */
+  const ensureRoom = useCallback(() => {
+    if (roomRef.current) return roomRef.current
 
-    const result = await startCall()
-    if ('error' in result) {
-      setStatus('error')
-      setErrorMessage(result.error)
-      return
-    }
-
-    const room = new Room()
+    const room = new Room(ROOM_OPTIONS)
     roomRef.current = room
 
     room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack) => {
@@ -96,8 +108,50 @@ export function useVoiceCall(
       setAgentState(null)
     })
 
+    return room
+  }, [cleanupAttachedElements])
+
+  /**
+   * Best-effort prewarm, call when the call UI opens (before the caller taps
+   * "start"): warms DNS/TLS and, on LiveKit Cloud, pins the edge data center.
+   * Uses the static endpoint only — no room/token is minted, so this has no
+   * side effects if the caller never actually dials.
+   */
+  const prewarm = useCallback(async () => {
     try {
-      await room.connect(result.url, result.token)
+      const res = await fetch('/api/livekit/endpoint', { cache: 'no-store' })
+      if (!res.ok) return
+      const { url } = (await res.json()) as { url: string | null }
+      if (!url) return
+      await ensureRoom().prepareConnection(url)
+    } catch {
+      // Prewarm is an optimization; never let it block or surface errors.
+    }
+  }, [ensureRoom])
+
+  const connect = useCallback(async () => {
+    setStatus('connecting')
+    setErrorMessage(null)
+    setTranscript([])
+
+    const result = await startCall()
+    if ('error' in result) {
+      setStatus('error')
+      setErrorMessage(result.error)
+      return
+    }
+
+    const room = ensureRoom()
+
+    try {
+      // Re-warm with the token so LiveKit Cloud selects the nearest edge and
+      // the DNS/TLS cache is hot for the ICE handshake that follows.
+      try {
+        await room.prepareConnection(result.url, result.token)
+      } catch {
+        // Non-fatal: connect() still performs the full handshake.
+      }
+      await room.connect(result.url, result.token, { autoSubscribe: true })
       await room.localParticipant.setMicrophoneEnabled(true)
       setStatus('connected')
       setAgentState('listening')
@@ -105,23 +159,21 @@ export function useVoiceCall(
       setStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'Could not connect to the call.')
     }
-  }, [startCall, cleanupAttachedElements])
+  }, [startCall, ensureRoom])
 
   const disconnect = useCallback(() => {
-    roomRef.current?.disconnect()
-    roomRef.current = null
-    cleanupAttachedElements()
+    void roomRef.current?.disconnect()
     setStatus('ended')
     setAgentState(null)
-  }, [cleanupAttachedElements])
+  }, [])
 
   useEffect(() => {
     return () => {
-      roomRef.current?.disconnect()
+      void roomRef.current?.disconnect()
       roomRef.current = null
       cleanupAttachedElements()
     }
   }, [cleanupAttachedElements])
 
-  return { status, agentState, errorMessage, transcript, connect, disconnect }
+  return { status, agentState, errorMessage, transcript, connect, disconnect, prewarm }
 }

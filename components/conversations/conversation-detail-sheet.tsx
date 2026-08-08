@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition, type ReactNode } from 'react'
-import { Monitor, MessageCircle, Phone } from 'lucide-react'
-import { ThinkingOrb } from 'thinking-orbs'
+import { Monitor, MessageCircle, Phone, Bot } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -122,7 +121,7 @@ export function ConversationDetailSheet({
     setDetailTab('overview')
     setRecordingUrl(null)
 
-    if (!conversation.recordingPath) {
+    if (!conversation.recordingPath && !conversation.roomName) {
       setRecordingLoading(false)
       return
     }
@@ -141,7 +140,7 @@ export function ConversationDetailSheet({
     return () => {
       cancelled = true
     }
-  }, [open, conversation?.id, conversation?.recordingPath])
+  }, [open, conversation?.id, conversation?.recordingPath, conversation?.roomName])
 
   function handleOpenChange(next: boolean) {
     if (!next) {
@@ -156,7 +155,7 @@ export function ConversationDetailSheet({
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
         side="right"
-        className="flex flex-col gap-0 p-0 data-[side=right]:!w-[699.2px] data-[side=right]:!max-w-[699.2px]"
+        className="flex flex-col gap-0 p-0 data-[side=right]:w-[699.2px]! data-[side=right]:max-w-[699.2px]!"
       >
         {conversation && (
           <>
@@ -177,7 +176,7 @@ export function ConversationDetailSheet({
                       durationSeconds={conversation.durationSeconds}
                       transcript={conversation.transcript}
                       agentName={agentLabel}
-                      downloadFilename={`conversation-${conversation.id}.ogg`}
+                      downloadFilename={`conversation-${conversation.id}${conversation.recordingPath?.endsWith('.ogg') ? '.ogg' : '.mp3'}`}
                       showWaveform
                     />
                   )}
@@ -191,7 +190,7 @@ export function ConversationDetailSheet({
               >
                 <TabsList
                   variant="line"
-                  className="w-full shrink-0 justify-start gap-6 border-b px-6 [&>*]:flex-none"
+                  className="w-full shrink-0 justify-start gap-6 border-b px-6 `*:flex-none"
                 >
                   <TabsTrigger value="overview">Overview</TabsTrigger>
                   <TabsTrigger value="transcription">Transcription</TabsTrigger>
@@ -296,8 +295,8 @@ export function ConversationDetailSheet({
                           >
                             {isAgent && (
                               <div className="flex items-center gap-2">
-                                <div className="flex size-6 shrink-0 items-center justify-center overflow-hidden rounded-full">
-                                  <ThinkingOrb state="composing" size={20} />
+                                <div className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                  <Bot className="size-4" />
                                 </div>
                                 <span className="text-sm font-medium">{agentLabel}</span>
                               </div>

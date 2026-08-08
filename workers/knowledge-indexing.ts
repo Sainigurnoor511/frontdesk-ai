@@ -41,6 +41,13 @@ const worker = new Worker<KnowledgeIndexingJobData>(
   { connection: redisConnection }
 )
 
+worker.on('completed', (job) => {
+  const { action } = job.data
+  const id =
+    'sourceId' in job.data ? `sourceId=${job.data.sourceId}` : `faqId=${job.data.faqId}`
+  console.log(`Knowledge indexing job ${job.id} completed (action=${action}, ${id})`)
+})
+
 worker.on('failed', (job, err) => {
   console.error(`Knowledge indexing job ${job?.id} failed:`, err)
 })

@@ -48,6 +48,7 @@ services:
 
   # ── BullMQ workers ─────────────────────────────────────────────
   worker-scan:
+    image: frontdesk-ai-worker:local
     build:
       context: .
       target: worker
@@ -61,9 +62,7 @@ services:
       REDIS_URL: redis://redis:6379/0
 
   worker-knowledge:
-    build:
-      context: .
-      target: worker
+    image: frontdesk-ai-worker:local
     restart: unless-stopped
     command: ["node", "--import", "tsx", "workers/knowledge-indexing.ts"]
     depends_on:
@@ -74,9 +73,7 @@ services:
       REDIS_URL: redis://redis:6379/0
 
   worker-webhook:
-    build:
-      context: .
-      target: worker
+    image: frontdesk-ai-worker:local
     restart: unless-stopped
     command: ["node", "--import", "tsx", "workers/webhook.ts"]
     depends_on:

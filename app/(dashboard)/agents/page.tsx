@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { getAgentById, getAgentsForOrg } from '@/lib/data/agents'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getAgentBlockedNumbers, getAgentPhoneNumbers } from '@/lib/data/phone-numbers'
 import { AgentDetailClient } from './[id]/agent-detail-client'
 
 export default async function AgentsPage() {
@@ -14,5 +15,17 @@ export default async function AgentsPage() {
   const agent = await getAgentById(defaultAgent.id)
   if (!agent) notFound()
 
-  return <AgentDetailClient agent={agent} agents={agents} />
+  const [phoneNumbers, blockedNumbers] = await Promise.all([
+    getAgentPhoneNumbers(agent.id),
+    getAgentBlockedNumbers(agent.id),
+  ])
+
+  return (
+    <AgentDetailClient
+      agent={agent}
+      agents={agents}
+      phoneNumbers={phoneNumbers}
+      blockedNumbers={blockedNumbers}
+    />
+  )
 }

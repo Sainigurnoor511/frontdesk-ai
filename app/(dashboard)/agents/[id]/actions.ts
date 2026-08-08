@@ -12,13 +12,23 @@ import {
   duplicateAgentSchema,
   setDefaultAgentSchema,
   deleteAgentSchema,
+  getNewPhoneNumberSchema,
+  releasePhoneNumberSchema,
+  blockPhoneNumberSchema,
+  unblockPhoneNumberSchema,
   type UpdateAgentGeneralInput,
   type UpdateAgentCallSettingsInput,
   type UpdateAgentAdvancedSettingsInput,
   type RenameAgentInput,
   type DuplicateAgentInput,
+  type GetNewPhoneNumberInput,
+  type ReleasePhoneNumberInput,
+  type BlockPhoneNumberInput,
+  type UnblockPhoneNumberInput,
 } from '@/lib/validations/agent'
 import { normalizeLanguageCode, type VoiceCatalogEntry } from '@/lib/data/voice-catalog'
+import { provisionTwilioNumber } from '@/lib/integrations/twilio'
+import type { BlockedPhoneNumber, PhoneNumber } from '@/lib/data/phone-numbers'
 
 const MAX_INSTRUCTIONS_LENGTH = 8000
 
@@ -810,4 +820,166 @@ export async function getCustomVoices(): Promise<VoiceSearchResult[]> {
     language: row.language,
     previewUrl: '',
   }))
+}
+
+async function getMemberOrganization(supabase: Awaited<ReturnType<typeof createSupabaseClient>>) {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return { user: null, organizationId: null }
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+
+  return { user, organizationId: member?.organization_id ?? null }
+}
+
+export async function getNewPhoneNumber(
+  agentId: string,
+  input: Omit<GetNewPhoneNumberInput, 'agentId'>
+): Promise<{ error: string } | { phoneNumber: PhoneNumber }> {
+  const parsed = getNewPhoneNumberSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to get a phone number.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('id')
+    .eq('id', agentId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (!agent) return { error: 'Receptionist not found.' }
+
+  const areaCode = parsed.data.areaCode?.trim() || undefined
+  const provisioned = await provisionTwilioNumber(organizationId, areaCode)
+  if ('error' in provisioned) return { error: provisioned.error }
+
+  const { data: inserted, error } = await supabase
+    .from('phone_numbers')
+    .insert({
+      organization_id: organizationId,
+      agent_id: agentId,
+      number: provisioned.number,
+      provider: 'twilio',
+      twilio_sid: provisioned.sid,
+    })
+    .select('*')
+    .single()
+
+  if (error || !inserted) {
+    return { error: 'The number was purchased but could not be saved. Please try again.' }
+  }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { phoneNumber: inserted }
+}
+
+export async function releasePhoneNumber(
+  agentId: string,
+  input: Omit<ReleasePhoneNumberInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = releasePhoneNumberSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to release a phone number.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { error } = await supabase
+    .from('phone_numbers')
+    .update({ agent_id: null, updated_at: new Date().toISOString() })
+    .eq('id', parsed.data.phoneNumberId)
+    .eq('organization_id', organizationId)
+    .eq('agent_id', agentId)
+
+  if (error) return { error: 'Could not release the phone number. Please try again.' }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
+}
+
+export async function blockPhoneNumber(
+  agentId: string,
+  input: Omit<BlockPhoneNumberInput, 'agentId'>
+): Promise<{ error: string } | { blockedNumber: BlockedPhoneNumber }> {
+  const parsed = blockPhoneNumberSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to block a phone number.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('id')
+    .eq('id', agentId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (!agent) return { error: 'Receptionist not found.' }
+
+  const normalized = parsed.data.number.startsWith('+')
+    ? parsed.data.number
+    : `+${parsed.data.number}`
+
+  const { data: inserted, error } = await supabase
+    .from('blocked_phone_numbers')
+    .insert({
+      organization_id: organizationId,
+      agent_id: agentId,
+      number: normalized,
+    })
+    .select('*')
+    .single()
+
+  if (error) {
+    if (error.code === '23505') {
+      return { error: 'That number is already blocked.' }
+    }
+    return { error: 'Could not block the phone number. Please try again.' }
+  }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { blockedNumber: inserted }
+}
+
+export async function unblockPhoneNumber(
+  agentId: string,
+  input: Omit<UnblockPhoneNumberInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = unblockPhoneNumberSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to unblock a phone number.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { error } = await supabase
+    .from('blocked_phone_numbers')
+    .delete()
+    .eq('id', parsed.data.blockedNumberId)
+    .eq('organization_id', organizationId)
+    .eq('agent_id', agentId)
+
+  if (error) return { error: 'Could not unblock the phone number. Please try again.' }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
 }

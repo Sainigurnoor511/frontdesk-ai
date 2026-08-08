@@ -85,7 +85,8 @@ export async function uploadKnowledgeFile(formData: FormData): Promise<ActionRes
 
   if (!isSupportedKnowledgeFileName(file.name)) {
     return {
-      error: 'Unsupported file type. Upload a .txt, .md, .html, or .htm file for now.',
+      error:
+        'Unsupported file type. Upload a .pdf, .docx, .txt, .md, .markdown, .html, or .htm file.',
     }
   }
 

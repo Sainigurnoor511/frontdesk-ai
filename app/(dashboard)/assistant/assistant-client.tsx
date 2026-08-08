@@ -347,7 +347,7 @@ export function AssistantClient({
                         <Message>
                           <MessageContent>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <ThinkingOrb state="composing" size={20} />
+                              <ThinkingOrb state="searching" size={64} />
                               Thinking...
                             </div>
                           </MessageContent>

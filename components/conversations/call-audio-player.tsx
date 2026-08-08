@@ -22,6 +22,7 @@ import type { TranscriptMessage } from '@/lib/data/conversations'
 import { formatTranscriptForCopy } from '@/lib/conversations/display'
 
 function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) seconds = 0
   const m = Math.floor(seconds / 60)
   const s = Math.floor(seconds % 60)
   return `${m}:${s.toString().padStart(2, '0')}`
@@ -85,28 +86,38 @@ export function CallAudioPlayer({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [peaks, setPeaks] = useState<number[] | null>(null)
-  const [isDecoding, setIsDecoding] = useState(false)
+  const [isDecoding, setIsDecoding] = useState(!!recordingUrl)
   const [isPlaying, setIsPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(durationSeconds)
   const [speedIndex, setSpeedIndex] = useState(0)
+  const [prevRecordingUrl, setPrevRecordingUrl] = useState(recordingUrl)
+
+  // Reset playback state when the recording changes/clears. Adjusting state
+  // during render (the documented "adjusting state when a prop changes"
+  // pattern) keeps this out of an effect and avoids cascading re-renders.
+  if (recordingUrl !== prevRecordingUrl) {
+    setPrevRecordingUrl(recordingUrl)
+    setPeaks(null)
+    setIsDecoding(!!recordingUrl)
+    setCurrentTime(0)
+    setDuration(Number.isFinite(durationSeconds) ? durationSeconds : 0)
+  }
 
   useEffect(() => {
-    if (!recordingUrl) {
-      setPeaks(null)
-      setIsDecoding(false)
-      return
-    }
+    if (!recordingUrl) return
 
     let cancelled = false
-    setIsDecoding(true)
 
     decodeWaveformPeaks(recordingUrl)
       .then((computed) => {
         if (!cancelled) setPeaks(computed)
       })
       .catch((err) => {
-        console.error('[call-audio-player] failed to decode audio for waveform:', err)
+        console.warn(
+          '[call-audio-player] could not decode waveform (falling back to flat waveform):',
+          err
+        )
         if (!cancelled) setPeaks(null)
       })
       .finally(() => {
@@ -180,7 +191,7 @@ export function CallAudioPlayer({
 
   function seekBy(deltaSeconds: number) {
     const audio = audioRef.current
-    if (!audio) return
+    if (!audio || !Number.isFinite(duration) || duration <= 0) return
     audio.currentTime = Math.max(0, Math.min(duration, audio.currentTime + deltaSeconds))
   }
 
@@ -192,10 +203,12 @@ export function CallAudioPlayer({
 
   function handleCanvasClick(e: React.MouseEvent<HTMLCanvasElement>) {
     const audio = audioRef.current
-    if (!audio || duration <= 0 || !recordingUrl) return
+    if (!audio || !recordingUrl || !Number.isFinite(duration) || duration <= 0) return
     const rect = e.currentTarget.getBoundingClientRect()
     const ratio = (e.clientX - rect.left) / rect.width
-    audio.currentTime = ratio * duration
+    const targetTime = ratio * duration
+    if (!Number.isFinite(targetTime) || targetTime < 0) return
+    audio.currentTime = targetTime
   }
 
   async function handleCopyTranscript() {
@@ -211,7 +224,7 @@ export function CallAudioPlayer({
     if (!recordingUrl) return
     const link = document.createElement('a')
     link.href = recordingUrl
-    link.download = downloadFilename ?? 'call-recording.ogg'
+    link.download = downloadFilename ?? 'call-recording.mp3'
     link.click()
   }
 
@@ -223,14 +236,22 @@ export function CallAudioPlayer({
     <div className="space-y-3">
       {recordingUrl && (
         <audio
+          key={recordingUrl}
           ref={audioRef}
           src={recordingUrl}
           crossOrigin="anonymous"
           preload="metadata"
+          onLoadStart={() => {
+            setCurrentTime(0)
+            setDuration(Number.isFinite(durationSeconds) ? durationSeconds : 0)
+          }}
           onPlay={() => setIsPlaying(true)}
           onPause={() => setIsPlaying(false)}
           onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-          onLoadedMetadata={(e) => setDuration(e.currentTarget.duration)}
+          onLoadedMetadata={(e) => {
+            const d = e.currentTarget.duration
+            if (Number.isFinite(d)) setDuration(d)
+          }}
           onEnded={() => setIsPlaying(false)}
         />
       )}

@@ -1678,7 +1678,7 @@ function KnowledgeSourcesTab({ sources }: { sources: KnowledgeSource[] }) {
             </EmptyHeader>
             <EmptyContent>
               <div className="grid w-full gap-2 text-left sm:grid-cols-3">
-                <InfoCard title="Upload text or markdown files" />
+                <InfoCard title="Upload PDFs, documents, or text files" />
                 <InfoCard title="Crawl your website pages" />
                 <InfoCard title="Searchable during live calls" />
               </div>
@@ -1697,7 +1697,7 @@ function KnowledgeSourcesTab({ sources }: { sources: KnowledgeSource[] }) {
           <input
             id="knowledge-file-input"
             type="file"
-            accept=".txt,.md,.markdown,.html,.htm"
+            accept=".pdf,.docx,.txt,.md,.markdown,.html,.htm"
             className="hidden"
             onChange={handleFileChange}
           />

@@ -35,7 +35,6 @@ Use this as the completion gate before marking a feature item done.
 
 ## P1 - Knowledge + Conversations
 
-- [ ] Support PDF/DOCX knowledge uploads (in addition to txt/md/html)
 - [ ] Auto-capture unanswered questions and suggest FAQ entries
 - [ ] Move conversations filters to server-side query params for scale
 - [ ] Improve `phone` and `chat` channel coverage in conversation flows

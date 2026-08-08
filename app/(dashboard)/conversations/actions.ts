@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
+import { getEgressRecordingForRoom } from '@/lib/voice/recording'
 import {
   messageIdSchema,
   createContactFromMessageSchema,
@@ -258,12 +259,25 @@ export async function getRecordingUrl(conversationId: string): Promise<string | 
 
   const { data: conversation } = await supabase
     .from('conversations')
-    .select('recording_path')
+    .select('recording_path, room_name')
     .eq('id', conversationId)
     .eq('organization_id', member.organization_id)
     .single()
 
-  if (!conversation?.recording_path) return null
+  let recordingPath = conversation?.recording_path ?? null
+
+  if (!recordingPath && conversation?.room_name) {
+    const egressPath = await getEgressRecordingForRoom(conversation.room_name)
+    if (egressPath) {
+      recordingPath = egressPath
+      await supabase
+        .from('conversations')
+        .update({ recording_path: egressPath })
+        .eq('id', conversationId)
+    }
+  }
+
+  if (!recordingPath) return null
 
   // Same-origin proxy avoids CORS issues for playback and waveform decode.
   return `/api/conversations/${conversationId}/recording`

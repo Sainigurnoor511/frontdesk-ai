@@ -98,3 +98,31 @@ export const deleteAgentSchema = z.object({
   agentId: z.string().uuid(),
 })
 export type DeleteAgentInput = z.infer<typeof deleteAgentSchema>
+
+export const getNewPhoneNumberSchema = z.object({
+  agentId: z.string().uuid(),
+  areaCode: z
+    .string()
+    .regex(/^\d{3}$/, 'Area code must be 3 digits')
+    .optional()
+    .or(z.literal('')),
+})
+export type GetNewPhoneNumberInput = z.infer<typeof getNewPhoneNumberSchema>
+
+export const releasePhoneNumberSchema = z.object({
+  agentId: z.string().uuid(),
+  phoneNumberId: z.string().uuid(),
+})
+export type ReleasePhoneNumberInput = z.infer<typeof releasePhoneNumberSchema>
+
+export const blockPhoneNumberSchema = z.object({
+  agentId: z.string().uuid(),
+  number: z.string().regex(/^\+?[1-9]\d{6,14}$/, 'Enter a valid phone number'),
+})
+export type BlockPhoneNumberInput = z.infer<typeof blockPhoneNumberSchema>
+
+export const unblockPhoneNumberSchema = z.object({
+  agentId: z.string().uuid(),
+  blockedNumberId: z.string().uuid(),
+})
+export type UnblockPhoneNumberInput = z.infer<typeof unblockPhoneNumberSchema>

@@ -21,7 +21,7 @@ export async function GET(
 
   return new Response(upstream.body, {
     headers: {
-      'Content-Type': upstream.headers.get('Content-Type') ?? 'audio/ogg',
+      'Content-Type': upstream.headers.get('Content-Type') ?? 'audio/mpeg',
       'Cache-Control': 'private, max-age=3600',
       'Accept-Ranges': 'bytes',
     },

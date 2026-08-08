@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 import type { Service } from '@/lib/data/business'
 import type { BookingPageStaff } from '@/lib/data/availability-engine'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
-import { Orb } from '@/components/ui/orb'
+import { ThinkingOrb } from 'thinking-orbs'
 import { useVoiceCall } from '@/components/voice/use-voice-call'
 import { startPublicCall } from '@/app/smb/actions'
 import { BookingFlow } from './booking-flow'
@@ -148,7 +148,7 @@ function ReceptionistPanel({
     <div
       className={cn(
         'relative flex flex-col justify-between overflow-hidden bg-cover bg-center px-4 py-10',
-        fullBleed ? 'min-h-svh' : 'h-full min-h-[600px]'
+        fullBleed ? 'min-h-svh' : 'h-full min-h-150'
       )}
       style={backgroundImageUrl && !backgroundVideoUrl ? { backgroundImage: `url(${backgroundImageUrl})` } : undefined}
     >
@@ -169,7 +169,11 @@ function ReceptionistPanel({
       <div className={cn('relative z-10 flex flex-1 flex-col gap-2', orbPositionClass)}>
         <div className="relative">
           <div className="flex size-44 items-center justify-center overflow-hidden rounded-full shadow-xl">
-            <Orb agentState={isConnected ? 'listening' : null} seed={1} />
+            <ThinkingOrb
+              state={isConnected ? 'listening' : 'breathing'}
+              size={64}
+              style={{ width: '100%', height: '100%' }}
+            />
           </div>
           <button
             type="button"
@@ -423,7 +427,7 @@ export function BookingPagePublicClient({
       data-booking-receptionist-root
       className={cn(
         'flex w-full min-h-0 flex-1 flex-col',
-        'lg:h-[100dvh] lg:w-1/2 lg:shrink-0 lg:flex-none',
+        'lg:h-dvh lg:w-1/2 lg:shrink-0 lg:flex-none',
         showMobileSplit && mobilePanel !== 'assistant' ? 'hidden' : 'flex'
       )}
     >
@@ -435,7 +439,7 @@ export function BookingPagePublicClient({
     <div
       className={cn(
         'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-border',
-        showMobileSplit ? 'lg:h-[100dvh] lg:w-1/2 lg:shrink-0 lg:flex-none lg:border-l' : 'lg:w-full',
+        showMobileSplit ? 'lg:h-dvh lg:w-1/2 lg:shrink-0 lg:flex-none lg:border-l' : 'lg:w-full',
         showMobileSplit && mobilePanel !== 'steps' ? 'hidden' : 'flex'
       )}
     >
@@ -447,7 +451,7 @@ export function BookingPagePublicClient({
     <div
       data-booking-public-root
       className={cn(
-        'isolate flex h-[100dvh] flex-col overflow-hidden lg:flex-row',
+        'isolate flex h-dvh flex-col overflow-hidden lg:flex-row',
         isDark ? 'text-zinc-100' : 'text-foreground',
         FONT_WEIGHT_CLASS[config.fontWeight],
         LINE_HEIGHT_CLASS[config.lineHeight],

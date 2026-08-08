@@ -8,14 +8,30 @@ import {
   X,
   Plus,
   RotateCcw,
+  Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ThinkingOrb } from 'thinking-orbs'
-import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
-import { useVoiceCall } from './use-voice-call'
+import { useVoiceCall, type AgentState } from './use-voice-call'
 import { startDashboardCall } from '@/app/(dashboard)/actions/voice'
 import { startPublicCall } from '@/app/smb/actions'
+
+/** Maps the live call's agent state to a ThinkingOrb animation state. */
+function agentStateToOrbState(
+  state: AgentState,
+): 'composing' | 'listening' | 'working' | 'breathing' {
+  switch (state) {
+    case 'thinking':
+      return 'composing'
+    case 'listening':
+      return 'listening'
+    case 'talking':
+      return 'working'
+    default:
+      return 'breathing'
+  }
+}
 
 export function CallDialog({
   open,
@@ -36,7 +52,7 @@ export function CallDialog({
   authenticated: boolean
   turnstileToken?: string | null
 }) {
-  const { status, agentState, errorMessage, transcript, connect, disconnect } = useVoiceCall(() =>
+  const { status, agentState, errorMessage, transcript, connect, disconnect, prewarm } = useVoiceCall(() =>
     authenticated
       ? startDashboardCall({ agentId })
       : startPublicCall({ organizationId, agentId, turnstileToken: turnstileToken ?? undefined })
@@ -48,6 +64,10 @@ export function CallDialog({
     if (!next) disconnect()
     onOpenChange(next)
   }
+
+  useEffect(() => {
+    if (open) void prewarm()
+  }, [open, prewarm])
 
   const isConnecting = status === 'connecting'
   const isConnected = status === 'connected'
@@ -62,7 +82,7 @@ export function CallDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex max-h-[min(90vh,720px)] max-w-[512px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[512px]"
+        className="flex max-h-[min(90vh,720px)] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-lg"
       >
         <div className="flex shrink-0 items-center justify-between px-4 py-3">
           {isConnected ? (
@@ -91,7 +111,11 @@ export function CallDialog({
 
               <div className="relative mt-4">
                 <div className="size-44 overflow-hidden rounded-full">
-                  <Orb agentState={agentState} seed={1} />
+                  <ThinkingOrb
+                    state={agentStateToOrbState(agentState)}
+                    size={64}
+                    style={{ width: '100%', height: '100%' }}
+                  />
                 </div>
                 {isConnected ? (
                   <button
@@ -143,8 +167,8 @@ export function CallDialog({
                   )}
                 >
                   {message.speaker === 'agent' && (
-                    <div className="flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full">
-                      <ThinkingOrb state="composing" size={64} />
+                    <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                      <Bot className="size-4" />
                     </div>
                   )}
                   <div
