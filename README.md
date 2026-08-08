@@ -42,13 +42,22 @@ An open-source, self-hostable AI receptionist platform. Frontdesk.ai answers cal
 ### Prerequisites
 
 - Node.js 20+
-- [pnpm](https://pnpm.io) (`npm install -g pnpm` if you don't have it)
+- [pnpm](https://pnpm.io) (enable via `corepack enable pnpm` if you don't have it)
 - A [Supabase](https://supabase.com) project (or the Supabase CLI for local development)
 - A Redis instance (local via Docker, or a hosted provider)
 - A [LiveKit](https://livekit.io) project (LiveKit Cloud or self-hosted)
 - API keys for [Groq](https://console.groq.com) and [Fish Audio](https://fish.audio)
 
-### Setup
+### Supported deployment modes
+
+This project is currently documented and supported for self-hosting in two modes only:
+
+1. **Local Docker** (full app + all workers)
+2. **Windows/local Node runtime** (full app + all workers)
+
+We do not currently document or support Vercel-only deployment for full runtime behavior.
+
+### Windows/local setup
 
 1. Clone the repo and install dependencies:
 
@@ -79,10 +88,16 @@ An open-source, self-hostable AI receptionist platform. Frontdesk.ai answers cal
 5. In separate terminals, start the background workers:
 
    ```bash
-   # Website scans and other queued jobs (BullMQ)
+   # Website scan worker
    pnpm worker
 
-   # Voice agent — joins LiveKit rooms and runs the STT/LLM/TTS pipeline for live calls
+   # Knowledge indexing worker
+   pnpm worker:knowledge
+
+   # Webhook delivery worker
+   pnpm worker:webhook
+
+   # Voice agent worker — joins LiveKit rooms and runs STT/LLM/TTS for live calls
    pnpm worker:voice
    ```
 
@@ -114,7 +129,9 @@ All variables live in `.env.local` (see `.env.example` for the full template).
 | `pnpm lint` | Run ESLint |
 | `pnpm test` | Run the Vitest test suite once |
 | `pnpm test:watch` | Run tests in watch mode |
-| `pnpm worker` | Run the background job worker (BullMQ — website scans, etc.) |
+| `pnpm worker` | Run website scan worker |
+| `pnpm worker:knowledge` | Run knowledge indexing worker |
+| `pnpm worker:webhook` | Run webhook delivery worker |
 | `pnpm worker:voice` | Run the voice agent worker (joins LiveKit rooms for live calls) |
 
 ## How calling works
@@ -139,7 +156,7 @@ BullMQ + Redis is used elsewhere in the app (the website-scan worker, rate limit
 
 ## Running with Docker
 
-An alternative to the local setup above. Requires [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
+Use this for full self-hosted runtime in containers. Requires [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/install/).
 
 1. Clone the repo:
 
@@ -172,29 +189,43 @@ An alternative to the local setup above. Requires [Docker](https://docs.docker.c
    | `nginx` | Reverse proxy on port **80** |
    | `app` | Next.js production server |
    | `redis` | Redis for BullMQ job queue |
-   | `worker-scan` | Background worker (website scans) |
+   | `worker-scan` | Website scan worker |
+   | `worker-knowledge` | Knowledge indexing worker |
+   | `worker-webhook` | Webhook delivery worker |
    | `worker-voice` | Voice agent worker (LiveKit rooms) |
 
 5. Open [http://localhost](http://localhost).
 
 To stop: `docker compose down`. To rebuild after code changes: `docker compose --env-file .env.local up --build`.
 
-## Knowledge Base
+### Quick smoke tests (both local modes)
 
-For detailed architecture docs, conventions, and patterns, see the [Knowledge Base](./knowledge-base/knowledge-base.md):
+After startup, verify:
 
-- [Architecture Overview](./knowledge-base/knowledge-base.md#architecture-overview) — directory layout, high-level structure
-- [Supabase & Database](./knowledge-base/knowledge-base.md#supabase--database) — client layers, auth flow, RLS, migrations
-- [Route Groups & Pages](./knowledge-base/knowledge-base.md#route-groups--pages) — App Router layout, server/client split
-- [Server Actions](./knowledge-base/knowledge-base.md#server-actions) — validation, org-scoping patterns
-- [Data Access Layer](./knowledge-base/knowledge-base.md#data-access-layer) — `lib/data/` modules and conventions
-- [Background Workers](./knowledge-base/knowledge-base.md#background-workers) — BullMQ, Redis, job lifecycle
-- [Voice Pipeline](./knowledge-base/knowledge-base.md#voice-pipeline) — LiveKit call flow, STT/LLM/TTS
-- [UI & Components](./knowledge-base/knowledge-base.md#ui--components) — shadcn/Base UI, Tailwind v4, Lucide
-- [Validation](./knowledge-base/knowledge-base.md#validation) — Zod schemas in `lib/validations/`
-- [Testing](./knowledge-base/knowledge-base.md#testing) — Vitest setup and conventions
-- [Docker Setup](./knowledge-base/knowledge-base.md#docker-setup) — Dockerfile, compose, nginx
-- [Environment Variables](./knowledge-base/knowledge-base.md#environment-variables) — complete env var reference
+1. Assistant streams a response on `/assistant`.
+2. Onboarding website scan transitions `pending -> running -> completed/failed`.
+3. Adding FAQ/knowledge source triggers indexing updates.
+4. Webhook-enabled events are delivered.
+5. A web voice call joins the LiveKit room and writes transcript/status.
+
+## Developer Docs
+
+For detailed architecture docs, conventions, and patterns, see [developer-docs/ARCHITECTURE.md](./developer-docs/ARCHITECTURE.md):
+
+- [Architecture Overview](./developer-docs/ARCHITECTURE.md#architecture-overview) — directory layout, high-level structure
+- [Supabase & Database](./developer-docs/ARCHITECTURE.md#supabase--database) — client layers, auth flow, RLS, migrations
+- [Route Groups & Pages](./developer-docs/ARCHITECTURE.md#route-groups--pages) — App Router layout, server/client split
+- [Server Actions](./developer-docs/ARCHITECTURE.md#server-actions) — validation, org-scoping patterns
+- [Data Access Layer](./developer-docs/ARCHITECTURE.md#data-access-layer) — `lib/data/` modules and conventions
+- [Background Workers](./developer-docs/ARCHITECTURE.md#background-workers) — BullMQ, Redis, job lifecycle
+- [Voice Pipeline](./developer-docs/ARCHITECTURE.md#voice-pipeline) — LiveKit call flow, STT/LLM/TTS
+- [UI & Components](./developer-docs/ARCHITECTURE.md#ui--components) — shadcn/Base UI, Tailwind v4, Lucide
+- [Validation](./developer-docs/ARCHITECTURE.md#validation) — Zod schemas in `lib/validations/`
+- [Testing](./developer-docs/ARCHITECTURE.md#testing) — Vitest setup and conventions
+- [Docker Setup](./developer-docs/ARCHITECTURE.md#docker-setup) — Dockerfile, compose, nginx
+- [Environment Variables](./developer-docs/ARCHITECTURE.md#environment-variables) — complete env var reference
+
+Shared team backlog is tracked in [developer-docs/TODO.md](./developer-docs/TODO.md).
 
 ## Contributing
 

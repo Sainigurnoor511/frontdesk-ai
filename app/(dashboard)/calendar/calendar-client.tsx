@@ -296,7 +296,7 @@ export function CalendarClient({
                 </Button>
               }
             />
-            <DropdownMenuContent align="start">
+            <DropdownMenuContent align="start" className="w-fit min-w-[19rem] p-2">
               <DropdownMenuItem onClick={goToToday}>
                 {formatMonthYear(today)}
               </DropdownMenuItem>

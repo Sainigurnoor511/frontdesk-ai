@@ -6,6 +6,26 @@
 // never trust an LLM-supplied org id.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
+import {
+  handleAppointmentCreated,
+  handleAppointmentUpdated,
+  handleAppointmentCancelled,
+} from '@/lib/integrations/google-calendar-sync'
+import {
+  handleCalComAppointmentCancelled,
+  handleCalComAppointmentCreated,
+  handleCalComAppointmentUpdated,
+} from '@/lib/integrations/calcom'
+import {
+  handleMicrosoftAppointmentCancelled,
+  handleMicrosoftAppointmentCreated,
+  handleMicrosoftAppointmentUpdated,
+} from '@/lib/integrations/microsoft-calendar-sync'
+import {
+  handleCalendlyAppointmentCancelled,
+  handleCalendlyAppointmentCreated,
+  handleCalendlyAppointmentUpdated,
+} from '@/lib/integrations/calendly'
 import type { AppointmentRow } from './calendar'
 
 export type { AppointmentRow }
@@ -127,6 +147,11 @@ export async function createAppointmentServiceRole(
     source: agentId ? 'voice' : 'public',
   })
 
+  void handleAppointmentCreated(organizationId, data.id)
+  void handleCalComAppointmentCreated(organizationId, data.id)
+  void handleMicrosoftAppointmentCreated(organizationId, data.id)
+  void handleCalendlyAppointmentCreated(organizationId, data.id)
+
   return data as AppointmentRow
 }
 
@@ -204,6 +229,12 @@ export async function reschedulePublicAppointmentServiceRole(
     .eq('organization_id', organizationId)
 
   if (error) return { error: 'Could not reschedule. Please try again.' }
+
+  void handleAppointmentUpdated(organizationId, appointmentId)
+  void handleCalComAppointmentUpdated(organizationId, appointmentId)
+  void handleMicrosoftAppointmentUpdated(organizationId, appointmentId)
+  void handleCalendlyAppointmentUpdated()
+
   return { success: true }
 }
 
@@ -225,5 +256,11 @@ export async function cancelPublicAppointmentServiceRole(
   if (error) return { error: 'Could not cancel. Please try again.' }
 
   void dispatchWebhook(organizationId, 'appointment.cancelled', { appointmentId })
+
+  void handleAppointmentCancelled(organizationId, appointmentId)
+  void handleCalComAppointmentCancelled(organizationId, appointmentId)
+  void handleMicrosoftAppointmentCancelled(organizationId, appointmentId)
+  void handleCalendlyAppointmentCancelled()
+
   return { success: true }
 }

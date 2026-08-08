@@ -4,6 +4,26 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
 import {
+  handleAppointmentCreated,
+  handleAppointmentUpdated,
+  handleAppointmentCancelled,
+} from '@/lib/integrations/google-calendar-sync'
+import {
+  handleCalComAppointmentCancelled,
+  handleCalComAppointmentCreated,
+  handleCalComAppointmentUpdated,
+} from '@/lib/integrations/calcom'
+import {
+  handleMicrosoftAppointmentCancelled,
+  handleMicrosoftAppointmentCreated,
+  handleMicrosoftAppointmentUpdated,
+} from '@/lib/integrations/microsoft-calendar-sync'
+import {
+  handleCalendlyAppointmentCancelled,
+  handleCalendlyAppointmentCreated,
+  handleCalendlyAppointmentUpdated,
+} from '@/lib/integrations/calendly'
+import {
   createAppointmentSchema,
   createTimeOffSchema,
   updateAppointmentSchema,
@@ -69,6 +89,11 @@ export async function createAppointment(
     source: 'dashboard',
   })
 
+  void handleAppointmentCreated(member.organization_id, appointment.id)
+  void handleCalComAppointmentCreated(member.organization_id, appointment.id)
+  void handleMicrosoftAppointmentCreated(member.organization_id, appointment.id)
+  void handleCalendlyAppointmentCreated(member.organization_id, appointment.id)
+
   revalidatePath('/calendar')
   return { success: true }
 }
@@ -108,6 +133,11 @@ export async function cancelAppointment(
   void dispatchWebhook(member.organization_id, 'appointment.cancelled', {
     appointmentId: id,
   })
+
+  void handleAppointmentCancelled(member.organization_id, id)
+  void handleCalComAppointmentCancelled(member.organization_id, id)
+  void handleMicrosoftAppointmentCancelled(member.organization_id, id)
+  void handleCalendlyAppointmentCancelled()
 
   revalidatePath('/calendar')
   return { success: true }
@@ -158,6 +188,11 @@ export async function updateAppointment(
   if (error) {
     return { error: 'Could not update appointment. Please try again.' }
   }
+
+  void handleAppointmentUpdated(member.organization_id, id)
+  void handleCalComAppointmentUpdated(member.organization_id, id)
+  void handleMicrosoftAppointmentUpdated(member.organization_id, id)
+  void handleCalendlyAppointmentUpdated()
 
   revalidatePath('/calendar')
   return { success: true }

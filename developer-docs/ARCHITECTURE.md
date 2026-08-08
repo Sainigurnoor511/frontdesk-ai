@@ -1,6 +1,6 @@
-# Frontdesk.ai Knowledge Base
+# Frontdesk.ai Architecture Guide
 
-A living reference for the project's architecture, patterns, and conventions. Linked from the main [README](../README.md).
+A living reference for the project's architecture, patterns, and conventions.
 
 ## Index
 
@@ -219,7 +219,7 @@ Two standalone Node processes in `workers/`:
 - Consumes jobs from `scan-website` queue
 - Crawls a URL, extracts business info via Groq LLM
 - Updates `agent_scan_jobs` table with results
-- Run: `npm run worker`
+- Run: `pnpm worker`
 
 ### `voice-agent.ts` (LiveKit Agent)
 
@@ -227,7 +227,7 @@ Two standalone Node processes in `workers/`:
 - Dispatched into rooms when callers join
 - Runs STT → LLM → TTS pipeline
 - Writes conversation record on hangup
-- Run: `npm run worker:voice`
+- Run: `pnpm worker:voice`
 
 ### Redis Connection
 
@@ -313,7 +313,7 @@ Never inline validation in actions or components — always import from these mo
 
 - **Framework:** Vitest
 - **Convention:** test files sit next to the code they test (e.g. `actions.test.ts`, `crawl.test.ts`)
-- **Run:** `npm test` (once) or `npm run test:watch`
+- **Run:** `pnpm test` (once) or `pnpm test:watch`
 
 ---
 

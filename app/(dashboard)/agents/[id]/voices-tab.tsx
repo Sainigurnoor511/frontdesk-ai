@@ -1,16 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Star } from 'lucide-react'
+import { Globe2, Sparkles, Star, Timer } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+  FilterMenuButton,
+  FilterToggleButton,
+} from '@/components/layout/filter-menu-button'
 import { VoiceOrbButton } from '@/components/voice/voice-orb-button'
 import { CreateVoiceDialog } from '@/components/agents/create-voice-dialog'
 import {
@@ -27,7 +25,7 @@ import {
   previewVoice,
   type VoiceSearchResult,
 } from './actions'
-import type { AgentDetail, Agent } from '@/lib/data/agents'
+import type { AgentDetail } from '@/lib/data/agents'
 
 const GENDER_OPTIONS = ['male', 'female'] as const
 const AGE_OPTIONS = ['young', 'middle-aged', 'old'] as const
@@ -35,16 +33,13 @@ const ALL_VALUE = '__all'
 
 export function VoicesTab({
   agent,
-  agents,
   createOpen,
   onCreateOpenChange,
 }: {
   agent: AgentDetail
-  agents: Agent[]
   createOpen: boolean
   onCreateOpenChange: (open: boolean) => void
 }) {
-  const [selectedAgentId, setSelectedAgentId] = useState(agent.id)
   const [currentVoiceId, setCurrentVoiceId] = useState(agent.voice_id ?? '')
   const [customVoices, setCustomVoices] = useState<VoiceSearchResult[]>([])
   const [query, setQuery] = useState('')
@@ -60,7 +55,6 @@ export function VoicesTab({
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
-    setSelectedAgentId(agent.id)
     setCurrentVoiceId(agent.voice_id ?? '')
   }, [agent.id, agent.voice_id])
 
@@ -68,13 +62,6 @@ export function VoicesTab({
     void getFavoriteVoiceIds().then(setFavorites)
     void getCustomVoices().then(setCustomVoices)
   }, [])
-
-  function handleSelectAgent(id: string | null) {
-    if (!id) return
-    setSelectedAgentId(id)
-    const next = agents.find((a) => a.id === id)
-    setCurrentVoiceId(next?.voice_id ?? '')
-  }
 
   useEffect(() => {
     if (!query) return
@@ -126,7 +113,7 @@ export function VoicesTab({
 
   async function handleSelectVoice(voiceId: string) {
     setCurrentVoiceId(voiceId)
-    await updateAgentGeneral(selectedAgentId, { voiceId })
+    await updateAgentGeneral(agent.id, { voiceId })
   }
 
   async function handleToggleFavorite(voiceId: string) {
@@ -146,25 +133,6 @@ export function VoicesTab({
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          {agents.length > 1 && (
-            <Select value={selectedAgentId} onValueChange={handleSelectAgent}>
-              <SelectTrigger className="w-56">
-                <SelectValue placeholder="Select receptionist">
-                  {(value: string) => {
-                    const next = agents.find((a) => a.id === value)
-                    return next ? (next.business_name ?? next.name) : 'Select receptionist'
-                  }}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectContent>
-                {agents.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.business_name ?? a.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -181,77 +149,39 @@ export function VoicesTab({
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <Select
-          value={languageFilter ?? ALL_VALUE}
-          onValueChange={(v) => setLanguageFilter(v === ALL_VALUE ? null : v)}
-        >
-          <SelectTrigger className="w-40">
-            <SelectValue placeholder="Language">
-              {(value: string) => {
-                const lang = languageOptions.find((l) => l.code === value)
-                return lang ? `${lang.flag} ${lang.label}` : 'All languages'
-              }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>All languages</SelectItem>
-            {languageOptions.map((lang) => (
-              <SelectItem key={lang.code} value={lang.code}>
-                {lang.flag} {lang.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={genderFilter ?? ALL_VALUE}
-          onValueChange={(v) => setGenderFilter(v === ALL_VALUE ? null : v)}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Gender">
-              {(value: string) => (value === ALL_VALUE ? 'Any gender' : value)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>Any gender</SelectItem>
-            {GENDER_OPTIONS.map((g) => (
-              <SelectItem key={g} value={g}>
-                {g}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select
-          value={ageFilter ?? ALL_VALUE}
-          onValueChange={(v) => setAgeFilter(v === ALL_VALUE ? null : v)}
-        >
-          <SelectTrigger className="w-32">
-            <SelectValue placeholder="Age">
-              {(value: string) => (value === ALL_VALUE ? 'Any age' : value)}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_VALUE}>Any age</SelectItem>
-            {AGE_OPTIONS.map((a) => (
-              <SelectItem key={a} value={a}>
-                {a}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <button
-          type="button"
+        <FilterMenuButton icon={Globe2} label="Language" active={languageFilter !== null}>
+          <DropdownMenuItem onClick={() => setLanguageFilter(null)}>All languages</DropdownMenuItem>
+          {languageOptions.map((lang) => (
+            <DropdownMenuItem key={lang.code} onClick={() => setLanguageFilter(lang.code)}>
+              {lang.flag} {lang.label}
+            </DropdownMenuItem>
+          ))}
+        </FilterMenuButton>
+
+        <FilterMenuButton icon={Sparkles} label="Gender" active={genderFilter !== null}>
+          <DropdownMenuItem onClick={() => setGenderFilter(null)}>Any gender</DropdownMenuItem>
+          {GENDER_OPTIONS.map((g) => (
+            <DropdownMenuItem key={g} onClick={() => setGenderFilter(g)}>
+              {g}
+            </DropdownMenuItem>
+          ))}
+        </FilterMenuButton>
+
+        <FilterMenuButton icon={Timer} label="Age" active={ageFilter !== null}>
+          <DropdownMenuItem onClick={() => setAgeFilter(null)}>Any age</DropdownMenuItem>
+          {AGE_OPTIONS.map((a) => (
+            <DropdownMenuItem key={a} onClick={() => setAgeFilter(a)}>
+              {a}
+            </DropdownMenuItem>
+          ))}
+        </FilterMenuButton>
+
+        <FilterToggleButton
+          icon={Star}
+          label="Favorites"
+          active={favoritesOnly}
           onClick={() => setFavoritesOnly((prev) => !prev)}
-          className={`inline-flex h-9 items-center gap-1.5 rounded-md border px-3 text-sm transition-colors ${
-            favoritesOnly
-              ? 'border-yellow-400/50 bg-yellow-400/10 text-foreground'
-              : 'border-input bg-transparent text-muted-foreground hover:bg-muted'
-          }`}
-        >
-          <Star
-            className={`size-3.5 ${favoritesOnly ? 'fill-yellow-400 text-yellow-400' : ''}`}
-          />
-          Favorites
-        </button>
+        />
       </div>
 
       <div className="space-y-1">
@@ -321,7 +251,7 @@ export function VoicesTab({
         onVoiceCreated={(voice) => {
           setCustomVoices((prev) => [voice, ...prev])
           setCurrentVoiceId(voice.id)
-          void updateAgentGeneral(selectedAgentId, { voiceId: voice.id })
+          void updateAgentGeneral(agent.id, { voiceId: voice.id })
         }}
       />
     </div>

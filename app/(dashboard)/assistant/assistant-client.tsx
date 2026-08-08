@@ -6,6 +6,19 @@ import { ThinkingOrb } from 'thinking-orbs'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { SkeletonChatMessages } from '@/components/layout/dashboard-skeletons'
+import {
+  Message,
+  MessageContent,
+  MessageGroup,
+} from '@/components/ui/message'
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller'
 import type { AssistantChatSummary } from '@/lib/data/assistant-chats'
 import { loadAssistantChat, removeAssistantChat } from './actions'
 
@@ -67,7 +80,7 @@ export function AssistantClient({
     setIsLoadingChat(false)
 
     if ('error' in result) {
-      setErrorMessage(result.error)
+      setErrorMessage(result.error ?? 'Could not load chat. Please try again.')
       return
     }
 
@@ -83,7 +96,7 @@ export function AssistantClient({
   async function handleDeleteChat(chatId: string) {
     const result = await removeAssistantChat(chatId)
     if ('error' in result) {
-      setErrorMessage(result.error)
+      setErrorMessage(result.error ?? 'Could not delete chat. Please try again.')
       return
     }
 
@@ -300,42 +313,58 @@ export function AssistantClient({
           </div>
         ) : (
           <>
-            <div className="scrollbar-none flex-1 overflow-y-auto">
-              <div className="flex flex-col gap-4 pb-4">
-                {isLoadingChat ? (
-                  <SkeletonChatMessages count={4} />
-                ) : (
-                  messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={cn('flex', message.role === 'user' && 'justify-end')}
-                  >
-                    <div
-                      className={cn(
-                        'max-w-[75%] rounded-2xl text-sm whitespace-pre-wrap text-black',
-                        message.role === 'user'
-                          ? 'rounded-br-sm bg-[#f4f4f4] px-3 py-2'
-                          : 'max-w-full bg-transparent'
-                      )}
-                    >
-                      {message.content}
-                    </div>
-                  </div>
-                ))
-                )}
+            <MessageScrollerProvider>
+              <MessageScroller className="flex-1">
+                <MessageScrollerViewport>
+                  <MessageScrollerContent className="gap-4 pb-4 pr-1">
+                    {isLoadingChat ? (
+                      <SkeletonChatMessages count={4} />
+                    ) : (
+                      <MessageGroup>
+                        {messages.map((message, index) => (
+                          <MessageScrollerItem key={index}>
+                            <Message align={message.role === 'user' ? 'end' : 'start'}>
+                              <MessageContent>
+                                <div
+                                  className={cn(
+                                    'max-w-[75%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap',
+                                    message.role === 'user'
+                                      ? 'rounded-br-sm bg-muted text-foreground'
+                                      : 'max-w-full bg-transparent text-foreground'
+                                  )}
+                                >
+                                  {message.content}
+                                </div>
+                              </MessageContent>
+                            </Message>
+                          </MessageScrollerItem>
+                        ))}
+                      </MessageGroup>
+                    )}
 
-                {isThinking && (
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ThinkingOrb state="composing" size={20} />
-                    Thinking...
-                  </div>
-                )}
+                    {isThinking && (
+                      <MessageScrollerItem>
+                        <Message>
+                          <MessageContent>
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <ThinkingOrb state="composing" size={20} />
+                              Thinking...
+                            </div>
+                          </MessageContent>
+                        </Message>
+                      </MessageScrollerItem>
+                    )}
 
-                {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
+                    {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
 
-                <div ref={bottomRef} />
-              </div>
-            </div>
+                    <MessageScrollerItem scrollAnchor>
+                      <div ref={bottomRef} />
+                    </MessageScrollerItem>
+                  </MessageScrollerContent>
+                </MessageScrollerViewport>
+                <MessageScrollerButton direction="end" />
+              </MessageScroller>
+            </MessageScrollerProvider>
 
             <div className="sticky bottom-0 shrink-0 bg-background pt-2">{composer}</div>
           </>

@@ -99,8 +99,9 @@ export function PhoneNumbersClient({
         <CardContent className="space-y-2 p-5">
           <p className="font-medium">Provisioned inbound numbers</p>
           <p className="text-sm text-muted-foreground">
-            Buying and assigning dedicated phone numbers through Twilio is coming soon. For now,
-            configure your staff fallback number above and use web calls to test your receptionist.
+            Twilio, Plivo, and SIP trunk integrations can be configured, but phone-number
+            provisioning/inbound routing stays disabled by default. Web calls remain the default
+            calling mode unless your team explicitly turns off the web-calls-only setting.
           </p>
         </CardContent>
       </Card>

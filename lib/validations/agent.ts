@@ -65,7 +65,7 @@ export type UpdateAgentCallSettingsInput = z.infer<typeof updateAgentCallSetting
 
 export const updateAgentAdvancedSettingsSchema = z.object({
   agentId: z.string().uuid(),
-  llmModel: z.enum(['gemini-3-flash', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b']),
+  llmModel: z.enum(['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b']),
   reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']),
   filterBackgroundSpeech: z.boolean(),
   skipKnowledgeRetrieval: z.boolean(),

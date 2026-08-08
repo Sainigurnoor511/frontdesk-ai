@@ -12,7 +12,7 @@ Open-source, self-hostable AI receptionist SaaS. Original implementation inspire
 
 - Next.js 16 App Router, Server Actions, Server Components
 - Supabase (Postgres + RLS) for auth, orgs, and all persisted data
-- BullMQ + Redis for background jobs (standalone workers in `workers/`, run via `npm run worker`)
+- BullMQ + Redis for background jobs (standalone workers in `workers/`, run via `pnpm worker`)
 - Groq for LLM extraction/generation, Fish Audio for TTS
 - Tailwind v4 + shadcn/ui on `@base-ui/react` (not Radix — composition uses `render={<Component />}`, not `asChild`)
 - `lucide-react` for all app-level icons (also the icon library vendored shadcn internals already use, so this is consistent throughout)

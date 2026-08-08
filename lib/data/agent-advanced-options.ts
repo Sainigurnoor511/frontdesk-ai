@@ -1,8 +1,8 @@
 export const AGENT_LLM_MODELS = [
   {
-    value: 'gemini-3-flash',
-    label: 'Gemini 3 Flash',
-    groqModel: 'llama-3.3-70b-versatile',
+    value: 'llama-3.1-8b-instant',
+    label: 'Llama 3.1 8B Instant',
+    groqModel: 'llama-3.1-8b-instant',
   },
   {
     value: 'llama-3.3-70b-versatile',
@@ -17,6 +17,8 @@ export const AGENT_LLM_MODELS = [
 ] as const
 
 export type AgentLlmModel = (typeof AGENT_LLM_MODELS)[number]['value']
+
+export const DEFAULT_AGENT_LLM_MODEL: AgentLlmModel = 'llama-3.1-8b-instant'
 
 export const AGENT_REASONING_EFFORTS = [
   { value: 'minimal', label: 'Minimal' },
@@ -36,7 +38,11 @@ export const AGENT_HOLD_SOUNDS = [
 
 export type AgentHoldSound = (typeof AGENT_HOLD_SOUNDS)[number]['value']
 
-export function resolveGroqModel(model: string): string {
+export function normalizeAgentLlmModel(model: string | null | undefined): AgentLlmModel {
   const match = AGENT_LLM_MODELS.find((entry) => entry.value === model)
-  return match?.groqModel ?? 'llama-3.3-70b-versatile'
+  return match?.value ?? DEFAULT_AGENT_LLM_MODEL
+}
+
+export function resolveGroqModel(model: string | null | undefined): string {
+  return normalizeAgentLlmModel(model)
 }

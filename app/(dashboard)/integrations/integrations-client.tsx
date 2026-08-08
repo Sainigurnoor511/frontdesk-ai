@@ -62,16 +62,38 @@ import {
   type WebhookEventType,
 } from '@/lib/integrations/webhook-events'
 import {
+  GOOGLE_CALENDAR_SLUG,
+} from '@/lib/integrations/google-calendar-events'
+import { CAL_COM_SLUG } from '@/lib/integrations/calcom'
+import { CALENDLY_SLUG } from '@/lib/integrations/calendly'
+import { MICROSOFT_CALENDAR_SLUG } from '@/lib/integrations/microsoft-calendar'
+import {
   enableIntegration,
   disableIntegration,
+  configureCalCom,
+  configureCalendly,
+  configurePlivo,
+  configureSipTrunk,
+  configureTwilio,
   configureWebhook,
 } from './actions'
+import {
+  initiateGoogleCalendarOAuth,
+  disconnectGoogleCalendar,
+} from './google-calendar-actions'
+import {
+  initiateMicrosoftCalendarOAuth,
+  disconnectMicrosoftCalendar,
+} from './microsoft-calendar-actions'
+import { PLIVO_SLUG, SIP_TRUNK_SLUG, TWILIO_SLUG } from '@/lib/integrations/telephony'
 
 const CATEGORY_ALL = 'All integrations'
 
 const fallbackIcons: Record<string, typeof Bot> = {
   'webhook-tool': Webhook,
   'sip-trunk': PhoneForwarded,
+  twilio: PhoneCall,
+  plivo: PhoneForwarded,
 }
 
 function isWebhookEvent(value: unknown): value is WebhookEventType {
@@ -127,6 +149,42 @@ export function IntegrationsClient({
   const [webhookSecret, setWebhookSecret] = useState('')
   const [webhookConfigError, setWebhookConfigError] = useState<string | null>(null)
 
+  const [calComApiKey, setCalComApiKey] = useState('')
+  const [calComEventTypeId, setCalComEventTypeId] = useState('')
+  const [calComTimezone, setCalComTimezone] = useState('UTC')
+  const [calComConfigError, setCalComConfigError] = useState<string | null>(null)
+
+  const [calendlyToken, setCalendlyToken] = useState('')
+  const [calendlyEventTypeUri, setCalendlyEventTypeUri] = useState('')
+  const [calendlyOwnerUri, setCalendlyOwnerUri] = useState('')
+  const [calendlyConfigError, setCalendlyConfigError] = useState<string | null>(null)
+
+  const [googleCalendarConnected, setGoogleCalendarConnected] = useState(false)
+  const [googleCalendarCalendarId, setGoogleCalendarCalendarId] = useState('primary')
+  const [googleCalendarError, setGoogleCalendarError] = useState<string | null>(null)
+
+  const [microsoftCalendarConnected, setMicrosoftCalendarConnected] = useState(false)
+  const [microsoftCalendarError, setMicrosoftCalendarError] = useState<string | null>(null)
+
+  const [twilioAccountSid, setTwilioAccountSid] = useState('')
+  const [twilioAuthToken, setTwilioAuthToken] = useState('')
+  const [twilioFromNumber, setTwilioFromNumber] = useState('')
+  const [twilioWebOnly, setTwilioWebOnly] = useState(true)
+  const [twilioError, setTwilioError] = useState<string | null>(null)
+
+  const [plivoAuthId, setPlivoAuthId] = useState('')
+  const [plivoAuthToken, setPlivoAuthToken] = useState('')
+  const [plivoFromNumber, setPlivoFromNumber] = useState('')
+  const [plivoWebOnly, setPlivoWebOnly] = useState(true)
+  const [plivoError, setPlivoError] = useState<string | null>(null)
+
+  const [sipProvider, setSipProvider] = useState('')
+  const [sipTrunkDomain, setSipTrunkDomain] = useState('')
+  const [sipUsername, setSipUsername] = useState('')
+  const [sipPassword, setSipPassword] = useState('')
+  const [sipWebOnly, setSipWebOnly] = useState(true)
+  const [sipError, setSipError] = useState<string | null>(null)
+
   const enabledIntegrationSlugs = useMemo(
     () => new Set(enabledIntegrations.map((integration) => integration.slug)),
     [enabledIntegrations]
@@ -172,6 +230,13 @@ export function IntegrationsClient({
   function openIntegrationDialog(integration: Integration) {
     setActionError(null)
     setWebhookConfigError(null)
+    setCalComConfigError(null)
+    setCalendlyConfigError(null)
+    setGoogleCalendarError(null)
+    setMicrosoftCalendarError(null)
+    setTwilioError(null)
+    setPlivoError(null)
+    setSipError(null)
     if (integration.slug === WEBHOOK_SLUG) {
       const config = enabledIntegrations.find(
         (enabledIntegration) => enabledIntegration.slug === WEBHOOK_SLUG
@@ -181,10 +246,252 @@ export function IntegrationsClient({
         Array.isArray(config?.events) ? config.events.filter(isWebhookEvent) : []
       )
       setWebhookSecret(typeof config?.secret === 'string' ? config.secret : '')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+    } else if (integration.slug === CAL_COM_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === CAL_COM_SLUG
+      )?.config
+      setCalComApiKey(typeof config?.apiKey === 'string' ? config.apiKey : '')
+      setCalComEventTypeId(
+        typeof config?.eventTypeId === 'number' ? String(config.eventTypeId) : ''
+      )
+      setCalComTimezone(typeof config?.timezone === 'string' ? config.timezone : 'UTC')
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
+    } else if (integration.slug === CALENDLY_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === CALENDLY_SLUG
+      )?.config
+      setCalendlyToken(
+        typeof config?.personalAccessToken === 'string' ? config.personalAccessToken : ''
+      )
+      setCalendlyEventTypeUri(
+        typeof config?.eventTypeUri === 'string' ? config.eventTypeUri : ''
+      )
+      setCalendlyOwnerUri(typeof config?.ownerUri === 'string' ? config.ownerUri : '')
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
+    } else if (integration.slug === TWILIO_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === TWILIO_SLUG
+      )?.config
+      setTwilioAccountSid(typeof config?.accountSid === 'string' ? config.accountSid : '')
+      setTwilioAuthToken(typeof config?.authToken === 'string' ? config.authToken : '')
+      setTwilioFromNumber(typeof config?.fromNumber === 'string' ? config.fromNumber : '')
+      setTwilioWebOnly(config?.webCallsOnly !== false)
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
+    } else if (integration.slug === PLIVO_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === PLIVO_SLUG
+      )?.config
+      setPlivoAuthId(typeof config?.authId === 'string' ? config.authId : '')
+      setPlivoAuthToken(typeof config?.authToken === 'string' ? config.authToken : '')
+      setPlivoFromNumber(typeof config?.fromNumber === 'string' ? config.fromNumber : '')
+      setPlivoWebOnly(config?.webCallsOnly !== false)
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
+    } else if (integration.slug === SIP_TRUNK_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === SIP_TRUNK_SLUG
+      )?.config
+      setSipProvider(typeof config?.provider === 'string' ? config.provider : '')
+      setSipTrunkDomain(typeof config?.trunkDomain === 'string' ? config.trunkDomain : '')
+      setSipUsername(typeof config?.username === 'string' ? config.username : '')
+      setSipPassword(typeof config?.password === 'string' ? config.password : '')
+      setSipWebOnly(config?.webCallsOnly !== false)
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+    } else if (integration.slug === GOOGLE_CALENDAR_SLUG) {
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === GOOGLE_CALENDAR_SLUG
+      )?.config
+      if (config && typeof config.calendar_id === 'string') {
+        setGoogleCalendarCalendarId(config.calendar_id)
+      }
+      setGoogleCalendarConnected(Boolean(config))
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
+    } else if (integration.slug === MICROSOFT_CALENDAR_SLUG) {
+      const config = enabledIntegrations.find(
+        (enabledIntegration) => enabledIntegration.slug === MICROSOFT_CALENDAR_SLUG
+      )?.config
+      setWebhookUrl('')
+      setWebhookEvents([])
+      setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(Boolean(config))
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
     } else {
       setWebhookUrl('')
       setWebhookEvents([])
       setWebhookSecret('')
+      setCalComApiKey('')
+      setCalComEventTypeId('')
+      setCalComTimezone('UTC')
+      setCalendlyToken('')
+      setCalendlyEventTypeUri('')
+      setCalendlyOwnerUri('')
+      setGoogleCalendarConnected(false)
+      setGoogleCalendarCalendarId('primary')
+      setMicrosoftCalendarConnected(false)
+      setTwilioAccountSid('')
+      setTwilioAuthToken('')
+      setTwilioFromNumber('')
+      setTwilioWebOnly(true)
+      setPlivoAuthId('')
+      setPlivoAuthToken('')
+      setPlivoFromNumber('')
+      setPlivoWebOnly(true)
+      setSipProvider('')
+      setSipTrunkDomain('')
+      setSipUsername('')
+      setSipPassword('')
+      setSipWebOnly(true)
     }
     setSelectedIntegration(integration)
   }
@@ -240,6 +547,158 @@ export function IntegrationsClient({
         setWebhookConfigError(result.error)
         return
       }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleSaveCalCom() {
+    if (!selectedIntegration) return
+    setCalComConfigError(null)
+
+    startTransition(async () => {
+      const result = await configureCalCom({
+        apiKey: calComApiKey,
+        eventTypeId: Number(calComEventTypeId),
+        timezone: calComTimezone || 'UTC',
+      })
+      if ('error' in result) {
+        setCalComConfigError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleSaveCalendly() {
+    if (!selectedIntegration) return
+    setCalendlyConfigError(null)
+
+    startTransition(async () => {
+      const result = await configureCalendly({
+        personalAccessToken: calendlyToken,
+        eventTypeUri: calendlyEventTypeUri,
+        ownerUri: calendlyOwnerUri,
+      })
+      if ('error' in result) {
+        setCalendlyConfigError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleSaveTwilio() {
+    if (!selectedIntegration) return
+    setTwilioError(null)
+
+    startTransition(async () => {
+      const result = await configureTwilio({
+        accountSid: twilioAccountSid,
+        authToken: twilioAuthToken,
+        fromNumber: twilioFromNumber,
+        webCallsOnly: twilioWebOnly,
+      })
+      if ('error' in result) {
+        setTwilioError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleSavePlivo() {
+    if (!selectedIntegration) return
+    setPlivoError(null)
+
+    startTransition(async () => {
+      const result = await configurePlivo({
+        authId: plivoAuthId,
+        authToken: plivoAuthToken,
+        fromNumber: plivoFromNumber,
+        webCallsOnly: plivoWebOnly,
+      })
+      if ('error' in result) {
+        setPlivoError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleSaveSipTrunk() {
+    if (!selectedIntegration) return
+    setSipError(null)
+
+    startTransition(async () => {
+      const result = await configureSipTrunk({
+        provider: sipProvider,
+        trunkDomain: sipTrunkDomain,
+        username: sipUsername,
+        password: sipPassword,
+        webCallsOnly: sipWebOnly,
+      })
+      if ('error' in result) {
+        setSipError(result.error)
+        return
+      }
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleConnectGoogleCalendar() {
+    if (!selectedIntegration) return
+    setGoogleCalendarError(null)
+
+    startTransition(async () => {
+      const result = await initiateGoogleCalendarOAuth()
+      if ('error' in result) {
+        setGoogleCalendarError(result.error)
+        return
+      }
+      window.location.href = result.url
+    })
+  }
+
+  function handleDisconnectGoogleCalendar() {
+    if (!selectedIntegration) return
+    setGoogleCalendarError(null)
+
+    startTransition(async () => {
+      const result = await disconnectGoogleCalendar()
+      if ('error' in result) {
+        setGoogleCalendarError(result.error)
+        return
+      }
+      setGoogleCalendarConnected(false)
+      setSelectedIntegration(null)
+    })
+  }
+
+  function handleConnectMicrosoftCalendar() {
+    if (!selectedIntegration) return
+    setMicrosoftCalendarError(null)
+
+    startTransition(async () => {
+      const result = await initiateMicrosoftCalendarOAuth()
+      if ('error' in result) {
+        setMicrosoftCalendarError(result.error)
+        return
+      }
+      window.location.href = result.url
+    })
+  }
+
+  function handleDisconnectMicrosoftCalendar() {
+    if (!selectedIntegration) return
+    setMicrosoftCalendarError(null)
+
+    startTransition(async () => {
+      const result = await disconnectMicrosoftCalendar()
+      if ('error' in result) {
+        setMicrosoftCalendarError(result.error)
+        return
+      }
+      setMicrosoftCalendarConnected(false)
       setSelectedIntegration(null)
     })
   }
@@ -552,6 +1011,335 @@ export function IntegrationsClient({
                 </div>
               )}
 
+              {selectedIntegration.slug === GOOGLE_CALENDAR_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  {googleCalendarConnected ? (
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <label htmlFor="google-calendar-id" className="text-sm font-medium">
+                          Calendar ID
+                        </label>
+                        <Input
+                          id="google-calendar-id"
+                          type="text"
+                          value={googleCalendarCalendarId}
+                          onChange={(e) => setGoogleCalendarCalendarId(e.target.value)}
+                          placeholder="primary"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Usually "primary" for your main calendar, or the email address of a shared calendar.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-4 w-4" />
+                          Connected to Google Calendar
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisconnectGoogleCalendar}
+                      >
+                        <Unplug />
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Connect your Google Calendar to sync appointments and availability.
+                      </p>
+                      <Button
+                        type="button"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleConnectGoogleCalendar}
+                      >
+                        <Plug />
+                        Connect Google Calendar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {selectedIntegration.slug === CAL_COM_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="calcom-api-key" className="text-sm font-medium">
+                      API key
+                    </label>
+                    <Input
+                      id="calcom-api-key"
+                      type="password"
+                      value={calComApiKey}
+                      onChange={(e) => setCalComApiKey(e.target.value)}
+                      placeholder="cal_..."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="calcom-event-type-id" className="text-sm font-medium">
+                      Event type ID
+                    </label>
+                    <Input
+                      id="calcom-event-type-id"
+                      type="number"
+                      min={1}
+                      value={calComEventTypeId}
+                      onChange={(e) => setCalComEventTypeId(e.target.value)}
+                      placeholder="123"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="calcom-timezone" className="text-sm font-medium">
+                      Timezone
+                    </label>
+                    <Input
+                      id="calcom-timezone"
+                      type="text"
+                      value={calComTimezone}
+                      onChange={(e) => setCalComTimezone(e.target.value)}
+                      placeholder="America/New_York"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Used for attendee timezone when creating Cal.com bookings.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {selectedIntegration.slug === TWILIO_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="twilio-account-sid" className="text-sm font-medium">
+                      Account SID
+                    </label>
+                    <Input
+                      id="twilio-account-sid"
+                      value={twilioAccountSid}
+                      onChange={(e) => setTwilioAccountSid(e.target.value)}
+                      placeholder="AC..."
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="twilio-auth-token" className="text-sm font-medium">
+                      Auth token
+                    </label>
+                    <Input
+                      id="twilio-auth-token"
+                      type="password"
+                      value={twilioAuthToken}
+                      onChange={(e) => setTwilioAuthToken(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="twilio-from-number" className="text-sm font-medium">
+                      Default from number
+                    </label>
+                    <Input
+                      id="twilio-from-number"
+                      value={twilioFromNumber}
+                      onChange={(e) => setTwilioFromNumber(e.target.value)}
+                      placeholder="+14155551234"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={twilioWebOnly}
+                      onCheckedChange={(checked) => setTwilioWebOnly(checked !== false)}
+                    />
+                    Web calls only (default, no number provisioning)
+                  </label>
+                </div>
+              )}
+
+              {selectedIntegration.slug === PLIVO_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="plivo-auth-id" className="text-sm font-medium">
+                      Auth ID
+                    </label>
+                    <Input
+                      id="plivo-auth-id"
+                      value={plivoAuthId}
+                      onChange={(e) => setPlivoAuthId(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="plivo-auth-token" className="text-sm font-medium">
+                      Auth token
+                    </label>
+                    <Input
+                      id="plivo-auth-token"
+                      type="password"
+                      value={plivoAuthToken}
+                      onChange={(e) => setPlivoAuthToken(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="plivo-from-number" className="text-sm font-medium">
+                      Default from number
+                    </label>
+                    <Input
+                      id="plivo-from-number"
+                      value={plivoFromNumber}
+                      onChange={(e) => setPlivoFromNumber(e.target.value)}
+                      placeholder="+14155551234"
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={plivoWebOnly}
+                      onCheckedChange={(checked) => setPlivoWebOnly(checked !== false)}
+                    />
+                    Web calls only (default, no number provisioning)
+                  </label>
+                </div>
+              )}
+
+              {selectedIntegration.slug === SIP_TRUNK_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="sip-provider" className="text-sm font-medium">
+                      Provider
+                    </label>
+                    <Input
+                      id="sip-provider"
+                      value={sipProvider}
+                      onChange={(e) => setSipProvider(e.target.value)}
+                      placeholder="Twilio SIP Trunking / Plivo / BYO"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="sip-domain" className="text-sm font-medium">
+                      Trunk domain
+                    </label>
+                    <Input
+                      id="sip-domain"
+                      value={sipTrunkDomain}
+                      onChange={(e) => setSipTrunkDomain(e.target.value)}
+                      placeholder="example.pstn.twilio.com"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="sip-username" className="text-sm font-medium">
+                      Username
+                    </label>
+                    <Input
+                      id="sip-username"
+                      value={sipUsername}
+                      onChange={(e) => setSipUsername(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label htmlFor="sip-password" className="text-sm font-medium">
+                      Password
+                    </label>
+                    <Input
+                      id="sip-password"
+                      type="password"
+                      value={sipPassword}
+                      onChange={(e) => setSipPassword(e.target.value)}
+                    />
+                  </div>
+                  <label className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      checked={sipWebOnly}
+                      onCheckedChange={(checked) => setSipWebOnly(checked !== false)}
+                    />
+                    Web calls only (default, SIP inbound disabled)
+                  </label>
+                </div>
+              )}
+
+              {selectedIntegration.slug === CALENDLY_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="calendly-token" className="text-sm font-medium">
+                      Personal access token
+                    </label>
+                    <Input
+                      id="calendly-token"
+                      type="password"
+                      value={calendlyToken}
+                      onChange={(e) => setCalendlyToken(e.target.value)}
+                      placeholder="CALENDLY_PAT..."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="calendly-event-type-uri" className="text-sm font-medium">
+                      Event type URI
+                    </label>
+                    <Input
+                      id="calendly-event-type-uri"
+                      type="url"
+                      value={calendlyEventTypeUri}
+                      onChange={(e) => setCalendlyEventTypeUri(e.target.value)}
+                      placeholder="https://api.calendly.com/event_types/..."
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="calendly-owner-uri" className="text-sm font-medium">
+                      Owner URI
+                    </label>
+                    <Input
+                      id="calendly-owner-uri"
+                      type="url"
+                      value={calendlyOwnerUri}
+                      onChange={(e) => setCalendlyOwnerUri(e.target.value)}
+                      placeholder="https://api.calendly.com/users/..."
+                    />
+                  </div>
+                </div>
+              )}
+
+              {selectedIntegration.slug === MICROSOFT_CALENDAR_SLUG && (
+                <div className="space-y-4 rounded-lg border p-3">
+                  {microsoftCalendarConnected ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                          <Check className="h-4 w-4" />
+                          Connected to Microsoft Calendar
+                        </span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisconnectMicrosoftCalendar}
+                      >
+                        <Unplug />
+                        Disconnect
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Connect your Microsoft Calendar to sync appointments and availability.
+                      </p>
+                      <Button
+                        type="button"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleConnectMicrosoftCalendar}
+                      >
+                        <Plug />
+                        Connect Microsoft Calendar
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {actionError && (
                 <p className="text-sm text-destructive">{actionError}</p>
               )}
@@ -559,6 +1347,28 @@ export function IntegrationsClient({
               {webhookConfigError && (
                 <p className="text-sm text-destructive">{webhookConfigError}</p>
               )}
+
+              {googleCalendarError && (
+                <p className="text-sm text-destructive">{googleCalendarError}</p>
+              )}
+
+              {calComConfigError && (
+                <p className="text-sm text-destructive">{calComConfigError}</p>
+              )}
+
+              {calendlyConfigError && (
+                <p className="text-sm text-destructive">{calendlyConfigError}</p>
+              )}
+
+              {microsoftCalendarError && (
+                <p className="text-sm text-destructive">{microsoftCalendarError}</p>
+              )}
+
+              {twilioError && <p className="text-sm text-destructive">{twilioError}</p>}
+
+              {plivoError && <p className="text-sm text-destructive">{plivoError}</p>}
+
+              {sipError && <p className="text-sm text-destructive">{sipError}</p>}
               </DialogBody>
 
               <DialogFooter>
@@ -590,6 +1400,125 @@ export function IntegrationsClient({
                       Save
                     </Button>
                   </>
+                ) : selectedIntegration.slug === CAL_COM_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        <Unplug />
+                        Disable
+                      </Button>
+                    )}
+                    <Button type="button" className="gap-1.5" disabled={isPending} onClick={handleSaveCalCom}>
+                      <Check />
+                      Save
+                    </Button>
+                  </>
+                ) : selectedIntegration.slug === CALENDLY_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        <Unplug />
+                        Disable
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      className="gap-1.5"
+                      disabled={isPending}
+                      onClick={handleSaveCalendly}
+                    >
+                      <Check />
+                      Save
+                    </Button>
+                  </>
+                ) : selectedIntegration.slug === TWILIO_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        <Unplug />
+                        Disable
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      className="gap-1.5"
+                      disabled={isPending}
+                      onClick={handleSaveTwilio}
+                    >
+                      <Check />
+                      Save
+                    </Button>
+                  </>
+                ) : selectedIntegration.slug === PLIVO_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        <Unplug />
+                        Disable
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      className="gap-1.5"
+                      disabled={isPending}
+                      onClick={handleSavePlivo}
+                    >
+                      <Check />
+                      Save
+                    </Button>
+                  </>
+                ) : selectedIntegration.slug === SIP_TRUNK_SLUG ? (
+                  <>
+                    {isSelectedEnabled && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        className="gap-1.5"
+                        disabled={isPending}
+                        onClick={handleDisable}
+                      >
+                        <Unplug />
+                        Disable
+                      </Button>
+                    )}
+                    <Button
+                      type="button"
+                      className="gap-1.5"
+                      disabled={isPending}
+                      onClick={handleSaveSipTrunk}
+                    >
+                      <Check />
+                      Save
+                    </Button>
+                  </>
+                ) : selectedIntegration.slug === GOOGLE_CALENDAR_SLUG ? (
+                  <></>
+                ) : selectedIntegration.slug === MICROSOFT_CALENDAR_SLUG ? (
+                  <></>
                 ) : selectedIntegration.availability === 'coming_soon' ? (
                   <Button type="button" disabled>
                     Coming soon

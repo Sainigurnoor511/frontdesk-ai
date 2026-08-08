@@ -274,7 +274,7 @@ Landing pages and portfolios are **visual products**. Text-only pages with fake-
 **Even minimalist sites need real images.** A pure-text page is not minimalism. It is incomplete work. Even an editorial Linear-style site needs at least 2-3 real images (hero, one product/lifestyle shot, one supporting image). Generate B&W minimalist photography if the brief is restrained; do not skip images entirely because the dial is low.
 
 **Real company logos for social proof.** When the brief calls for a "Trusted by / Used by / Customers" logo wall, do NOT default to plain text wordmarks (`<span>Acme Co</span>` styled in a row). Use real SVG logos:
-* **Source: Simple Icons** (`https://cdn.simpleicons.org/{slug}/ffffff` for any color, or `simple-icons` npm package). Covers most known brands.
+* **Source: Simple Icons** (`https://cdn.simpleicons.org/{slug}/ffffff` for any color, or `simple-icons` package). Covers most known brands.
 * **Alternative: devicon** for tech-stack logos (`@svgr/cli` or CDN).
 * **Make-up the brand name? Then make-up an SVG mark too.** Generate a simple monogram (one letter in a circle, two-letter ligature, abstract glyph) rendered as an inline `<svg>` matching the page style. Plain text wordmarks for invented brand names look generic.
 * **Always** ensure logos render in both light and dark mode (white-on-dark, black-on-light, or single-color theme variable).
@@ -988,41 +988,41 @@ The sections below are vendored reference content. They give the agent real inst
 
 ```bash
 # Material Web (Material 3)
-npm install @material/web
+pnpm add @material/web
 
 # Fluent UI React (v9)
-npm install @fluentui/react-components
+pnpm add @fluentui/react-components
 
 # Fluent UI Web Components (framework-free)
-npm install @fluentui/web-components @fluentui/tokens
+pnpm add @fluentui/web-components @fluentui/tokens
 
 # IBM Carbon
-npm install @carbon/react @carbon/styles
+pnpm add @carbon/react @carbon/styles
 
 # Radix Themes
-npm install @radix-ui/themes
+pnpm add @radix-ui/themes
 
 # shadcn/ui (open code, owned components)
 npx shadcn@latest init
 npx shadcn@latest add button card badge separator input
 
 # Primer CSS (GitHub product/devtool UI)
-npm install --save @primer/css
+pnpm add @primer/css
 
 # Primer Brand (GitHub marketing UI)
-npm install @primer/react-brand
+pnpm add @primer/react-brand
 
 # GOV.UK Frontend
-npm install govuk-frontend
+pnpm add govuk-frontend
 
 # USWDS (US Web Design System)
-npm install uswds
+pnpm add uswds
 
 # Atlassian Design System (Atlaskit)
 yarn add @atlaskit/css-reset @atlaskit/tokens @atlaskit/button @atlaskit/badge @atlaskit/section-message @atlaskit/card
 
 # Bootstrap 5.3
-npm install bootstrap
+pnpm add bootstrap
 
 # Shopify Polaris Web Components (Shopify apps only)
 # Add this to your app HTML head:

@@ -73,6 +73,19 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
 
+  worker-webhook:
+    build:
+      context: .
+      target: worker
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "workers/webhook.ts"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file: .env.local
+    environment:
+      REDIS_URL: redis://redis:6379/0
+
   worker-voice:
     build:
       context: .

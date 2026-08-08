@@ -19,7 +19,16 @@ export type Integration = {
   availability: 'available' | 'coming_soon'
 }
 
-const AVAILABLE_INTEGRATION_SLUGS = new Set(['webhook-tool', 'google-calendar'])
+const AVAILABLE_INTEGRATION_SLUGS = new Set([
+  'webhook-tool',
+  'google-calendar',
+  'microsoft-calendar',
+  'cal-com',
+  'calendly',
+  'twilio',
+  'plivo',
+  'sip-trunk',
+])
 
 function withAvailability(
   items: Omit<Integration, 'availability'>[]
@@ -44,6 +53,14 @@ export const integrationCategories: IntegrationCategory[] = [
 
 export const integrationCatalog: Integration[] = withAvailability([
   {
+    slug: 'cal-com',
+    name: 'Cal.com',
+    category: 'Scheduling',
+    description: 'Mirror bookings into Cal.com event types using your API key.',
+    settingsDescription:
+      'Connect Cal.com with an API key and event type id so new appointments can create matching Cal.com bookings.',
+  },
+  {
     slug: 'calendly',
     name: 'Calendly',
     category: 'Scheduling',
@@ -58,6 +75,14 @@ export const integrationCatalog: Integration[] = withAvailability([
     description: 'Sync bookings and availability with a connected Google Calendar.',
     settingsDescription:
       'With this enabled, staff can connect their calendar to sync availability and bookings.',
+  },
+  {
+    slug: 'plivo',
+    name: 'Plivo',
+    category: 'Telephony',
+    description: 'Bring your Plivo voice and messaging credentials into your receptionist.',
+    settingsDescription:
+      'Connect Plivo credentials and a default from number. Web-calls-only stays enabled by default until number provisioning is explicitly enabled.',
   },
   {
     slug: 'microsoft-calendar',
@@ -208,6 +233,7 @@ export const integrationCatalog: Integration[] = withAvailability([
 ])
 
 const integrationIconPaths: Record<string, string> = {
+  'cal-com': '/integrations/cal-com.svg',
   calendly: '/integrations/calendly.svg',
   'google-calendar': '/integrations/google-calendar.svg',
   hubspot: '/integrations/hubspot.svg',
@@ -216,6 +242,7 @@ const integrationIconPaths: Record<string, string> = {
   make: '/integrations/make.svg',
   'mcp-server': '/integrations/mcp.svg',
   'microsoft-calendar': '/integrations/microsoft-calendar.svg',
+  plivo: '/integrations/plivo.svg',
   ringcentral: '/integrations/ringcentral.svg',
   salesforce: '/integrations/salesforce.svg',
   sendgrid: '/integrations/sendgrid.svg',

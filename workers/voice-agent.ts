@@ -146,7 +146,7 @@ async function entrypoint(ctx: agents.JobContext) {
     const voiceId = agentDetail.voice_id ?? defaultVoiceIdForLanguage(agentDetail.language)
     const toneTag = buildToneTag(agentDetail.tone_traits)
 
-    const groqModel = resolveGroqModel(agentDetail.llm_model ?? 'gemini-3-flash')
+    const groqModel = resolveGroqModel(agentDetail.llm_model)
 
     const session = new agents.AgentSession({
       stt: OpenAISTT.withGroq(),

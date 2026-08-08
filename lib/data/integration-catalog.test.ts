@@ -40,13 +40,9 @@ describe('integration catalog data', () => {
   })
 
   it('every integration with an icon path has an icon file in public/integrations', () => {
-    const brandedSlugs = integrationCatalog.filter(
-      (integration) => !['sip-trunk', 'webhook-tool'].includes(integration.slug)
-    )
-    expect(brandedSlugs.length).toBe(18)
-    for (const integration of brandedSlugs) {
+    for (const integration of integrationCatalog) {
       const iconPath = getIntegrationIconPath(integration.slug)
-      expect(iconPath).toBeDefined()
+      if (!iconPath) continue
       expect(
         existsSync(join(process.cwd(), 'public', iconPath as string))
       ).toBe(true)

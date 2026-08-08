@@ -18,6 +18,7 @@ import {
   AGENT_HOLD_SOUNDS,
   AGENT_LLM_MODELS,
   AGENT_REASONING_EFFORTS,
+  normalizeAgentLlmModel,
   type AgentHoldSound,
   type AgentLlmModel,
   type AgentReasoningEffort,
@@ -51,9 +52,8 @@ function normalizeHoldSound(value: string | null): AgentHoldSound {
 
 export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   const router = useRouter()
-  const [llmModel, setLlmModel] = useState<AgentLlmModel>(
-    (agent.llm_model as AgentLlmModel) ?? 'gemini-3-flash'
-  )
+  const normalizedLlmModel = normalizeAgentLlmModel(agent.llm_model)
+  const [llmModel, setLlmModel] = useState<AgentLlmModel>(normalizedLlmModel)
   const [reasoningEffort, setReasoningEffort] = useState<AgentReasoningEffort>(
     agent.reasoning_effort ?? 'minimal'
   )
@@ -76,7 +76,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   const [isSaving, startSaveTransition] = useTransition()
 
   const dirty =
-    llmModel !== (agent.llm_model ?? 'gemini-3-flash') ||
+    llmModel !== normalizedLlmModel ||
     reasoningEffort !== (agent.reasoning_effort ?? 'minimal') ||
     filterBackgroundSpeech !== (agent.filter_background_speech ?? false) ||
     skipKnowledgeRetrieval !== (agent.skip_knowledge_retrieval ?? false) ||
@@ -87,7 +87,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
     identityVerificationEnabled !== (agent.identity_verification_enabled ?? false)
 
   function handleCancel() {
-    setLlmModel((agent.llm_model as AgentLlmModel) ?? 'gemini-3-flash')
+    setLlmModel(normalizeAgentLlmModel(agent.llm_model))
     setReasoningEffort(agent.reasoning_effort ?? 'minimal')
     setFilterBackgroundSpeech(agent.filter_background_speech ?? false)
     setSkipKnowledgeRetrieval(agent.skip_knowledge_retrieval ?? false)
@@ -145,6 +145,9 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-sm text-muted-foreground">
+              Saved values use Groq model ids directly.
+            </p>
           </div>
 
           <div className="space-y-1.5">

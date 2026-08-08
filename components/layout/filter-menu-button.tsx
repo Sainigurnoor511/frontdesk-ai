@@ -15,6 +15,9 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
+const FILTER_BUTTON_SIZE: 'xs' = 'xs'
+const FILTER_ICON_CLASS = 'size-3'
+
 export function FilterMenuButton({
   icon: Icon,
   label,
@@ -39,11 +42,11 @@ export function FilterMenuButton({
           <Button
             type="button"
             variant={active ? 'secondary' : 'outline'}
-            size="sm"
+            size={FILTER_BUTTON_SIZE}
             disabled={disabled}
             className="gap-1.5"
           >
-            <Icon className="size-3.5" />
+            <Icon className={FILTER_ICON_CLASS} />
             {label}
           </Button>
         }
@@ -74,13 +77,13 @@ export function FilterToggleButton({
     <Button
       type="button"
       variant={active ? 'secondary' : 'outline'}
-      size="sm"
+      size={FILTER_BUTTON_SIZE}
       disabled={disabled}
       title={title}
       className="gap-1.5"
       onClick={onClick}
     >
-      <Icon className="size-3.5" />
+      <Icon className={FILTER_ICON_CLASS} />
       {label}
     </Button>
   )
@@ -108,10 +111,10 @@ export function DateFilterButton({
           <Button
             type="button"
             variant={active ? 'secondary' : 'outline'}
-            size="sm"
+            size={FILTER_BUTTON_SIZE}
             className="gap-1.5"
           >
-            <Icon className="size-3.5" />
+            <Icon className={FILTER_ICON_CLASS} />
             {label}
           </Button>
         }

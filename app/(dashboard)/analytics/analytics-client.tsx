@@ -23,19 +23,8 @@ import {
 } from '@/components/ui/empty'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Button } from '@/components/ui/button'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover'
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
+import { FilterMenuButton, FilterToggleButton } from '@/components/layout/filter-menu-button'
 import type { Service, BusinessLocation } from '@/lib/data/business'
 import type { StaffMember } from '@/lib/data/staff'
 import { getAnalyticsForRange, type AnalyticsData, type AnalyticsChannel, type DateRangeOption } from './actions'
@@ -159,65 +148,34 @@ export function AnalyticsClient({
         </TabsList>
 
         <div className="flex flex-wrap items-center gap-2 pt-6">
-          <Select value={range} onValueChange={handleRangeChange}>
-            <SelectTrigger className="w-[180px]">
-              <span className="flex items-center gap-1.5">
-                <Calendar className="size-3.5 shrink-0" />
-                <SelectValue />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {RANGE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <FilterMenuButton icon={Calendar} label="Range" active={range !== '30d'}>
+            {RANGE_OPTIONS.map((option) => (
+              <DropdownMenuItem key={option.value} onClick={() => handleRangeChange(option.value)}>
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </FilterMenuButton>
 
-          <Select value={granularity} onValueChange={(value) => setGranularity((value ?? 'day') as 'day' | 'week')}>
-            <SelectTrigger className="w-[150px]">
-              <span className="flex items-center gap-1.5">
-                <BarChart3 className="size-3.5 shrink-0" />
-                <SelectValue placeholder="Granularity" />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="day">Day</SelectItem>
-              <SelectItem value="week">Week</SelectItem>
-            </SelectContent>
-          </Select>
+          <FilterMenuButton icon={BarChart3} label="Granularity" active={granularity !== 'day'}>
+            <DropdownMenuItem onClick={() => setGranularity('day')}>Day</DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setGranularity('week')}>Week</DropdownMenuItem>
+          </FilterMenuButton>
 
-          <Select value={channel} onValueChange={handleChannelChange}>
-            <SelectTrigger className="w-[170px]">
-              <span className="flex items-center gap-1.5">
-                <Radio className="size-3.5 shrink-0" />
-                <SelectValue placeholder="Channel" />
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {CHANNEL_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <FilterMenuButton icon={Radio} label="Channel" active={channel !== 'all'}>
+            {CHANNEL_OPTIONS.map((option) => (
+              <DropdownMenuItem key={option.value} onClick={() => handleChannelChange(option.value)}>
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </FilterMenuButton>
 
-          <Popover>
-            <PopoverTrigger
-              render={
-                <Button type="button" variant="outline" size="sm" className="gap-1.5">
-                  <MapPin className="size-3.5" />
-                  Location
-                </Button>
-              }
-            />
-            <PopoverContent className="w-64 text-sm text-muted-foreground">
-              Location-level analytics will appear once appointments are linked to business
-              locations.
-            </PopoverContent>
-          </Popover>
+          <FilterToggleButton
+            icon={MapPin}
+            label="Location"
+            disabled
+            title="Location-level analytics will appear once appointments are linked to business locations"
+            onClick={() => undefined}
+          />
 
           {isPending && <Skeleton className="h-4 w-20" />}
         </div>
