@@ -9,9 +9,17 @@ import {
   type RoomOptions,
   type TranscriptionSegment,
 } from 'livekit-client'
+
 export type AgentState = null | 'thinking' | 'listening' | 'talking'
 
-type CallStatus = 'idle' | 'connecting' | 'connected' | 'ended' | 'error'
+type CallStatus = 'idle' | 'connecting' | 'joining' | 'connected' | 'ended' | 'error'
+
+type CallCredentials = {
+  token: string
+  url: string
+  roomName: string
+  conversationId: string
+}
 
 export type TranscriptMessage = {
   id: string
@@ -19,6 +27,8 @@ export type TranscriptMessage = {
   text: string
   final: boolean
 }
+
+const PREPARED_CALL_TTL_MS = 2 * 60 * 1000
 
 /**
  * Explicit browser audio processing — without these, WebRTC leaves echo
@@ -37,9 +47,7 @@ const ROOM_OPTIONS: RoomOptions = {
 }
 
 export function useVoiceCall(
-  startCall: () => Promise<
-    { error: string } | { token: string; url: string; roomName: string; conversationId: string }
-  >
+  startCall: () => Promise<{ error: string } | CallCredentials>
 ) {
   const [status, setStatus] = useState<CallStatus>('idle')
   const [agentState, setAgentState] = useState<AgentState>(null)
@@ -47,19 +55,18 @@ export function useVoiceCall(
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
   const roomRef = useRef<Room | null>(null)
   const attachedTracksRef = useRef<Array<{ track: RemoteTrack; element: HTMLMediaElement }>>([])
+  const preparedCallRef = useRef<{ credentials: CallCredentials; preparedAt: number } | null>(null)
 
   const cleanupAttachedElements = useCallback(() => {
     for (const { track, element } of attachedTracksRef.current) {
-      // track.detach() only clears element.srcObject and pauses it — the real
-      // livekit-client implementation deliberately keeps the element around
-      // (it caches/recycles <audio> elements internally) rather than removing
-      // it from the DOM. We still call detach() first to release the track's
-      // internal reference to the element, but we must remove it from the DOM
-      // ourselves or it leaks as an orphaned node in document.body.
       track.detach(element)
       element.remove()
     }
     attachedTracksRef.current = []
+  }, [])
+
+  const invalidatePreparedCall = useCallback(() => {
+    preparedCallRef.current = null
   }, [])
 
   /**
@@ -78,6 +85,7 @@ export function useVoiceCall(
         el.autoplay = true
         document.body.appendChild(el)
         attachedTracksRef.current.push({ track, element: el })
+        setStatus('connected')
         setAgentState('talking')
       }
     })
@@ -106,16 +114,16 @@ export function useVoiceCall(
       cleanupAttachedElements()
       setStatus('ended')
       setAgentState(null)
+      invalidatePreparedCall()
     })
 
     return room
-  }, [cleanupAttachedElements])
+  }, [cleanupAttachedElements, invalidatePreparedCall])
 
   /**
-   * Best-effort prewarm, call when the call UI opens (before the caller taps
-   * "start"): warms DNS/TLS and, on LiveKit Cloud, pins the edge data center.
-   * Uses the static endpoint only — no room/token is minted, so this has no
-   * side effects if the caller never actually dials.
+   * Best-effort prewarm when the call UI opens: warms DNS/TLS to LiveKit and,
+   * when possible, mints a room/token early so the agent can join before the
+   * caller taps start.
    */
   const prewarm = useCallback(async () => {
     try {
@@ -127,33 +135,50 @@ export function useVoiceCall(
     } catch {
       // Prewarm is an optimization; never let it block or surface errors.
     }
-  }, [ensureRoom])
+
+    try {
+      const result = await startCall()
+      if ('error' in result) return
+
+      preparedCallRef.current = { credentials: result, preparedAt: Date.now() }
+      await ensureRoom().prepareConnection(result.url, result.token)
+    } catch {
+      invalidatePreparedCall()
+    }
+  }, [ensureRoom, invalidatePreparedCall, startCall])
 
   const connect = useCallback(async () => {
     setStatus('connecting')
     setErrorMessage(null)
     setTranscript([])
 
-    const result = await startCall()
-    if ('error' in result) {
-      setStatus('error')
-      setErrorMessage(result.error)
-      return
+    const prepared = preparedCallRef.current
+    const preparedIsFresh =
+      prepared && Date.now() - prepared.preparedAt < PREPARED_CALL_TTL_MS
+
+    let credentials: CallCredentials | null = preparedIsFresh ? prepared.credentials : null
+    if (!credentials) {
+      const result = await startCall()
+      if ('error' in result) {
+        setStatus('error')
+        setErrorMessage(result.error)
+        return
+      }
+      credentials = result
     }
 
+    preparedCallRef.current = null
     const room = ensureRoom()
 
     try {
-      // Re-warm with the token so LiveKit Cloud selects the nearest edge and
-      // the DNS/TLS cache is hot for the ICE handshake that follows.
       try {
-        await room.prepareConnection(result.url, result.token)
+        await room.prepareConnection(credentials.url, credentials.token)
       } catch {
         // Non-fatal: connect() still performs the full handshake.
       }
-      await room.connect(result.url, result.token, { autoSubscribe: true })
+      await room.connect(credentials.url, credentials.token, { autoSubscribe: true })
       await room.localParticipant.setMicrophoneEnabled(true)
-      setStatus('connected')
+      setStatus('joining')
       setAgentState('listening')
     } catch (err) {
       setStatus('error')
@@ -165,15 +190,17 @@ export function useVoiceCall(
     void roomRef.current?.disconnect()
     setStatus('ended')
     setAgentState(null)
-  }, [])
+    invalidatePreparedCall()
+  }, [invalidatePreparedCall])
 
   useEffect(() => {
     return () => {
       void roomRef.current?.disconnect()
       roomRef.current = null
       cleanupAttachedElements()
+      invalidatePreparedCall()
     }
-  }, [cleanupAttachedElements])
+  }, [cleanupAttachedElements, invalidatePreparedCall])
 
   return { status, agentState, errorMessage, transcript, connect, disconnect, prewarm }
 }

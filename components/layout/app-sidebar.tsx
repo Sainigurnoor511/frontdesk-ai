@@ -61,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import { ThinkingOrb } from 'thinking-orbs'
+import { Orb } from '@/components/ui/orb'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
 
@@ -110,10 +110,10 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
 const allNavItems: NavItem[] = navSections.flatMap((section) => section.items)
 
 function CallReceptionistPill({
-  phoneNumber,
+  label,
   onClick,
 }: {
-  phoneNumber: string
+  label: string
   onClick: () => void
 }) {
   const { state } = useSidebar()
@@ -128,10 +128,10 @@ function CallReceptionistPill({
         }}
       >
         <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
-          <ThinkingOrb state="composing" size={20} style={{ width: '110%', height: '110%' }} />
+          <Orb className="h-full w-full" />
         </div>
-        {state !== 'collapsed' && <span>{phoneNumber}</span>}
-        {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto" />}
+        {state !== 'collapsed' && <span className="truncate">{label}</span>}
+        {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto shrink-0" />}
       </SidebarMenuButton>
     </SidebarMenuItem>
   )
@@ -139,6 +139,7 @@ function CallReceptionistPill({
 
 export function AppSidebar({
   agent,
+  businessName,
   hiddenItems,
   unreadConversationCount = 0,
 }: {
@@ -148,6 +149,7 @@ export function AppSidebar({
     name: string
     staffPhoneNumber: string | null
   } | null
+  businessName: string
   hiddenItems: string[]
   unreadConversationCount?: number
 }) {
@@ -206,22 +208,10 @@ export function AppSidebar({
         </SidebarMenu>
         {agent && (
           <SidebarMenu>
-            {agent.staffPhoneNumber ? (
-              <CallReceptionistPill
-                phoneNumber={agent.staffPhoneNumber}
-                onClick={() => setCallOpen(true)}
-              />
-            ) : (
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="h-8 justify-center rounded-[10px] border border-dashed"
-                  render={<Link href="/phone-numbers" />}
-                >
-                  <Phone className="size-4" />
-                  <span>Add phone number</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
+            <CallReceptionistPill
+              label={agent.name}
+              onClick={() => setCallOpen(true)}
+            />
           </SidebarMenu>
         )}
       </SidebarHeader>
@@ -237,9 +227,12 @@ export function AppSidebar({
                 <SidebarMenu>
                   {'isSetup' in section && section.isSetup && agent && (
                     <SidebarMenuItem>
-                      <SidebarMenuButton isActive={pathname === '/business'} render={<Link href="/business" />}>
+                      <SidebarMenuButton
+                        isActive={pathname === '/business'}
+                        render={<Link href="/business" />}
+                      >
                         <Building2 strokeWidth={2.5} />
-                        <span>{agent.name}</span>
+                        <span>{businessName}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   )}
@@ -253,7 +246,14 @@ export function AppSidebar({
                         render={<Link href={item.url} />}
                       >
                         <item.icon strokeWidth={2.5} />
-                        <span>{item.title}</span>
+                        <span className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate">{item.title}</span>
+                          {item.url === '/conversations' && unreadConversationCount > 0 && (
+                            <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-current px-0.5 text-[10px] font-medium leading-none tabular-nums group-data-[collapsible=icon]:hidden">
+                              {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
+                            </span>
+                          )}
+                        </span>
                         {item.badge && (
                           <Badge
                             variant="outline"
@@ -263,13 +263,6 @@ export function AppSidebar({
                           </Badge>
                         )}
                       </SidebarMenuButton>
-                      {item.url === '/conversations' && unreadConversationCount > 0 && (
-                        <SidebarMenuBadge
-                          className="min-w-5 rounded-full bg-primary px-0 text-[10px] font-semibold text-primary-foreground"
-                        >
-                          {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
-                        </SidebarMenuBadge>
-                      )}
                       {sidebarState !== 'collapsed' && (
                         <button
                           type="button"
@@ -323,7 +316,7 @@ export function AppSidebar({
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <Building2 />
-                        {agent ? agent.name : 'Business'}
+                        {businessName}
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
                         <DropdownMenuItem render={<Link href="/business?tab=info" />}>

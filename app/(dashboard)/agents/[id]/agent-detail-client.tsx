@@ -593,14 +593,14 @@ export function AgentDetailClient({
                 <SectionHeading
                   compact
                   title="First message"
-                  description="The first message the receptionist will say. If empty, the receptionist waits for user."
+                  description="The first message the receptionist says when a call connects. If empty, they say: “Hello! Thanks for calling [business]. How can I help you today?”"
                 />
                 <div className="overflow-hidden rounded-2xl border border-border">
                   <Textarea
                     value={firstMessage}
                     onChange={(e) => setFirstMessage(e.target.value)}
                     rows={2}
-                    placeholder="Enter the first message..."
+                    placeholder="Hello! Thanks for calling Acme Co. How can I help you today?"
                     className="resize-none rounded-none border-0 text-sm focus-visible:ring-0"
                   />
                   <div className="flex items-center justify-end border-t bg-muted/40 px-3 py-1.5">

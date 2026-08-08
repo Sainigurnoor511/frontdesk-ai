@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
+import Link from 'next/link'
 import {
   Phone,
   PhoneOff,
@@ -11,27 +12,11 @@ import {
   Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { ThinkingOrb } from 'thinking-orbs'
+import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
-import { useVoiceCall, type AgentState } from './use-voice-call'
+import { useVoiceCall } from './use-voice-call'
 import { startDashboardCall } from '@/app/(dashboard)/actions/voice'
 import { startPublicCall } from '@/app/smb/actions'
-
-/** Maps the live call's agent state to a ThinkingOrb animation state. */
-function agentStateToOrbState(
-  state: AgentState,
-): 'composing' | 'listening' | 'working' | 'breathing' {
-  switch (state) {
-    case 'thinking':
-      return 'composing'
-    case 'listening':
-      return 'listening'
-    case 'talking':
-      return 'working'
-    default:
-      return 'breathing'
-  }
-}
 
 export function CallDialog({
   open,
@@ -70,6 +55,7 @@ export function CallDialog({
   }, [open, prewarm])
 
   const isConnecting = status === 'connecting'
+  const isJoining = status === 'joining'
   const isConnected = status === 'connected'
   const isEnded = status === 'ended'
   const hasTranscript = transcript.length > 0
@@ -82,162 +68,197 @@ export function CallDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         showCloseButton={false}
-        className="flex max-h-[min(90vh,720px)] max-w-lg flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-lg"
+        className="flex h-[632.875px] max-h-[min(90vh,632.875px)] w-full max-w-[512px] flex-col gap-0 overflow-hidden rounded-2xl p-0 sm:max-w-[512px]"
       >
-        <div className="flex shrink-0 items-center justify-between px-4 py-3">
-          {isConnected ? (
-            <span className="flex items-center gap-1.5 text-sm text-destructive">
-              <span className="size-2 rounded-full bg-destructive" />
-              On call
-            </span>
-          ) : (
-            <span />
-          )}
-          <DialogClose
-            aria-label="Close"
-            className="flex size-8 items-center justify-center rounded-lg text-foreground hover:bg-muted"
-          >
-            <X className="size-3.5" />
-          </DialogClose>
-        </div>
-
-        <div className="scrollbar-none flex-1 overflow-y-auto px-4">
-          {!isEnded && (
-            <div className="flex flex-col items-center text-center">
-              <h2 className="text-lg font-semibold">{agentName}</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {isConnected ? 'Voice call active' : 'Start a call or chat to your receptionist'}
-              </p>
-
-              <div className="relative mt-4">
-                <div className="size-44 overflow-hidden rounded-full">
-                  <ThinkingOrb
-                    state={agentStateToOrbState(agentState)}
-                    size={64}
-                    style={{ width: '100%', height: '100%' }}
-                  />
-                </div>
-                {isConnected ? (
-                  <button
-                    type="button"
-                    onClick={disconnect}
-                    aria-label="End call"
-                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-red-500 text-white transition-transform hover:scale-105 active:scale-95"
-                  >
-                    <PhoneOff fill="currentColor" className="size-5" />
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={connect}
-                    disabled={isConnecting}
-                    aria-label="Start call"
-                    className="absolute -bottom-2 left-1/2 flex size-14 -translate-x-1/2 items-center justify-center rounded-full border-4 border-background bg-foreground text-white transition-transform hover:scale-105 active:scale-95 disabled:pointer-events-none disabled:opacity-60"
-                  >
-                    <Phone fill="currentColor" className="size-5" />
-                  </button>
-                )}
-              </div>
-
-              {isConnecting && (
-                <p className="mt-2 text-sm text-muted-foreground">Connecting…</p>
+        <div className="relative flex h-full w-full flex-col">
+          <div className="z-10 flex w-full shrink-0 items-center justify-between px-4 py-3">
+            <div className="flex items-center gap-2">
+              {isConnected && (
+                <span className="flex items-center gap-1.5 text-sm text-destructive">
+                  <span className="size-2 rounded-full bg-destructive" />
+                  On call
+                </span>
               )}
+              {isJoining && (
+                <span className="text-sm text-muted-foreground">Connecting to receptionist…</span>
+              )}
+            </div>
+            <DialogClose
+              aria-label="Close dialog"
+              className="inline-flex size-8 items-center justify-center rounded-lg bg-transparent text-foreground transition-colors hover:bg-muted"
+            >
+              <X className="size-[18px]" strokeWidth={1.5} />
+            </DialogClose>
+          </div>
 
-              {errorMessage && <p className="mt-1 text-sm text-destructive">{errorMessage}</p>}
-
-              {staffPhoneNumber && !isConnected && (
-                <div className="mt-2 flex flex-col items-center gap-1.5">
-                  <p className="text-sm text-muted-foreground">Or call</p>
-                  <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
-                    {staffPhoneNumber}
+          <div
+            className={cn(
+              'relative min-h-0 flex-1 overflow-y-auto transition-all duration-500 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+              !hasTranscript && !isEnded && 'flex flex-col'
+            )}
+          >
+            {!isEnded && (
+              <div
+                className={cn(
+                  'flex flex-col items-center gap-5 px-4',
+                  !hasTranscript && 'h-full justify-center'
+                )}
+              >
+                <div className="flex flex-col items-center gap-1 text-center">
+                  <span className="text-base font-semibold text-foreground">{agentName}</span>
+                  <span className="text-sm font-medium text-muted-foreground">
+                    {isConnected
+                      ? 'Voice call active'
+                      : isJoining
+                        ? 'Your receptionist is joining…'
+                        : 'Start a call or chat to your receptionist'}
                   </span>
                 </div>
-              )}
-            </div>
-          )}
 
-          {hasTranscript && (
-            <div className={cn('flex flex-col gap-3', !isEnded && 'pb-2', isEnded && 'py-4')}>
-              {transcript.map((message) => (
-                <div
-                  key={message.id}
-                  className={cn(
-                    'flex items-end gap-2',
-                    message.speaker === 'user' && 'flex-row-reverse'
+                <div className="flex flex-col items-center">
+                  <Orb
+                    agentState={agentState}
+                    size={192}
+                    className="overflow-hidden rounded-full"
+                  />
+                  {isConnected ? (
+                    <button
+                      type="button"
+                      onClick={disconnect}
+                      aria-label="End voice call"
+                      className="relative z-10 -mt-7 flex size-14 items-center justify-center rounded-full border-4 border-background bg-red-500 text-background transition-all hover:scale-105 active:scale-95"
+                    >
+                      <PhoneOff fill="currentColor" className="size-[18px]" />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={connect}
+                      disabled={isConnecting}
+                      aria-label="Start voice call"
+                      className="relative z-10 -mt-7 flex size-14 items-center justify-center rounded-full border-4 border-background bg-foreground text-background transition-all hover:scale-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Phone fill="currentColor" className="size-[18px]" />
+                    </button>
                   )}
-                >
-                  {message.speaker === 'agent' && (
-                    <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                      <Bot className="size-4" />
-                    </div>
-                  )}
+                </div>
+
+                {isConnecting && (
+                  <p className="text-sm text-muted-foreground">Connecting…</p>
+                )}
+
+                {isJoining && !isConnecting && (
+                  <p className="text-sm text-muted-foreground">Waiting for your receptionist…</p>
+                )}
+
+                {errorMessage && (
+                  <p className="text-sm text-destructive">{errorMessage}</p>
+                )}
+
+                {staffPhoneNumber && !isConnected && (
+                  <div className="flex flex-col items-center gap-1.5">
+                    <p className="text-sm text-muted-foreground">Or call</p>
+                    <span className="rounded-[10px] border border-border bg-background px-3 py-2 text-sm font-medium shadow-[0px_2px_2px_0px_rgba(0,0,0,0.04),0px_0px_1px_0px_rgba(0,0,0,0.40)]">
+                      {staffPhoneNumber}
+                    </span>
+                  </div>
+                )}
+
+                {!staffPhoneNumber && !isConnected && authenticated && (
+                  <p className="max-w-xs text-center text-sm font-normal text-muted-foreground">
+                    You&apos;re testing online. To let customers reach your receptionist by phone,{' '}
+                    <Link
+                      href={`/agents/${agentId}?tab=call-settings`}
+                      className="font-medium text-foreground hover:underline"
+                      onClick={() => onOpenChange(false)}
+                    >
+                      add a phone number
+                    </Link>
+                    .
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hasTranscript && (
+              <div className={cn('flex flex-col gap-3 px-4', !isEnded && 'pb-2', isEnded && 'py-4')}>
+                {transcript.map((message) => (
                   <div
+                    key={message.id}
                     className={cn(
-                      'max-w-[75%] rounded-2xl px-3 py-2 text-sm text-black',
-                      message.speaker === 'agent'
-                        ? 'rounded-bl-sm bg-transparent'
-                        : 'rounded-br-sm bg-[#f4f4f4]',
-                      !message.final && 'opacity-70'
+                      'flex items-end gap-2',
+                      message.speaker === 'user' && 'flex-row-reverse'
                     )}
                   >
-                    {message.text}
+                    {message.speaker === 'agent' && (
+                      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                        <Bot className="size-4" />
+                      </div>
+                    )}
+                    <div
+                      className={cn(
+                        'max-w-[75%] rounded-2xl px-3 py-2 text-sm text-black',
+                        message.speaker === 'agent'
+                          ? 'rounded-bl-sm bg-transparent'
+                          : 'rounded-br-sm bg-[#f4f4f4]',
+                        !message.final && 'opacity-70'
+                      )}
+                    >
+                      {message.text}
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
 
-              {isEnded && (
-                <div className="mt-2 flex flex-col items-center gap-3 py-2">
-                  <p className="text-sm text-muted-foreground">You ended the call</p>
+                {isEnded && (
+                  <div className="mt-2 flex flex-col items-center gap-3 py-2">
+                    <p className="text-sm text-muted-foreground">You ended the call</p>
+                    <button
+                      type="button"
+                      onClick={connect}
+                      className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-transform hover:scale-[1.02] active:scale-95"
+                    >
+                      <Plus className="size-4" />
+                      New conversation
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                    >
+                      <RotateCcw className="size-4" />
+                      View details
+                    </button>
+                  </div>
+                )}
+
+                <div ref={transcriptEndRef} />
+              </div>
+            )}
+          </div>
+
+          <div className="relative shrink-0">
+            <div className="bg-background p-2">
+              <div className="flex flex-col gap-2 rounded-3xl bg-background p-3 shadow-[0px_4px_12px_0px_rgba(0,0,0,0.06),0px_0px_1px_0px_rgba(0,0,0,0.30)] dark:shadow-none dark:ring-1 dark:ring-border/50">
+                <div className="px-1.5 pt-1 pb-1.5">
+                  <textarea
+                    placeholder="Send a message..."
+                    disabled
+                    rows={1}
+                    className="w-full resize-none border-none bg-transparent text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-0 disabled:cursor-not-allowed"
+                    style={{ height: 36 }}
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="flex flex-1 items-center gap-1.5" />
                   <button
                     type="button"
-                    onClick={connect}
-                    className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-transform hover:scale-[1.02] active:scale-95"
+                    disabled
+                    aria-label="Send message"
+                    className="inline-flex size-10 items-center justify-center rounded-full bg-foreground text-background transition-colors hover:bg-foreground/90 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
                   >
-                    <Plus className="size-4" />
-                    New conversation
-                  </button>
-                  <button
-                    type="button"
-                    className="flex items-center gap-1.5 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
-                  >
-                    <RotateCcw className="size-4" />
-                    View details
+                    <ArrowUp className="size-5" strokeWidth={1.5} />
                   </button>
                 </div>
-              )}
-
-              <div ref={transcriptEndRef} />
-            </div>
-          )}
-        </div>
-
-        <div className="shrink-0 p-4 pt-2">
-          <div className="flex h-[124.4px] w-full flex-col gap-2 rounded-3xl border border-border bg-background p-3 shadow-[0px_4px_12px_0px_rgba(0,0,0,0.06),0px_0px_1px_0px_rgba(0,0,0,0.30)]">
-            <textarea
-              placeholder="Send a message..."
-              disabled
-              rows={2}
-              className="flex-1 resize-none bg-transparent px-1.5 pt-1 text-sm font-medium text-foreground placeholder:text-muted-foreground focus:outline-none disabled:cursor-not-allowed"
-            />
-            <div className="flex items-center justify-end gap-2">
-              {isConnected && (
-                <button
-                  type="button"
-                  onClick={disconnect}
-                  aria-label="End call"
-                  className="flex size-8 shrink-0 items-center justify-center rounded-full border border-red-200 bg-background text-red-500 transition-colors hover:bg-red-50"
-                >
-                  <PhoneOff fill="currentColor" className="size-4" />
-                </button>
-              )}
-              <button
-                type="button"
-                disabled
-                aria-label="Send message"
-                className="flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground disabled:cursor-not-allowed"
-              >
-                <ArrowUp className="size-4" />
-              </button>
+              </div>
             </div>
           </div>
         </div>

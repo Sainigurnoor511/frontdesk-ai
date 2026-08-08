@@ -35,9 +35,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
         agent={{
           id: agent.id,
           organizationId: agent.organization_id,
-          name: businessName,
+          name: agent.name,
           staffPhoneNumber: agent.staff_phone_number,
         }}
+        businessName={businessName}
         hiddenItems={hiddenSidebarItems}
         unreadConversationCount={conversationCounts?.unreadConversations ?? 0}
       />

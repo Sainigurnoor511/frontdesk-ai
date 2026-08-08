@@ -1,7 +1,6 @@
 import { redirect } from 'next/navigation'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
-import { getBusinessProfile } from '@/lib/data/business'
 import { getOverviewMetrics, getCallStats, getDateRange, getPriorDateRange } from '@/lib/data/analytics'
 import { getConversationsForOrg } from '@/lib/data/conversations'
 import { getAppointmentsForRange } from '@/lib/data/calendar'
@@ -33,16 +32,13 @@ export default async function HomePage() {
     getCallStats(context.org.id, priorRange.startDate, priorRange.endDate),
     getConversationsForOrg(),
     getAppointmentsForRange(context.org.id, now.toISOString(), in7Days.toISOString()),
-    getBusinessProfile(context.org.id),
   ])
 
   const agent = agents.find((a) => a.is_default) ?? agents[0] ?? null
-  const businessName = businessProfile.businessName ?? agent?.business_name ?? agent?.name ?? null
 
   return (
     <HomeClient
       agent={agent}
-      businessName={businessName}
       metrics={{
         calls: callStats.totalCalls,
         bookings: overview.bookings,

@@ -9,9 +9,8 @@ const FISH_AUDIO_STREAM_URL = 'https://api.fish.audio/v1/tts/stream/with-timesta
  * field; base64-decode and enqueue so audio can play as soon as the first
  * chunk is rendered, instead of waiting for the whole utterance.
  *
- * Enabled with `FISH_AUDIO_TTS_STREAMING=1` — this is the biggest lever for
- * time-to-first-audio, but it's opt-in until the streaming endpoint's behavior
- * with the free tier has been confirmed against a live account.
+ * Enabled by default — set `FISH_AUDIO_TTS_STREAMING=0` to use the buffered
+ * REST endpoint instead.
  */
 function createSseAudioDecoder(): TransformStream<Uint8Array, Uint8Array> {
   const decoder = new TextDecoder()
@@ -46,7 +45,7 @@ export async function synthesizeSpeech(
   tag?: string | null,
   signal?: AbortSignal
 ): Promise<ReadableStream<Uint8Array>> {
-  const streaming = process.env.FISH_AUDIO_TTS_STREAMING === '1'
+  const streaming = process.env.FISH_AUDIO_TTS_STREAMING !== '0'
   const response = await fetch(streaming ? FISH_AUDIO_STREAM_URL : FISH_AUDIO_API_URL, {
     method: 'POST',
     headers: {
@@ -58,7 +57,7 @@ export async function synthesizeSpeech(
       text: tag ? `${tag} ${text}` : text,
       format: 'pcm',
       sample_rate: 24000,
-      latency: 'balanced',
+      latency: 'low',
       ...(voiceId ? { reference_id: voiceId } : {}),
     }),
     ...(signal ? { signal } : {}),

@@ -11,8 +11,6 @@ const worker = new Worker<WebhookDeliverJobData>(
   async (job) => {
     const { organizationId, event, data } = job.data
     const webhook = await getWebhookConfig(organizationId)
-    // The config may have changed (or the integration been disabled) after the
-    // job was enqueued — skip silently rather than erroring and retrying.
     if (!webhook || !webhook.events.includes(event)) return
     await deliverWebhook(webhook, { organizationId, event, data })
   },

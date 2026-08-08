@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react"
 import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
+import { cn } from "@/lib/utils"
 
 // @react-three/fiber still constructs THREE.Clock internally (deprecated in r183).
 if (typeof window !== "undefined" && !THREE.getConsoleFunction()) {
@@ -31,6 +32,8 @@ type OrbProps = {
   outputVolumeRef?: React.RefObject<number>
   getInputVolume?: () => number
   getOutputVolume?: () => number
+  /** Display size in CSS pixels. Canvas buffer uses 1.25× for crisp rendering (192 → 240). */
+  size?: number
   className?: string
 }
 
@@ -47,12 +50,20 @@ export function Orb({
   outputVolumeRef,
   getInputVolume,
   getOutputVolume,
+  size,
   className,
 }: OrbProps) {
+  const canvasDpr = size ? 240 / size : undefined
+
   return (
-    <div className={className ?? "relative h-full w-full"}>
+    <div
+      className={cn("relative", !size && "h-full w-full", className)}
+      style={size ? { width: size, height: size } : undefined}
+    >
       <Canvas
         resize={{ debounce: resizeDebounce }}
+        dpr={canvasDpr}
+        style={{ display: "block", width: "100%", height: "100%" }}
         gl={{
           alpha: true,
           antialias: true,

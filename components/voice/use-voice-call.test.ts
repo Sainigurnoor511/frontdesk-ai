@@ -81,9 +81,9 @@ describe('useVoiceCall audio element cleanup', () => {
       await result.current.connect()
     })
 
-    const room = MockRoom.instances[0]
+    expect(result.current.status).toBe('joining')
     act(() => {
-      room.emit('trackSubscribed', new MockTrack())
+      MockRoom.instances[0].emit('trackSubscribed', new MockTrack())
     })
 
     expect(document.body.querySelectorAll('audio').length).toBe(1)
@@ -102,9 +102,9 @@ describe('useVoiceCall audio element cleanup', () => {
       await result.current.connect()
     })
 
-    const room = MockRoom.instances[0]
+    expect(result.current.status).toBe('joining')
     act(() => {
-      room.emit('trackSubscribed', new MockTrack())
+      MockRoom.instances[0].emit('trackSubscribed', new MockTrack())
     })
 
     expect(document.body.querySelectorAll('audio').length).toBe(1)
@@ -112,7 +112,7 @@ describe('useVoiceCall audio element cleanup', () => {
     // Simulate the agent ending the call (remote-initiated disconnect),
     // not via the hook's own disconnect().
     act(() => {
-      room.emit('disconnected')
+      MockRoom.instances[0].emit('disconnected')
     })
 
     expect(document.body.querySelectorAll('audio').length).toBe(0)
@@ -125,9 +125,9 @@ describe('useVoiceCall audio element cleanup', () => {
       await result.current.connect()
     })
 
-    const room = MockRoom.instances[0]
+    expect(result.current.status).toBe('joining')
     act(() => {
-      room.emit('trackSubscribed', new MockTrack())
+      MockRoom.instances[0].emit('trackSubscribed', new MockTrack())
     })
 
     expect(document.body.querySelectorAll('audio').length).toBe(1)

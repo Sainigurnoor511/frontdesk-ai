@@ -39,6 +39,14 @@ export function buildSystemPrompt(agent: AgentDetail): string {
   return parts.join('\n\n')
 }
 
+/**
+ * Default spoken greeting when the agent has no custom `first_message`.
+ */
+export function buildDefaultFirstMessage(agent: AgentDetail): string {
+  const business = agent.business_name ?? agent.name
+  return `Hello! Thanks for calling ${business}. How can I help you today?`
+}
+
 const bookingGuidance = `You have tools to check appointment availability and book appointments on the calendar. Use them whenever a caller asks to schedule, change, or check times — do not invent bookings or availability from memory.
 
 When collecting the caller's name and email address, ask them to spell each one out letter-by-letter to avoid transcription errors, then read the spelled result back and confirm it with the caller before booking. Spell and repeat the caller's phone number the same way.
