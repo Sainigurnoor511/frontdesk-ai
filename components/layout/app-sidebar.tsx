@@ -94,7 +94,10 @@ const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }
   },
   {
     label: 'Receptionist',
-    items: [{ title: 'Receptionists', url: '/agents', icon: UserCircle }],
+    items: [
+      { title: 'Receptionists', url: '/agents', icon: UserCircle },
+      { title: 'Phone numbers', url: '/phone-numbers', icon: Phone },
+    ],
   },
   {
     label: 'Setup',

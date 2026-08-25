@@ -18,6 +18,34 @@ export type BlockedPhoneNumber = {
   created_at: string
 }
 
+export type OrgPhoneNumber = PhoneNumber & { agent_name: string | null }
+
+export async function getPhoneNumbersForOrg(): Promise<OrgPhoneNumber[]> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data: member } = await supabase
+    .from('members')
+    .select('organization_id')
+    .eq('user_id', user.id)
+    .single()
+  if (!member) return []
+
+  const { data } = await supabase
+    .from('phone_numbers')
+    .select('*, agents(name)')
+    .eq('organization_id', member.organization_id)
+    .order('created_at', { ascending: false })
+
+  return (data ?? []).map((row) => {
+    const { agents, ...phoneNumber } = row as PhoneNumber & { agents: { name: string } | null }
+    return { ...phoneNumber, agent_name: agents?.name ?? null }
+  })
+}
+
 export async function getAgentPhoneNumbers(agentId: string): Promise<PhoneNumber[]> {
   const supabase = await createClient()
   const { data } = await supabase

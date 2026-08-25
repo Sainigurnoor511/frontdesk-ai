@@ -126,3 +126,9 @@ export const unblockPhoneNumberSchema = z.object({
   blockedNumberId: z.string().uuid(),
 })
 export type UnblockPhoneNumberInput = z.infer<typeof unblockPhoneNumberSchema>
+
+export const reassignPhoneNumberSchema = z.object({
+  phoneNumberId: z.string().uuid(),
+  agentId: z.string().uuid().nullable(),
+})
+export type ReassignPhoneNumberInput = z.infer<typeof reassignPhoneNumberSchema>
