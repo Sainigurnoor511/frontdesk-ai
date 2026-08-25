@@ -7,8 +7,6 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
 
 
 
-- [ ] **4. Agent detail: multi-language selection tab**
-      `app/(dashboard)/agents/[id]/agent-detail-client.tsx:714` — placeholder UI.
 
 - [ ] **5. Agent detail: rules engine tab**
       `app/(dashboard)/agents/[id]/agent-detail-client.tsx:787` — placeholder UI.
@@ -52,3 +50,13 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
       `getAuthenticatorAssuranceLevel()` after password sign-in, redirect to a
       verify-code screen if a higher AAL is required before considering the session
       complete).
+
+- [x] **4. Agent detail: language section** — commit `beacf87`.
+      The "Additional languages" button was a disabled stub; Groq Whisper STT only supports
+      one default language OR auto-detect (no discrete multi-language list exists in the
+      API), so there was nothing real to build behind that control. Removed it and wired
+      the already-present "Detect language" toggle end-to-end instead: new `detect_language`
+      boolean column (migration `042`), threaded through `updateAgentGeneral`, and consumed
+      in `workers/voice-agent.ts` via `OpenAISTT.withGroq({ detectLanguage: true })` (falls
+      back to the fixed default language otherwise). Typecheck, agent tests (29/29), lint,
+      and a dev-server route check all verified.
