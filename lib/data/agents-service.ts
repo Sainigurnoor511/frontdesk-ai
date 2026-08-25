@@ -53,3 +53,20 @@ export async function getAgentStaffPhoneServiceRole(agentId: string): Promise<st
 
   return data?.staff_phone_number ?? null
 }
+
+export type AgentRuleServiceRole = { trigger: string; action: string }
+
+/** Enabled rules only, in display order — used to build the voice session's system prompt. */
+export async function getEnabledAgentRulesServiceRole(
+  agentId: string
+): Promise<AgentRuleServiceRole[]> {
+  const supabase = createServiceRoleClient()
+  const { data } = await supabase
+    .from('agent_rules')
+    .select('trigger, action')
+    .eq('agent_id', agentId)
+    .eq('is_enabled', true)
+    .order('position', { ascending: true })
+
+  return data ?? []
+}

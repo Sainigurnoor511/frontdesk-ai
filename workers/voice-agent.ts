@@ -12,7 +12,7 @@ import { buildBookingTools } from '@/lib/voice/booking-tools'
 import { buildKnowledgeTools } from '@/lib/voice/knowledge-tools'
 import { defaultVoiceIdForLanguage, normalizeLanguageCode } from '@/lib/data/voice-catalog'
 import { resolveGroqModel } from '@/lib/data/agent-advanced-options'
-import { getAgentByIdCached } from '@/lib/data/agents-service'
+import { getAgentByIdCached, getEnabledAgentRulesServiceRole } from '@/lib/data/agents-service'
 import { getConversationContextByRoomName, updateConversationStatus } from '@/lib/data/conversations-service'
 import { CallTranscriptCollector } from '@/lib/voice/call-transcript-collector'
 import { generateCallSummary } from '@/lib/voice/generate-call-summary'
@@ -164,6 +164,8 @@ async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
     organizationId = agentDetail.organization_id
     businessName = agentDetail.business_name ?? agentDetail.name
 
+    const agentRules = await getEnabledAgentRulesServiceRole(agentDetail.id)
+
     const voiceId = agentDetail.voice_id ?? defaultVoiceIdForLanguage(agentDetail.language)
     const toneTag = buildToneTag(agentDetail.tone_traits)
     const groqModel = resolveGroqModel(agentDetail.llm_model)
@@ -259,7 +261,7 @@ async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
     await session.start({
       room: ctx.room,
       agent: createReceptionistAgent({
-        instructions: buildSystemPrompt(agentDetail),
+        instructions: buildSystemPrompt(agentDetail, agentRules),
         tools: {
           ...buildBookingTools({
             organizationId: agentDetail.organization_id,

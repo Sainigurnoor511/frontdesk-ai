@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { getAgentById, getAgentsForOrg } from '@/lib/data/agents'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentBlockedNumbers, getAgentPhoneNumbers } from '@/lib/data/phone-numbers'
+import { getAgentRules } from '@/lib/data/agent-rules'
 import { AgentDetailClient } from './agent-detail-client'
 
 export default async function AgentDetailPage({
@@ -20,9 +21,10 @@ export default async function AgentDetailPage({
   if (!context) redirect('/login')
 
   const siblingAgents = await getAgentsForOrg(context.org.id)
-  const [phoneNumbers, blockedNumbers] = await Promise.all([
+  const [phoneNumbers, blockedNumbers, rules] = await Promise.all([
     getAgentPhoneNumbers(id),
     getAgentBlockedNumbers(id),
+    getAgentRules(id),
   ])
   const { tab } = await searchParams
 
@@ -33,6 +35,7 @@ export default async function AgentDetailPage({
       initialTab={tab}
       phoneNumbers={phoneNumbers}
       blockedNumbers={blockedNumbers}
+      rules={rules}
     />
   )
 }

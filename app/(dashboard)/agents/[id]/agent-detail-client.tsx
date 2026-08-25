@@ -7,9 +7,6 @@ import Image from 'next/image'
 import {
   Pencil,
   Plus,
-  ListChecks,
-  Users,
-  ShieldCheck,
   Wrench,
   CircleQuestionMark,
   ChevronDown,
@@ -21,7 +18,6 @@ import {
   Check,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
@@ -60,14 +56,6 @@ import {
   AlertDialogAction,
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
-import {
-  Empty,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-  EmptyDescription,
-  EmptyContent,
-} from '@/components/ui/empty'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import type { AgentDetail, Agent } from '@/lib/data/agents'
@@ -96,6 +84,8 @@ import { InstructionsGeneratorPopover } from '@/components/agents/instructions-g
 import { CopyButton } from '@/components/ui/copy-button'
 import { VoicesTab } from './voices-tab'
 import { AdvancedSettingsTab } from './advanced-settings-tab'
+import { RulesTab } from './rules-tab'
+import type { AgentRule } from '@/lib/data/agent-rules'
 
 const TONE_TRAITS = [
   'Professional',
@@ -147,12 +137,14 @@ export function AgentDetailClient({
   initialTab,
   phoneNumbers: initialPhoneNumbers,
   blockedNumbers: initialBlockedNumbers,
+  rules: initialRules,
 }: {
   agent: AgentDetail
   agents: Agent[]
   initialTab?: string
   phoneNumbers: PhoneNumber[]
   blockedNumbers: BlockedPhoneNumber[]
+  rules: AgentRule[]
 }) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<(typeof TAB_VALUES)[number]>(
@@ -746,56 +738,12 @@ export function AgentDetailClient({
 
         {/* Rules tab */}
         <TabsContent value="rules" className="pt-6">
-          <Empty>
-            <EmptyHeader>
-              <EmptyMedia variant="icon">
-                <ListChecks />
-              </EmptyMedia>
-              <EmptyTitle>No rules yet</EmptyTitle>
-              <EmptyDescription>
-                Rules tell your receptionist how to behave - what to do in specific situations and
-                when to hand a call to a person.
-              </EmptyDescription>
-            </EmptyHeader>
-            <EmptyContent>
-              <div className="grid w-full max-w-2xl grid-cols-1 gap-3 text-left sm:grid-cols-3">
-                <Card size="sm">
-                  <CardContent className="space-y-1">
-                    <ListChecks className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium">Guide behavior</p>
-                    <p className="text-xs text-muted-foreground">
-                      Guide how it handles specific situations
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card size="sm">
-                  <CardContent className="space-y-1">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium">Handoff to a human</p>
-                    <p className="text-xs text-muted-foreground">
-                      Set when to transfer to a human
-                    </p>
-                  </CardContent>
-                </Card>
-                <Card size="sm">
-                  <CardContent className="space-y-1">
-                    <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-                    <p className="text-sm font-medium">Consistent</p>
-                    <p className="text-xs text-muted-foreground">
-                      Applied consistently on every call
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-              {/* TODO: build the rules engine */}
-              <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => setActiveTab('general')}>Edit instructions</Button>
-                <Button variant="outline" onClick={() => setActiveTab('call-settings')}>
-                  Call routing
-                </Button>
-              </div>
-            </EmptyContent>
-          </Empty>
+          <RulesTab
+            agentId={agent.id}
+            rules={initialRules}
+            onGoToGeneral={() => setActiveTab('general')}
+            onGoToCallSettings={() => setActiveTab('call-settings')}
+          />
         </TabsContent>
 
         {/* Call settings tab */}

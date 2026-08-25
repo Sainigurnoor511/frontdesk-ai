@@ -1,4 +1,5 @@
 import type { AgentDetail } from '@/lib/data/agents'
+import type { AgentRuleServiceRole } from '@/lib/data/agents-service'
 
 /**
  * Maps the agent's tone & personality traits to a Fish Audio S2 inline tag
@@ -18,12 +19,20 @@ export function buildToneTag(toneTraits: string[]): string | null {
  * agent's configured persona fields. Field names match `AgentDetail` in
  * `lib/data/agents.ts` exactly (verified against that file, not guessed).
  */
-export function buildSystemPrompt(agent: AgentDetail): string {
+export function buildSystemPrompt(agent: AgentDetail, rules: AgentRuleServiceRole[] = []): string {
+  const rulesText =
+    rules.length > 0
+      ? `Rules to follow on every call:\n${rules
+          .map((rule) => `- When ${rule.trigger}, ${rule.action}`)
+          .join('\n')}`
+      : null
+
   const parts = [
     agent.greeting_prompt ?? `You are the AI receptionist for ${agent.business_name ?? agent.name}.`,
     agent.personality_notes ? `Personality: ${agent.personality_notes}` : null,
     agent.additional_instructions,
     agent.tone_traits.length > 0 ? `Tone: ${agent.tone_traits.join(', ')}` : null,
+    rulesText,
     agent.secure_mode
       ? 'Secure mode is enabled: only look up or edit client records when the caller ID matches the number on file, or after identity has been verified through the verification tool.'
       : null,

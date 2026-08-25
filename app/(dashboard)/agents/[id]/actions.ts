@@ -26,9 +26,20 @@ import {
   type BlockPhoneNumberInput,
   type UnblockPhoneNumberInput,
 } from '@/lib/validations/agent'
+import {
+  createAgentRuleSchema,
+  updateAgentRuleSchema,
+  toggleAgentRuleSchema,
+  deleteAgentRuleSchema,
+  type CreateAgentRuleInput,
+  type UpdateAgentRuleInput,
+  type ToggleAgentRuleInput,
+  type DeleteAgentRuleInput,
+} from '@/lib/validations/agent-rule'
 import { normalizeLanguageCode, type VoiceCatalogEntry } from '@/lib/data/voice-catalog'
 import { provisionTwilioNumber } from '@/lib/integrations/twilio'
 import type { BlockedPhoneNumber, PhoneNumber } from '@/lib/data/phone-numbers'
+import type { AgentRule } from '@/lib/data/agent-rules'
 
 const MAX_INSTRUCTIONS_LENGTH = 8000
 
@@ -980,6 +991,138 @@ export async function unblockPhoneNumber(
     .eq('agent_id', agentId)
 
   if (error) return { error: 'Could not unblock the phone number. Please try again.' }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
+}
+
+export async function createAgentRule(
+  agentId: string,
+  input: Omit<CreateAgentRuleInput, 'agentId'>
+): Promise<{ error: string } | { rule: AgentRule }> {
+  const parsed = createAgentRuleSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to add a rule.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { data: agent } = await supabase
+    .from('agents')
+    .select('id')
+    .eq('id', agentId)
+    .eq('organization_id', organizationId)
+    .maybeSingle()
+  if (!agent) return { error: 'Receptionist not found.' }
+
+  const { count } = await supabase
+    .from('agent_rules')
+    .select('id', { count: 'exact', head: true })
+    .eq('agent_id', agentId)
+
+  const { data: inserted, error } = await supabase
+    .from('agent_rules')
+    .insert({
+      organization_id: organizationId,
+      agent_id: agentId,
+      trigger: parsed.data.trigger,
+      action: parsed.data.action,
+      position: count ?? 0,
+    })
+    .select('*')
+    .single()
+
+  if (error || !inserted) {
+    return { error: 'Could not add the rule. Please try again.' }
+  }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { rule: inserted }
+}
+
+export async function updateAgentRule(
+  agentId: string,
+  input: Omit<UpdateAgentRuleInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = updateAgentRuleSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to update a rule.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { error } = await supabase
+    .from('agent_rules')
+    .update({
+      trigger: parsed.data.trigger,
+      action: parsed.data.action,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', parsed.data.id)
+    .eq('organization_id', organizationId)
+    .eq('agent_id', agentId)
+
+  if (error) return { error: 'Could not update the rule. Please try again.' }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
+}
+
+export async function toggleAgentRule(
+  agentId: string,
+  input: Omit<ToggleAgentRuleInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = toggleAgentRuleSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to update a rule.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { error } = await supabase
+    .from('agent_rules')
+    .update({ is_enabled: parsed.data.isEnabled, updated_at: new Date().toISOString() })
+    .eq('id', parsed.data.id)
+    .eq('organization_id', organizationId)
+    .eq('agent_id', agentId)
+
+  if (error) return { error: 'Could not update the rule. Please try again.' }
+
+  revalidatePath(`/agents/${agentId}`)
+  return { success: true }
+}
+
+export async function deleteAgentRule(
+  agentId: string,
+  input: Omit<DeleteAgentRuleInput, 'agentId'>
+): Promise<{ error: string } | { success: true }> {
+  const parsed = deleteAgentRuleSchema.safeParse({ ...input, agentId })
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { user, organizationId } = await getMemberOrganization(supabase)
+  if (!user) return { error: 'You must be signed in to delete a rule.' }
+  if (!organizationId) return { error: 'Could not determine organization.' }
+
+  const { error } = await supabase
+    .from('agent_rules')
+    .delete()
+    .eq('id', parsed.data.id)
+    .eq('organization_id', organizationId)
+    .eq('agent_id', agentId)
+
+  if (error) return { error: 'Could not delete the rule. Please try again.' }
 
   revalidatePath(`/agents/${agentId}`)
   return { success: true }
