@@ -9,8 +9,6 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
 
 
 
-- [ ] **6. Staff live-presence tracking**
-      `app/(dashboard)/staff/staff-client.tsx:87,207,217` — filter UI has no backend.
 
 - [ ] **7. E2E / load testing pass** (Phase 11)
       No integration/E2E harness beyond unit tests + voice-latency instrumentation.
@@ -75,3 +73,15 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
       stash-compare, not caused by this session's work. Full-repo `pnpm lint` is no longer a
       reliable gate; verify with `pnpm exec eslint <changed files>` scoped to just the
       touched paths instead.
+
+- [x] **6. Staff presence: "Available now" filter** — commit `fab0221`.
+      Split the two filters on their actual backend feasibility: "In session" needs new
+      schema (nothing links a live call to a staff member) plus live-call-state tracking —
+      left disabled with an honest tooltip instead of "coming soon". "Available now" needed
+      no new schema — added `getStaffAvailabilityNow` to the availability engine (staff-hours
+      override, falling back to business hours, minus active time-off, evaluated against the
+      current moment in the org's IANA timezone via `Intl.DateTimeFormat`) and wired it into
+      the staff page as a real filter + per-row badge.
+      Typecheck, scoped lint, and staff tests (6/6) verified. Confirmed via stash-compare
+      that `availability-engine.test.ts`'s 6 failures are pre-existing on baseline `main`
+      (date-fixture/timezone flakiness unrelated to this change), not a regression.
