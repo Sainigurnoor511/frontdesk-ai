@@ -86,6 +86,13 @@ export async function logOut(): Promise<void> {
   redirect('/login')
 }
 
+/** Revokes every refresh token for the current user, signing out all devices/sessions. */
+export async function signOutAllDevices(): Promise<void> {
+  const supabase = await createClient()
+  await supabase.auth.signOut({ scope: 'global' })
+  redirect('/login')
+}
+
 export async function signInWithGoogle(
   integrationSlug?: string
 ): Promise<{ error: string } | void> {

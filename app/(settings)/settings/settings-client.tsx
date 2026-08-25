@@ -3,7 +3,6 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { useRouter } from 'next/navigation'
 import {
   ArrowLeft,
   FileText,
@@ -26,7 +25,31 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { toast } from 'sonner'
-import { logOut } from '@/app/(auth)/actions'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from '@/components/ui/alert-dialog'
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp'
+import { signOutAllDevices } from '@/app/(auth)/actions'
 import { AppHeader } from '@/components/layout/app-header'
 import { UnsavedChangesBar } from '@/components/layout/unsaved-changes-bar'
 import {
@@ -42,7 +65,16 @@ import {
   SidebarProvider,
 } from '@/components/ui/sidebar'
 import type { OrganizationSettings } from '@/lib/data/settings'
-import { updateNotificationSettings, updateFeatureSettings, updateLanguage, sendPasswordResetEmail } from './actions'
+import {
+  updateNotificationSettings,
+  updateFeatureSettings,
+  updateLanguage,
+  sendPasswordResetEmail,
+  enrollTotpFactor,
+  verifyTotpEnrollment,
+  unenrollTotpFactor,
+  type TotpEnrollment,
+} from './actions'
 
 type Tab = 'account' | 'notifications' | 'features'
 
@@ -58,12 +90,16 @@ export function SettingsClient({
   avatarUrl,
   settings,
   initialTab,
+  initialTotpEnabled,
+  initialTotpFactorId,
 }: {
   email: string
   orgName: string
   avatarUrl: string | null
   settings: OrganizationSettings
   initialTab?: string
+  initialTotpEnabled: boolean
+  initialTotpFactorId: string | null
 }) {
   const activeTab: Tab = NAV_ITEMS.some((item) => item.value === initialTab)
     ? (initialTab as Tab)
@@ -124,7 +160,14 @@ export function SettingsClient({
           <div className="mx-auto max-w-3xl space-y-6">
             <h1 className="font-heading text-2xl font-semibold capitalize">{activeTab}</h1>
 
-            {activeTab === 'account' && <AccountTab email={email} settings={settings} />}
+            {activeTab === 'account' && (
+              <AccountTab
+                email={email}
+                settings={settings}
+                initialTotpEnabled={initialTotpEnabled}
+                initialTotpFactorId={initialTotpFactorId}
+              />
+            )}
             {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
             {activeTab === 'features' && <FeaturesTab settings={settings} />}
           </div>
@@ -136,21 +179,35 @@ export function SettingsClient({
 
 // ---------------- Account Tab ----------------
 
-function AccountTab({ email, settings }: { email: string; settings: OrganizationSettings }) {
+function AccountTab({
+  email,
+  settings,
+  initialTotpEnabled,
+  initialTotpFactorId,
+}: {
+  email: string
+  settings: OrganizationSettings
+  initialTotpEnabled: boolean
+  initialTotpFactorId: string | null
+}) {
   const [language, setLanguage] = useState(settings.language)
   const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
-  const router = useRouter()
+
+  const [totpEnabled, setTotpEnabled] = useState(initialTotpEnabled)
+  const [totpFactorId, setTotpFactorId] = useState(initialTotpFactorId)
+  const [enrollment, setEnrollment] = useState<TotpEnrollment | null>(null)
+  const [enrollCode, setEnrollCode] = useState('')
+  const [enrollError, setEnrollError] = useState<string | null>(null)
+  const [isVerifying, setIsVerifying] = useState(false)
+  const [disable2faOpen, setDisable2faOpen] = useState(false)
+  const [isDisabling2fa, setIsDisabling2fa] = useState(false)
 
   const dirty = language !== settings.language
 
   function handleSignOutAllDevices() {
     startTransition(async () => {
-      // TODO: this only signs out the current session. A true "invalidate all
-      // sessions" feature needs Supabase session management (listing and
-      // revoking every refresh token for the user) that doesn't exist yet.
-      await logOut()
-      router.push('/login')
+      await signOutAllDevices()
     })
   }
 
@@ -180,8 +237,50 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
     toast.success(`Password reset link sent to ${email}.`)
   }
 
-  function handleEnable2fa() {
-    toast.message('Two-factor authentication is coming soon.')
+  async function handleStart2faEnrollment() {
+    setEnrollError(null)
+    setEnrollCode('')
+    const result = await enrollTotpFactor()
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+    setEnrollment(result.enrollment)
+  }
+
+  async function handleVerify2fa() {
+    if (!enrollment || enrollCode.length !== 6) return
+    setEnrollError(null)
+    setIsVerifying(true)
+    const result = await verifyTotpEnrollment(enrollment.factorId, enrollCode)
+    setIsVerifying(false)
+
+    if ('error' in result) {
+      setEnrollError(result.error)
+      return
+    }
+
+    setTotpEnabled(true)
+    setTotpFactorId(enrollment.factorId)
+    setEnrollment(null)
+    toast.success('Two-factor authentication is enabled.')
+  }
+
+  async function handleDisable2fa() {
+    if (!totpFactorId) return
+    setIsDisabling2fa(true)
+    const result = await unenrollTotpFactor(totpFactorId)
+    setIsDisabling2fa(false)
+    setDisable2faOpen(false)
+
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+
+    setTotpEnabled(false)
+    setTotpFactorId(null)
+    toast.success('Two-factor authentication is disabled.')
   }
 
   return (
@@ -196,7 +295,6 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
             <p className="text-sm font-medium">Email Address</p>
             <p className="text-sm text-muted-foreground">{email}</p>
           </div>
-          {/* TODO: Supabase password reset flow is a separate feature - not wired up in this pass. */}
           <Button type="button" variant="outline" size="sm" onClick={handleChangePassword}>
             Change Password
           </Button>
@@ -207,17 +305,122 @@ function AccountTab({ email, settings }: { email: string; settings: Organization
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold">Two-Factor Authentication</h3>
-            <Badge variant="outline">Disabled</Badge>
+            <Badge variant={totpEnabled ? 'default' : 'outline'}>
+              {totpEnabled ? 'Enabled' : 'Disabled'}
+            </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
             Add an extra layer of security to your account using an authenticator app.
           </p>
         </div>
-        {/* TODO: real 2FA setup (enrollment, verification codes) is out of scope for this pass. */}
-        <Button type="button" variant="outline" size="sm" className="shrink-0" onClick={handleEnable2fa}>
-          Enable 2FA
-        </Button>
+        {totpEnabled ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => setDisable2faOpen(true)}
+          >
+            Disable 2FA
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={handleStart2faEnrollment}
+          >
+            Enable 2FA
+          </Button>
+        )}
       </div>
+
+      <Dialog
+        open={enrollment !== null}
+        onOpenChange={(open) => {
+          if (!open) setEnrollment(null)
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set up two-factor authentication</DialogTitle>
+            <DialogDescription>
+              Scan this QR code with an authenticator app (like Google Authenticator or
+              1Password), then enter the 6-digit code it generates.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="flex flex-col items-center gap-4">
+              {enrollment && (
+                // eslint-disable-next-line @next/next/no-img-element -- data: URI SVG, not a static asset
+                <img
+                  src={`data:image/svg+xml;utf-8,${encodeURIComponent(enrollment.qrCode)}`}
+                  alt="Two-factor authentication QR code"
+                  width={180}
+                  height={180}
+                  className="rounded-lg border"
+                />
+              )}
+              {enrollment && (
+                <p className="text-center text-xs text-muted-foreground">
+                  Can&apos;t scan it? Enter this code manually:{' '}
+                  <span className="font-mono">{enrollment.secret}</span>
+                </p>
+              )}
+              <InputOTP maxLength={6} value={enrollCode} onChange={setEnrollCode}>
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+              {enrollError && <p className="text-sm text-destructive">{enrollError}</p>}
+            </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setEnrollment(null)}
+              disabled={isVerifying}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleVerify2fa}
+              disabled={enrollCode.length !== 6 || isVerifying}
+            >
+              {isVerifying ? 'Verifying…' : 'Verify and enable'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={disable2faOpen} onOpenChange={setDisable2faOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Disable two-factor authentication?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your account will no longer require a verification code at sign-in.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDisabling2fa}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/80"
+              onClick={handleDisable2fa}
+              disabled={isDisabling2fa}
+            >
+              {isDisabling2fa ? 'Disabling…' : 'Disable 2FA'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="flex items-start justify-between gap-6 border-b py-6">
         <div className="space-y-1">

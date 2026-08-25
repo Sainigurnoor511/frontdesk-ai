@@ -157,6 +157,71 @@ export async function updateFeatureSettings(
   return { success: true }
 }
 
+export type TotpEnrollment = {
+  factorId: string
+  qrCode: string
+  secret: string
+}
+
+export async function enrollTotpFactor(): Promise<
+  { error: string } | { enrollment: TotpEnrollment }
+> {
+  const supabase = await createSupabaseClient()
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
+
+  if (error) {
+    return { error: 'Could not start two-factor setup. Please try again.' }
+  }
+
+  return {
+    enrollment: {
+      factorId: data.id,
+      qrCode: data.totp.qr_code,
+      secret: data.totp.secret,
+    },
+  }
+}
+
+export async function verifyTotpEnrollment(
+  factorId: string,
+  code: string
+): Promise<ActionResult> {
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code })
+
+  if (error) {
+    return { error: 'That code was incorrect or expired. Please try again.' }
+  }
+
+  return { success: true }
+}
+
+export async function unenrollTotpFactor(factorId: string): Promise<ActionResult> {
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.auth.mfa.unenroll({ factorId })
+
+  if (error) {
+    return { error: 'Could not disable two-factor authentication. Please try again.' }
+  }
+
+  return { success: true }
+}
+
+export async function getTotpFactorStatus(): Promise<{
+  enabled: boolean
+  factorId: string | null
+}> {
+  const supabase = await createSupabaseClient()
+  const { data, error } = await supabase.auth.mfa.listFactors()
+
+  if (error || !data) {
+    return { enabled: false, factorId: null }
+  }
+
+  const verifiedTotp = data.totp.find((factor) => factor.status === 'verified')
+  return { enabled: Boolean(verifiedTotp), factorId: verifiedTotp?.id ?? null }
+}
+
 export async function sendPasswordResetEmail(): Promise<ActionResult> {
   const supabase = await createSupabaseClient()
   const {

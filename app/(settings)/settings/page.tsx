@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getOrganizationSettings } from '@/lib/data/settings'
+import { getTotpFactorStatus } from './actions'
 import { SettingsClient } from './settings-client'
 
 export default async function SettingsPage({
@@ -11,7 +12,10 @@ export default async function SettingsPage({
   const context = await getCurrentOrgAndUser()
   if (!context) redirect('/login')
 
-  const settings = await getOrganizationSettings(context.org.id)
+  const [settings, totpStatus] = await Promise.all([
+    getOrganizationSettings(context.org.id),
+    getTotpFactorStatus(),
+  ])
   const { tab } = await searchParams
 
   return (
@@ -21,6 +25,8 @@ export default async function SettingsPage({
       avatarUrl={context.user.avatarUrl}
       settings={settings}
       initialTab={tab}
+      initialTotpEnabled={totpStatus.enabled}
+      initialTotpFactorId={totpStatus.factorId}
     />
   )
 }
