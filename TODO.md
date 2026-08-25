@@ -6,8 +6,6 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
 ## Queue
 
 
-- [ ] **3. Settings: real 2FA + Supabase password reset + full session invalidation**
-      `app/(settings)/settings/settings-client.tsx:149,184,199,216` — currently stubbed.
 
 - [ ] **4. Agent detail: multi-language selection tab**
       `app/(dashboard)/agents/[id]/agent-detail-client.tsx:714` — placeholder UI.
@@ -38,3 +36,19 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
       `reassignPhoneNumber` action + `getPhoneNumbersForOrg` in `lib/data/phone-numbers.ts`),
       plus a sidebar nav entry. Typecheck, lint, and a dev-server route check (redirects to
       /login unauthenticated, no compile errors) all verified.
+
+- [x] **3. Settings: real 2FA (TOTP) + sign-out-all-devices** — commit `98692e0`.
+      Password reset was already wired up (the old inline TODO comment claiming otherwise
+      was stale — removed it). Built: `enrollTotpFactor`/`verifyTotpEnrollment`/
+      `unenrollTotpFactor`/`getTotpFactorStatus` server actions using Supabase's real MFA
+      API (`supabase.auth.mfa.*`), a QR-code + 6-digit-code enroll dialog and disable
+      confirmation in the settings UI, and `signOutAllDevices` using `signOut({scope:
+      'global'})` to revoke every refresh token (previously only signed out the current
+      session). 9 new tests added, all passing; full suite shows only the 4 pre-existing
+      unrelated failures.
+      **Follow-up not done in this pass:** no login-time AAL2 challenge — a user with TOTP
+      enrolled can still complete `signInWithPassword` without being asked for a code. Real
+      enforcement needs a challenge step wired into the login flow (check
+      `getAuthenticatorAssuranceLevel()` after password sign-in, redirect to a
+      verify-code screen if a higher AAL is required before considering the session
+      complete).
