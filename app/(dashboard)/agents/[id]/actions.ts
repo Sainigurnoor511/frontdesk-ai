@@ -65,6 +65,7 @@ export async function updateAgentGeneral(
     .update({
       voice_id: parsed.data.voiceId,
       language: parsed.data.defaultLanguage,
+      detect_language: parsed.data.detectLanguage,
       additional_instructions: parsed.data.additionalInstructions,
       tone_traits: parsed.data.toneTraits,
       first_message: parsed.data.firstMessage,

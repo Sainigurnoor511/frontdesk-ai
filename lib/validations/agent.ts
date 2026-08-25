@@ -48,6 +48,7 @@ export const updateAgentGeneralSchema = z.object({
   agentId: z.string().uuid(),
   voiceId: z.string().optional(),
   defaultLanguage: z.string().optional(),
+  detectLanguage: z.boolean().optional(),
   additionalInstructions: z.string().max(8000).optional(),
   toneTraits: z.array(z.string()).optional(),
   firstMessage: z.string().optional(),

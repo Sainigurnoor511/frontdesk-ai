@@ -227,7 +227,7 @@ export function AgentDetailClient({
   const [defaultLanguage, setDefaultLanguage] = useState(
     agent.language ? normalizeLanguageCode(agent.language) : languageOptions[0].code
   )
-  const [detectLanguage, setDetectLanguage] = useState(false)
+  const [detectLanguage, setDetectLanguage] = useState(agent.detect_language)
   const [voiceSearchResults, setVoiceSearchResults] = useState<VoiceCatalogEntry[]>([])
 
   async function handleVoiceSearch(query: string) {
@@ -332,6 +332,7 @@ export function AgentDetailClient({
   const generalDirty =
     voiceId !== (agent.voice_id ?? voiceCatalog[0]?.id ?? '') ||
     defaultLanguage !== originalLanguage ||
+    detectLanguage !== agent.detect_language ||
     additionalInstructions !== (agent.additional_instructions ?? '') ||
     firstMessage !== (agent.first_message ?? '') ||
     toneTraits.length !== originalToneTraits.length ||
@@ -340,6 +341,7 @@ export function AgentDetailClient({
   function handleCancelGeneral() {
     setVoiceId(agent.voice_id ?? voiceCatalog[0]?.id ?? '')
     setDefaultLanguage(originalLanguage)
+    setDetectLanguage(agent.detect_language)
     setAdditionalInstructions(agent.additional_instructions ?? '')
     setToneTraits(agent.tone_traits ?? [])
     setFirstMessage(agent.first_message ?? '')
@@ -364,6 +366,7 @@ export function AgentDetailClient({
       const result = await updateAgentGeneral(agent.id, {
         voiceId,
         defaultLanguage,
+        detectLanguage,
         additionalInstructions,
         toneTraits,
         firstMessage,
@@ -662,7 +665,9 @@ export function AgentDetailClient({
                   description="Choose the default and additional languages the receptionist will communicate in."
                 />
                 <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Default language</Label>
+                  <Label className="text-xs text-muted-foreground">
+                    {detectLanguage ? 'Fallback language' : 'Default language'}
+                  </Label>
                   <Select
                     value={defaultLanguage}
                     onValueChange={(value) => setDefaultLanguage(value as string)}
@@ -709,23 +714,21 @@ export function AgentDetailClient({
                   </Select>
                 </div>
 
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Additional languages</Label>
-                  {/* TODO: build real multi-language selection */}
-                  <Button variant="outline" size="sm" disabled className="w-full justify-start">
-                    Add additional languages
-                  </Button>
-                </div>
-
-                <div className="flex items-center gap-1.5 rounded-[10px] border border-border px-2.5 py-2">
-                  <Wrench className="size-4 shrink-0 text-foreground" />
-                  <span className="text-sm font-medium">Detect language</span>
-                  <CircleQuestionMark className="size-3.5 shrink-0 text-muted-foreground" />
-                  <Switch
-                    checked={detectLanguage}
-                    onCheckedChange={setDetectLanguage}
-                    className="ml-auto"
-                  />
+                <div className="space-y-1.5 rounded-[10px] border border-border px-2.5 py-2">
+                  <div className="flex items-center gap-1.5">
+                    <Wrench className="size-4 shrink-0 text-foreground" />
+                    <span className="text-sm font-medium">Detect language</span>
+                    <CircleQuestionMark className="size-3.5 shrink-0 text-muted-foreground" />
+                    <Switch
+                      checked={detectLanguage}
+                      onCheckedChange={setDetectLanguage}
+                      className="ml-auto"
+                    />
+                  </div>
+                  <p className="pl-6 text-xs text-muted-foreground">
+                    Automatically detect the caller&apos;s spoken language instead of always
+                    using the default above.
+                  </p>
                 </div>
               </div>
             </div>

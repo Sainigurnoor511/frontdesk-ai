@@ -10,7 +10,7 @@ import { createReceptionistAgent } from '@/lib/voice/receptionist-agent'
 import { buildGreetingCacheKey, synthesizeCachedFrames } from '@/lib/voice/say-cached'
 import { buildBookingTools } from '@/lib/voice/booking-tools'
 import { buildKnowledgeTools } from '@/lib/voice/knowledge-tools'
-import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
+import { defaultVoiceIdForLanguage, normalizeLanguageCode } from '@/lib/data/voice-catalog'
 import { resolveGroqModel } from '@/lib/data/agent-advanced-options'
 import { getAgentByIdCached } from '@/lib/data/agents-service'
 import { getConversationContextByRoomName, updateConversationStatus } from '@/lib/data/conversations-service'
@@ -173,8 +173,12 @@ async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
     const greetingCacheKey = buildGreetingCacheKey(voiceId, toneTag, greetingText)
     const greetingPromise = synthesizeCachedFrames(tts, greetingText, greetingCacheKey)
 
+    const stt = agentDetail.detect_language
+      ? OpenAISTT.withGroq({ detectLanguage: true })
+      : OpenAISTT.withGroq({ language: normalizeLanguageCode(agentDetail.language ?? 'en') })
+
     const session = new agents.AgentSession({
-      stt: OpenAISTT.withGroq(),
+      stt,
       llm: OpenAILLM.withGroq({ model: groqModel }),
       tts,
       vad: createSessionVad(ctx.proc),
