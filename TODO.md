@@ -8,8 +8,6 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
 
 
 
-- [ ] **5. Agent detail: rules engine tab**
-      `app/(dashboard)/agents/[id]/agent-detail-client.tsx:787` — placeholder UI.
 
 - [ ] **6. Staff live-presence tracking**
       `app/(dashboard)/staff/staff-client.tsx:87,207,217` — filter UI has no backend.
@@ -60,3 +58,20 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
       in `workers/voice-agent.ts` via `OpenAISTT.withGroq({ detectLanguage: true })` (falls
       back to the fixed default language otherwise). Typecheck, agent tests (29/29), lint,
       and a dev-server route check all verified.
+
+- [x] **5. Agent detail: rules engine** — commit `ae60c5c`.
+      No structured rule evaluator exists anywhere in the codebase — receptionist behavior
+      is entirely prompt-based (the LLM reads free-text instructions and decides at
+      runtime). Scoped to: a rule is a structured `{trigger, action}` pair ("When {trigger},
+      {action}") persisted in a new `agent_rules` table, editable via a real list/add/edit/
+      delete/enable-toggle UI (`rules-tab.tsx`), and compiled into the voice session's
+      system prompt as a "Rules to follow on every call" block
+      (`lib/voice/agent-context.ts`'s `buildSystemPrompt`, fed by a new service-role read in
+      `workers/voice-agent.ts`). Not a separate deterministic engine — the LLM still decides
+      at runtime, same as every other instruction field.
+      Typecheck and agent tests (29/29) verified. **Note:** discovered `pnpm lint` on bare
+      `main` already reports 2127 pre-existing errors repo-wide (unrelated files like
+      `waveform.tsx`, `use-mobile.ts`, `lib/crawler/crawl.ts`) — confirmed via
+      stash-compare, not caused by this session's work. Full-repo `pnpm lint` is no longer a
+      reliable gate; verify with `pnpm exec eslint <changed files>` scoped to just the
+      touched paths instead.
