@@ -1,23 +1,37 @@
-import type { AudioFrame } from '@livekit/rtc-node'
 import { toStream, type voice } from '@livekit/agents'
 import type { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 
-const ttsCache = new Map<string, AudioFrame[]>()
+async function collectTtsFrames(tts: FishAudioTTS, text: string) {
+  const frames = []
+  for await (const event of tts.synthesize(text)) {
+    frames.push(event.frame)
+  }
+  return frames
+}
+
+type CachedAudioFrame = Awaited<ReturnType<typeof collectTtsFrames>>[number]
+
+const ttsCache = new Map<string, CachedAudioFrame[]>()
+
+export function buildGreetingCacheKey(
+  voiceId: string,
+  toneTag: string | null,
+  text: string
+): string {
+  return `${voiceId}|${toneTag ?? ''}|${text}`
+}
 
 /** Synthesize once and reuse frames for fixed phrases like greetings. */
 export async function synthesizeCachedFrames(
   tts: FishAudioTTS,
-  text: string
-): Promise<AudioFrame[]> {
-  const cached = ttsCache.get(text)
+  text: string,
+  cacheKey = text
+): Promise<CachedAudioFrame[]> {
+  const cached = ttsCache.get(cacheKey)
   if (cached) return cached
 
-  const frames: AudioFrame[] = []
-  const stream = tts.synthesize(text)
-  for await (const event of stream) {
-    frames.push(event.frame)
-  }
-  ttsCache.set(text, frames)
+  const frames = await collectTtsFrames(tts, text)
+  ttsCache.set(cacheKey, frames)
   return frames
 }
 

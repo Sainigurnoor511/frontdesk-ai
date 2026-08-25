@@ -1,7 +1,7 @@
 import { getConversationRecordingUrl } from '@/lib/data/conversations'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   const { id } = await params
@@ -11,7 +11,11 @@ export async function GET(
     return new Response('Recording not found', { status: 404 })
   }
 
-  const upstream = await fetch(signedUrl)
+  const range = request.headers.get('range')
+  const upstream = await fetch(signedUrl, {
+    headers: range ? { Range: range } : undefined,
+  })
+
   if (!upstream.ok || !upstream.body) {
     console.error(
       `[recording] upstream fetch failed for conversation ${id}: ${upstream.status}`
@@ -19,11 +23,19 @@ export async function GET(
     return new Response('Recording not found', { status: 404 })
   }
 
+  const headers = new Headers({
+    'Content-Type': upstream.headers.get('Content-Type') ?? 'audio/mpeg',
+    'Cache-Control': 'private, max-age=3600',
+    'Accept-Ranges': 'bytes',
+  })
+
+  const contentRange = upstream.headers.get('Content-Range')
+  const contentLength = upstream.headers.get('Content-Length')
+  if (contentRange) headers.set('Content-Range', contentRange)
+  if (contentLength) headers.set('Content-Length', contentLength)
+
   return new Response(upstream.body, {
-    headers: {
-      'Content-Type': upstream.headers.get('Content-Type') ?? 'audio/mpeg',
-      'Cache-Control': 'private, max-age=3600',
-      'Accept-Ranges': 'bytes',
-    },
+    status: upstream.status === 206 ? 206 : 200,
+    headers,
   })
 }

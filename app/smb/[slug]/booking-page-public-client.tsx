@@ -8,7 +8,7 @@ import type { BookingPageStaff } from '@/lib/data/availability-engine'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { ThinkingOrb } from 'thinking-orbs'
 import { useVoiceCall } from '@/components/voice/use-voice-call'
-import { startPublicCall } from '@/app/smb/actions'
+import { startPublicCall, endPublicCall } from '@/app/smb/actions'
 import { BookingFlow } from './booking-flow'
 import { ManageBookingFlow } from './manage-booking-flow'
 
@@ -111,8 +111,9 @@ function ReceptionistPanel({
   fullBleed?: boolean
 }) {
   const [chatMessage, setChatMessage] = useState('')
-  const { status, connect, disconnect } = useVoiceCall(() =>
-    startPublicCall({ organizationId, agentId })
+  const { status, connect, disconnect } = useVoiceCall(
+    () => startPublicCall({ organizationId, agentId }),
+    ({ roomName }) => endPublicCall({ roomName, organizationId })
   )
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'

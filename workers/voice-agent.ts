@@ -7,46 +7,58 @@ import { LLM as OpenAILLM, STT as OpenAISTT } from '@livekit/agents-plugin-opena
 import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildDefaultFirstMessage, buildSystemPrompt, buildToneTag } from '@/lib/voice/agent-context'
 import { createReceptionistAgent } from '@/lib/voice/receptionist-agent'
-import { synthesizeCachedFrames } from '@/lib/voice/say-cached'
+import { buildGreetingCacheKey, synthesizeCachedFrames } from '@/lib/voice/say-cached'
 import { buildBookingTools } from '@/lib/voice/booking-tools'
 import { buildKnowledgeTools } from '@/lib/voice/knowledge-tools'
 import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
 import { resolveGroqModel } from '@/lib/data/agent-advanced-options'
-import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
-import { updateConversationStatus } from '@/lib/data/conversations-service'
+import { getAgentByIdCached } from '@/lib/data/agents-service'
+import { getConversationContextByRoomName, updateConversationStatus } from '@/lib/data/conversations-service'
 import { CallTranscriptCollector } from '@/lib/voice/call-transcript-collector'
 import { generateCallSummary } from '@/lib/voice/generate-call-summary'
+import { parseVoiceRoomMetadata } from '@/lib/voice/room-metadata'
+import { startCallRecording } from '@/lib/voice/recording'
+import {
+  attachVoiceSessionMetrics,
+  logVoiceStartupLatency,
+} from '@/lib/voice/session-metrics'
 
-/**
- * JSON payload set on the LiveKit room's metadata at creation time by
- * `startDashboardCall`/`startPublicCall` (see `app/(dashboard)/actions/voice.ts`
- * and `app/smb/actions.ts`), via `RoomServiceClient.createRoom({ metadata })`.
- * Room metadata is preferred over cramming identifiers into the room name —
- * room names stay simple opaque identifiers (`${organizationId}:call:${uuid}`).
- */
 type RoomMetadata = {
   agentId: string
   conversationId: string
 }
 
+type VoiceWorkerUserData = {
+  vad?: agents.inference.VAD
+}
+
 const MAX_CALL_SECONDS = 300
 
-function parseRoomMetadata(raw: string | undefined): RoomMetadata | null {
-  if (!raw) return null
-  try {
-    const parsed = JSON.parse(raw)
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof parsed.agentId === 'string' &&
-      typeof parsed.conversationId === 'string'
-    ) {
-      return parsed as RoomMetadata
-    }
-    return null
-  } catch {
-    return null
+const VAD_OPTIONS = {
+  model: 'silero' as const,
+  minSpeechDuration: 120,
+  minSilenceDuration: 350,
+  prefixPaddingDuration: 500,
+}
+
+function createSessionVad(proc: agents.JobProcess<VoiceWorkerUserData>): agents.inference.VAD {
+  if (!proc.userData.vad) {
+    proc.userData.vad = new agents.inference.VAD(VAD_OPTIONS)
   }
+  return proc.userData.vad
+}
+
+async function resolveRoomMetadata(ctx: agents.JobContext): Promise<RoomMetadata | null> {
+  const fromRtcRoom = parseVoiceRoomMetadata(ctx.room.metadata)
+  if (fromRtcRoom) return fromRtcRoom
+
+  const fromJobRoom = parseVoiceRoomMetadata(ctx.job.room?.metadata)
+  if (fromJobRoom) return fromJobRoom
+
+  const roomName = ctx.room.name || ctx.job.room?.name
+  if (!roomName) return null
+
+  return getConversationContextByRoomName(roomName)
 }
 
 function describeSessionEvent(ev: unknown): string {
@@ -70,23 +82,32 @@ function describeSessionEvent(ev: unknown): string {
   }
 }
 
-async function entrypoint(ctx: agents.JobContext) {
-  const metadata = parseRoomMetadata(ctx.room.metadata)
+async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
+  const jobStartedAt = Date.now()
+  const metadataFromJob = parseVoiceRoomMetadata(ctx.job.room?.metadata)
+
+  const [, prefetchedAgent] = await Promise.all([
+    ctx.connect(),
+    metadataFromJob ? getAgentByIdCached(metadataFromJob.agentId) : Promise.resolve(null),
+  ])
+  const roomConnectedAt = Date.now()
+
+  const metadata = metadataFromJob ?? (await resolveRoomMetadata(ctx))
   if (!metadata) {
-    await ctx.connect()
     console.error(`[voice-agent] room ${ctx.room.name} has no valid metadata; disconnecting`)
     await ctx.room.disconnect()
     return
   }
 
   const { agentId, conversationId } = metadata
+  const roomName = ctx.room.name || ctx.job.room?.name || conversationId
 
-  const startedAt = Date.now()
+  let startedAt = Date.now()
   let finished = false
   let organizationId: string | undefined
   let businessName: string | null | undefined
   let maxDurationTimer: NodeJS.Timeout | undefined
-  const transcriptCollector = new CallTranscriptCollector(startedAt)
+  let transcriptCollector: CallTranscriptCollector | null = null
 
   const finalizeConversation = async (status: 'completed' | 'failed', endedReason?: string) => {
     if (finished) return
@@ -96,7 +117,7 @@ async function entrypoint(ctx: agents.JobContext) {
       maxDurationTimer = undefined
     }
     const durationSeconds = Math.round((Date.now() - startedAt) / 1000)
-    const transcript = transcriptCollector.getMessages()
+    const transcript = transcriptCollector?.getMessages() ?? []
 
     let summary: string | undefined
     if (transcript.length > 0) {
@@ -130,10 +151,8 @@ async function entrypoint(ctx: agents.JobContext) {
   }
 
   try {
-    const [, agentDetail] = await Promise.all([
-      ctx.connect(),
-      getAgentByIdServiceRole(agentId),
-    ])
+    const agentDetail = prefetchedAgent ?? (await getAgentByIdCached(agentId))
+    const agentFetchedAt = Date.now()
 
     if (!agentDetail) {
       console.error(`[voice-agent] agent ${agentId} not found; failing conversation ${conversationId}`)
@@ -151,32 +170,52 @@ async function entrypoint(ctx: agents.JobContext) {
     const tts = new FishAudioTTS(voiceId, { tag: toneTag })
     const greetingText =
       agentDetail.first_message?.trim() || buildDefaultFirstMessage(agentDetail)
-
-    // Warm greeting audio while the session spins up so onEnter can play immediately.
-    void synthesizeCachedFrames(tts, greetingText).catch((err) => {
-      console.warn('[voice-agent] failed to prewarm greeting TTS:', err)
-    })
+    const greetingCacheKey = buildGreetingCacheKey(voiceId, toneTag, greetingText)
+    const greetingPromise = synthesizeCachedFrames(tts, greetingText, greetingCacheKey)
 
     const session = new agents.AgentSession({
       stt: OpenAISTT.withGroq(),
       llm: OpenAILLM.withGroq({ model: groqModel }),
       tts,
-      vad: new agents.inference.VAD({
-        model: 'silero',
-        minSpeechDuration: 120,
-        minSilenceDuration: 350,
-        prefixPaddingDuration: 500,
-      }),
+      vad: createSessionVad(ctx.proc),
       turnHandling: {
         turnDetection: 'vad',
         endpointing: { minDelay: 300, maxDelay: 2500 },
         interruption: { mode: 'vad', minDuration: 400 },
       },
-      // Web calls don't need a long AEC warmup — keep it short so the greeting isn't delayed.
-      aecWarmupDuration: 800,
+      aecWarmupDuration: 0,
     })
 
+    await greetingPromise
+    const agentReadyAt = Date.now()
+
+    startedAt = Date.now()
+    transcriptCollector = new CallTranscriptCollector(startedAt)
+    void startCallRecording(roomName, conversationId)
+
     transcriptCollector.attach(session)
+    attachVoiceSessionMetrics(session, {
+      conversationId,
+      roomName,
+    })
+
+    let sessionStartedAt = agentReadyAt
+    let firstSpeakingLogged = false
+    session.on(agents.AgentSessionEventTypes.AgentStateChanged, (event) => {
+      if (event.newState !== 'speaking' || firstSpeakingLogged) return
+      firstSpeakingLogged = true
+      logVoiceStartupLatency({
+        conversationId,
+        roomName,
+        jobStartedAt,
+        roomConnectedAt,
+        agentFetchedAt,
+        agentReadyAt,
+        sessionStartedAt,
+        firstSpeakingAt: Date.now(),
+        agentPrefetched: prefetchedAgent !== null,
+      })
+    })
 
     ctx.room.on('disconnected', () => {
       void finalizeConversation('completed')
@@ -212,6 +251,7 @@ async function entrypoint(ctx: agents.JobContext) {
       ? {}
       : buildKnowledgeTools({ organizationId: agentDetail.organization_id })
 
+    sessionStartedAt = Date.now()
     await session.start({
       room: ctx.room,
       agent: createReceptionistAgent({
@@ -240,11 +280,12 @@ async function entrypoint(ctx: agents.JobContext) {
   }
 }
 
-export default agents.defineAgent({
+export default agents.defineAgent<VoiceWorkerUserData>({
   entry: entrypoint,
-  prewarm: () => {
+  prewarm: (proc) => {
     try {
       initVad()
+      proc.userData.vad = new agents.inference.VAD(VAD_OPTIONS)
       console.info('[voice-agent] Silero VAD model prewarmed')
     } catch (err) {
       console.warn('[voice-agent] failed to prewarm Silero VAD model:', err)
@@ -256,6 +297,6 @@ agents.cli.runApp(
   new agents.WorkerOptions({
     agent: import.meta.filename,
     initializeProcessTimeout: 60_000,
-    numIdleProcesses: 2,
+    numIdleProcesses: 1,
   })
 )

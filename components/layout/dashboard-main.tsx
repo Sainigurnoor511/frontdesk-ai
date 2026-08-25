@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 const PAGE_LAYOUT: Record<string, { padding: string; overflow: string }> = {
   '/calendar': { padding: 'p-0', overflow: 'overflow-hidden' },
   '/booking-page': { padding: 'p-2', overflow: 'overflow-hidden' },
+  '/assistant': { padding: 'p-0', overflow: 'overflow-hidden' },
 }
 
 const DEFAULT_LAYOUT = { padding: 'p-8', overflow: 'overflow-y-auto' }

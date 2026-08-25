@@ -4,7 +4,7 @@ import { sayCached } from '@/lib/voice/say-cached'
 
 type ReceptionistAgentOptions = {
   instructions: string
-  tools: NonNullable<AgentOptions['tools']>
+  tools: NonNullable<AgentOptions<unknown>['tools']>
   greetingText: string
   tts: FishAudioTTS
 }

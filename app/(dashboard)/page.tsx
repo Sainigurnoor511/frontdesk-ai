@@ -24,7 +24,6 @@ export default async function HomePage() {
     priorCallStats,
     conversations,
     upcomingAppointments,
-    businessProfile,
   ] = await Promise.all([
     getOverviewMetrics(context.org.id, startDate, endDate),
     getCallStats(context.org.id, startDate, endDate),

@@ -74,6 +74,10 @@ export function CallAudioPlayer({
   agentName,
   downloadFilename,
   showWaveform = true,
+  onTimeUpdate,
+  onPlayingChange,
+  seekToSeconds = null,
+  onSeekApplied,
 }: {
   recordingUrl: string | null
   durationSeconds: number
@@ -81,6 +85,10 @@ export function CallAudioPlayer({
   agentName: string
   downloadFilename?: string
   showWaveform?: boolean
+  onTimeUpdate?: (seconds: number) => void
+  onPlayingChange?: (playing: boolean) => void
+  seekToSeconds?: number | null
+  onSeekApplied?: () => void
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -93,15 +101,13 @@ export function CallAudioPlayer({
   const [speedIndex, setSpeedIndex] = useState(0)
   const [prevRecordingUrl, setPrevRecordingUrl] = useState(recordingUrl)
 
-  // Reset playback state when the recording changes/clears. Adjusting state
-  // during render (the documented "adjusting state when a prop changes"
-  // pattern) keeps this out of an effect and avoids cascading re-renders.
   if (recordingUrl !== prevRecordingUrl) {
     setPrevRecordingUrl(recordingUrl)
     setPeaks(null)
     setIsDecoding(!!recordingUrl)
     setCurrentTime(0)
     setDuration(Number.isFinite(durationSeconds) ? durationSeconds : 0)
+    onTimeUpdate?.(0)
   }
 
   useEffect(() => {
@@ -128,6 +134,22 @@ export function CallAudioPlayer({
       cancelled = true
     }
   }, [recordingUrl])
+
+  useEffect(() => {
+    if (seekToSeconds == null) return
+
+    const audio = audioRef.current
+    if (!audio || !recordingUrl || !Number.isFinite(duration) || duration <= 0) {
+      onSeekApplied?.()
+      return
+    }
+
+    const clamped = Math.max(0, Math.min(duration, seekToSeconds))
+    audio.currentTime = clamped
+    setCurrentTime(clamped)
+    onTimeUpdate?.(clamped)
+    onSeekApplied?.()
+  }, [seekToSeconds, recordingUrl, duration, onTimeUpdate, onSeekApplied])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -176,7 +198,23 @@ export function CallAudioPlayer({
     return () => observer.disconnect()
   }, [peaks, currentTime, duration, showWaveform])
 
-  function togglePlay() {
+  function updateCurrentTime(time: number) {
+    setCurrentTime(time)
+    onTimeUpdate?.(time)
+  }
+
+  function seekTo(time: number) {
+    const audio = audioRef.current
+    if (!audio || !recordingUrl || !Number.isFinite(duration) || duration <= 0) return
+    const clamped = Math.max(0, Math.min(duration, time))
+    audio.currentTime = clamped
+    updateCurrentTime(clamped)
+  }
+
+  function togglePlay(event: React.MouseEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+
     const audio = audioRef.current
     if (!audio || !recordingUrl) return
     if (isPlaying) {
@@ -192,7 +230,7 @@ export function CallAudioPlayer({
   function seekBy(deltaSeconds: number) {
     const audio = audioRef.current
     if (!audio || !Number.isFinite(duration) || duration <= 0) return
-    audio.currentTime = Math.max(0, Math.min(duration, audio.currentTime + deltaSeconds))
+    seekTo(audio.currentTime + deltaSeconds)
   }
 
   function cycleSpeed() {
@@ -208,7 +246,7 @@ export function CallAudioPlayer({
     const ratio = (e.clientX - rect.left) / rect.width
     const targetTime = ratio * duration
     if (!Number.isFinite(targetTime) || targetTime < 0) return
-    audio.currentTime = targetTime
+    seekTo(targetTime)
   }
 
   async function handleCopyTranscript() {
@@ -239,20 +277,28 @@ export function CallAudioPlayer({
           key={recordingUrl}
           ref={audioRef}
           src={recordingUrl}
-          crossOrigin="anonymous"
-          preload="metadata"
+          preload="auto"
           onLoadStart={() => {
-            setCurrentTime(0)
+            updateCurrentTime(0)
             setDuration(Number.isFinite(durationSeconds) ? durationSeconds : 0)
           }}
-          onPlay={() => setIsPlaying(true)}
-          onPause={() => setIsPlaying(false)}
-          onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
+          onPlay={() => {
+            setIsPlaying(true)
+            onPlayingChange?.(true)
+          }}
+          onPause={() => {
+            setIsPlaying(false)
+            onPlayingChange?.(false)
+          }}
+          onTimeUpdate={(e) => updateCurrentTime(e.currentTarget.currentTime)}
           onLoadedMetadata={(e) => {
             const d = e.currentTarget.duration
             if (Number.isFinite(d)) setDuration(d)
           }}
-          onEnded={() => setIsPlaying(false)}
+          onEnded={() => {
+            setIsPlaying(false)
+            onPlayingChange?.(false)
+          }}
         />
       )}
 
@@ -274,7 +320,7 @@ export function CallAudioPlayer({
           <Button
             type="button"
             size="icon"
-            className="size-9 rounded-full"
+            className="size-9 shrink-0 rounded-full"
             disabled={controlsDisabled}
             onClick={togglePlay}
           >

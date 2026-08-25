@@ -1,11 +1,17 @@
 'use server'
 
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
+import { AccessToken } from 'livekit-server-sdk'
 import { headers } from 'next/headers'
 import { createConversation, updateConversationStatus } from '@/lib/data/conversations-service'
-import { startCallRecording } from '@/lib/voice/recording'
+import { endLiveKitCallRoom } from '@/lib/voice/end-call'
+import { createLiveKitCallRoom } from '@/lib/voice/livekit-room'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
-import { startPublicCallSchema, type StartPublicCallInput } from '@/lib/validations/voice'
+import {
+  startPublicCallSchema,
+  endCallSchema,
+  type StartPublicCallInput,
+  type EndCallInput,
+} from '@/lib/validations/voice'
 import { getAvailableSlots } from '@/lib/data/availability-engine'
 import {
   findOrCreateClientServiceRole,
@@ -29,6 +35,8 @@ import {
 } from '@/lib/validations/booking'
 
 const MAX_CALL_SECONDS = 300
+const ROOM_EMPTY_TIMEOUT_SECONDS = 30
+const ROOM_DEPARTURE_TIMEOUT_SECONDS = 5
 const MAX_CALLS_PER_HOUR_PER_IP = 5
 const MAX_BOOKINGS_PER_HOUR_PER_IP = 5
 
@@ -104,22 +112,13 @@ export async function startPublicCall(
   })
 
   try {
-    // Explicitly pre-create the room with metadata so the voice worker
-    // (workers/voice-agent.ts) can read { agentId, conversationId } off
-    // `ctx.room.metadata` instead of parsing them out of the room name.
-    const roomService = new RoomServiceClient(
-      process.env.LIVEKIT_URL!,
-      process.env.LIVEKIT_API_KEY!,
-      process.env.LIVEKIT_API_SECRET!
-    )
-    await roomService.createRoom({
-      name: roomName,
-      metadata: JSON.stringify({ agentId: parsed.data.agentId, conversationId: conversation.id }),
-      emptyTimeout: MAX_CALL_SECONDS,
-      departureTimeout: 30,
+    await createLiveKitCallRoom({
+      roomName,
+      agentId: parsed.data.agentId,
+      conversationId: conversation.id,
+      emptyTimeout: ROOM_EMPTY_TIMEOUT_SECONDS,
+      departureTimeout: ROOM_DEPARTURE_TIMEOUT_SECONDS,
     })
-
-    void startCallRecording(roomName, conversation.id)
 
     // Identity is just an opaque id — no need to embed the (possibly
     // spoofed) IP header value into a string other participants can see.
@@ -148,6 +147,23 @@ export async function startPublicCall(
     }
     return { error: 'Could not start the call. Please try again.' }
   }
+}
+
+export async function endPublicCall(
+  input: EndCallInput & { organizationId: string }
+): Promise<{ error: string } | { success: true }> {
+  const parsed = endCallSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const expectedPrefix = `${input.organizationId}:call:`
+  if (!parsed.data.roomName.startsWith(expectedPrefix)) {
+    return { error: 'Invalid call room.' }
+  }
+
+  await endLiveKitCallRoom(parsed.data.roomName)
+  return { success: true }
 }
 
 export async function getPublicAvailableSlots(

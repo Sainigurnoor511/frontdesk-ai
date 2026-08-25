@@ -15,8 +15,8 @@ import { cn } from '@/lib/utils'
 import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { useVoiceCall } from './use-voice-call'
-import { startDashboardCall } from '@/app/(dashboard)/actions/voice'
-import { startPublicCall } from '@/app/smb/actions'
+import { startDashboardCall, endDashboardCall } from '@/app/(dashboard)/actions/voice'
+import { startPublicCall, endPublicCall } from '@/app/smb/actions'
 
 export function CallDialog({
   open,
@@ -37,10 +37,15 @@ export function CallDialog({
   authenticated: boolean
   turnstileToken?: string | null
 }) {
-  const { status, agentState, errorMessage, transcript, connect, disconnect, prewarm } = useVoiceCall(() =>
-    authenticated
-      ? startDashboardCall({ agentId })
-      : startPublicCall({ organizationId, agentId, turnstileToken: turnstileToken ?? undefined })
+  const { status, agentState, errorMessage, transcript, connect, disconnect, prewarm } = useVoiceCall(
+    () =>
+      authenticated
+        ? startDashboardCall({ agentId })
+        : startPublicCall({ organizationId, agentId, turnstileToken: turnstileToken ?? undefined }),
+    ({ roomName }) =>
+      authenticated
+        ? endDashboardCall({ roomName })
+        : endPublicCall({ roomName, organizationId })
   )
 
   const transcriptEndRef = useRef<HTMLDivElement>(null)

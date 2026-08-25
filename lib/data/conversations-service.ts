@@ -91,6 +91,24 @@ export async function createConversation(
   return mapConversation(data as ConversationRow)
 }
 
+export async function getConversationContextByRoomName(
+  roomName: string
+): Promise<{ conversationId: string; agentId: string } | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, agent_id')
+    .eq('room_name', roomName)
+    .maybeSingle()
+
+  if (error || !data?.agent_id) return null
+
+  return {
+    conversationId: data.id,
+    agentId: data.agent_id,
+  }
+}
+
 export async function updateConversationStatus(
   id: string,
   patch: {

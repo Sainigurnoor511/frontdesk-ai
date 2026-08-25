@@ -28,14 +28,6 @@ export type TranscriptMessage = {
   final: boolean
 }
 
-const PREPARED_CALL_TTL_MS = 2 * 60 * 1000
-
-/**
- * Explicit browser audio processing — without these, WebRTC leaves echo
- * cancellation, noise suppression and automatic gain control at browser
- * defaults, which makes calls sound distant and lets background noise leak
- * through. All three are universally supported and cheap.
- */
 const ROOM_OPTIONS: RoomOptions = {
   adaptiveStream: false,
   dynacast: false,
@@ -47,7 +39,8 @@ const ROOM_OPTIONS: RoomOptions = {
 }
 
 export function useVoiceCall(
-  startCall: () => Promise<{ error: string } | CallCredentials>
+  startCall: () => Promise<{ error: string } | CallCredentials>,
+  endCall?: (input: { roomName: string }) => Promise<unknown>
 ) {
   const [status, setStatus] = useState<CallStatus>('idle')
   const [agentState, setAgentState] = useState<AgentState>(null)
@@ -55,7 +48,9 @@ export function useVoiceCall(
   const [transcript, setTranscript] = useState<TranscriptMessage[]>([])
   const roomRef = useRef<Room | null>(null)
   const attachedTracksRef = useRef<Array<{ track: RemoteTrack; element: HTMLMediaElement }>>([])
-  const preparedCallRef = useRef<{ credentials: CallCredentials; preparedAt: number } | null>(null)
+  const sessionRef = useRef<{ roomName: string } | null>(null)
+  const endCallRef = useRef(endCall)
+  endCallRef.current = endCall
 
   const cleanupAttachedElements = useCallback(() => {
     for (const { track, element } of attachedTracksRef.current) {
@@ -65,14 +60,15 @@ export function useVoiceCall(
     attachedTracksRef.current = []
   }, [])
 
-  const invalidatePreparedCall = useCallback(() => {
-    preparedCallRef.current = null
+  const teardownServerRoom = useCallback((roomName: string) => {
+    void endCallRef.current?.({ roomName })
   }, [])
 
-  /**
-   * Creates (once) and returns the shared Room instance, wiring up event
-   * listeners a single time so reconnect after a hangup reuses them.
-   */
+  const resetRoom = useCallback(() => {
+    cleanupAttachedElements()
+    roomRef.current = null
+  }, [cleanupAttachedElements])
+
   const ensureRoom = useCallback(() => {
     if (roomRef.current) return roomRef.current
 
@@ -114,17 +110,14 @@ export function useVoiceCall(
       cleanupAttachedElements()
       setStatus('ended')
       setAgentState(null)
-      invalidatePreparedCall()
+      sessionRef.current = null
+      roomRef.current = null
     })
 
     return room
-  }, [cleanupAttachedElements, invalidatePreparedCall])
+  }, [cleanupAttachedElements])
 
-  /**
-   * Best-effort prewarm when the call UI opens: warms DNS/TLS to LiveKit and,
-   * when possible, mints a room/token early so the agent can join before the
-   * caller taps start.
-   */
+  /** Warms DNS/TLS to LiveKit only — does not create a room or conversation. */
   const prewarm = useCallback(async () => {
     try {
       const res = await fetch('/api/livekit/endpoint', { cache: 'no-store' })
@@ -135,72 +128,80 @@ export function useVoiceCall(
     } catch {
       // Prewarm is an optimization; never let it block or surface errors.
     }
-
-    try {
-      const result = await startCall()
-      if ('error' in result) return
-
-      preparedCallRef.current = { credentials: result, preparedAt: Date.now() }
-      await ensureRoom().prepareConnection(result.url, result.token)
-    } catch {
-      invalidatePreparedCall()
-    }
-  }, [ensureRoom, invalidatePreparedCall, startCall])
+  }, [ensureRoom])
 
   const connect = useCallback(async () => {
     setStatus('connecting')
     setErrorMessage(null)
     setTranscript([])
 
-    const prepared = preparedCallRef.current
-    const preparedIsFresh =
-      prepared && Date.now() - prepared.preparedAt < PREPARED_CALL_TTL_MS
-
-    let credentials: CallCredentials | null = preparedIsFresh ? prepared.credentials : null
-    if (!credentials) {
-      const result = await startCall()
-      if ('error' in result) {
-        setStatus('error')
-        setErrorMessage(result.error)
-        return
-      }
-      credentials = result
+    const result = await startCall()
+    if ('error' in result) {
+      setStatus('error')
+      setErrorMessage(result.error)
+      return
     }
 
-    preparedCallRef.current = null
+    sessionRef.current = { roomName: result.roomName }
     const room = ensureRoom()
 
     try {
       try {
-        await room.prepareConnection(credentials.url, credentials.token)
+        await room.prepareConnection(result.url, result.token)
       } catch {
         // Non-fatal: connect() still performs the full handshake.
       }
-      await room.connect(credentials.url, credentials.token, { autoSubscribe: true })
+      await room.connect(result.url, result.token, { autoSubscribe: true })
       await room.localParticipant.setMicrophoneEnabled(true)
       setStatus('joining')
       setAgentState('listening')
     } catch (err) {
+      sessionRef.current = null
+      teardownServerRoom(result.roomName)
+      resetRoom()
       setStatus('error')
       setErrorMessage(err instanceof Error ? err.message : 'Could not connect to the call.')
     }
-  }, [startCall, ensureRoom])
+  }, [startCall, ensureRoom, resetRoom, teardownServerRoom])
 
   const disconnect = useCallback(() => {
-    void roomRef.current?.disconnect()
+    const session = sessionRef.current
+    sessionRef.current = null
+
+    const room = roomRef.current
+    if (room) {
+      void room.localParticipant.setMicrophoneEnabled(false).finally(() => {
+        void room.disconnect(true)
+      })
+    }
+
+    cleanupAttachedElements()
+    roomRef.current = null
     setStatus('ended')
     setAgentState(null)
-    invalidatePreparedCall()
-  }, [invalidatePreparedCall])
+
+    if (session) {
+      teardownServerRoom(session.roomName)
+    }
+  }, [cleanupAttachedElements, teardownServerRoom])
 
   useEffect(() => {
     return () => {
-      void roomRef.current?.disconnect()
+      const session = sessionRef.current
+      sessionRef.current = null
+      const room = roomRef.current
+      if (room) {
+        void room.localParticipant.setMicrophoneEnabled(false).finally(() => {
+          void room.disconnect(true)
+        })
+      }
       roomRef.current = null
       cleanupAttachedElements()
-      invalidatePreparedCall()
+      if (session) {
+        teardownServerRoom(session.roomName)
+      }
     }
-  }, [cleanupAttachedElements, invalidatePreparedCall])
+  }, [cleanupAttachedElements, teardownServerRoom])
 
   return { status, agentState, errorMessage, transcript, connect, disconnect, prewarm }
 }

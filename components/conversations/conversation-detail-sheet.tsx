@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useState, useTransition, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useTransition, type ReactNode } from 'react'
 import { Monitor, MessageCircle, Phone, Bot } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
@@ -27,6 +28,7 @@ import {
   isVoiceConversation,
   resolveDisplayCallGoals,
 } from '@/lib/conversations/display'
+import { getActiveTranscriptIndex } from '@/lib/conversations/transcript-playback'
 import { getRecordingUrl } from '@/app/(dashboard)/conversations/actions'
 
 function formatDuration(seconds: number): string {
@@ -105,21 +107,37 @@ export function ConversationDetailSheet({
   const [detailTab, setDetailTab] = useState('overview')
   const [recordingUrl, setRecordingUrl] = useState<string | null>(null)
   const [recordingLoading, setRecordingLoading] = useState(false)
+  const [playbackTime, setPlaybackTime] = useState(0)
+  const [seekTarget, setSeekTarget] = useState<number | null>(null)
+  const [isPlaying, setIsPlaying] = useState(false)
   const [, startTransition] = useTransition()
+  const prevActiveIndexRef = useRef(-1)
 
   const agentLabel = conversation?.agentName ?? 'Receptionist'
   const displayGoals = conversation ? resolveDisplayCallGoals(conversation) : []
   const achievedCount = displayGoals.filter((g) => g.status === 'success').length
+  const activeTranscriptIndex = conversation
+    ? getActiveTranscriptIndex(conversation.transcript, playbackTime)
+    : -1
+  const canSyncTranscript = Boolean(recordingUrl) && isVoiceConversation(conversation?.channel ?? 'chat')
 
   useEffect(() => {
     if (!open || !conversation) {
       setRecordingUrl(null)
       setRecordingLoading(false)
+      setPlaybackTime(0)
+      setSeekTarget(null)
+      setIsPlaying(false)
+      prevActiveIndexRef.current = -1
       return
     }
 
     setDetailTab('overview')
     setRecordingUrl(null)
+    setPlaybackTime(0)
+    setSeekTarget(null)
+    setIsPlaying(false)
+    prevActiveIndexRef.current = -1
 
     if (!conversation.recordingPath && !conversation.roomName) {
       setRecordingLoading(false)
@@ -142,13 +160,33 @@ export function ConversationDetailSheet({
     }
   }, [open, conversation?.id, conversation?.recordingPath, conversation?.roomName])
 
+  useEffect(() => {
+    if (!isPlaying || detailTab !== 'transcription' || activeTranscriptIndex < 0) return
+    if (activeTranscriptIndex === prevActiveIndexRef.current) return
+
+    prevActiveIndexRef.current = activeTranscriptIndex
+    document
+      .getElementById(`transcript-line-${activeTranscriptIndex}`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [activeTranscriptIndex, detailTab, isPlaying])
+
   function handleOpenChange(next: boolean) {
     if (!next) {
       setRecordingUrl(null)
       setRecordingLoading(false)
       setDetailTab('overview')
+      setPlaybackTime(0)
+      setSeekTarget(null)
+      setIsPlaying(false)
+      prevActiveIndexRef.current = -1
     }
     onOpenChange(next)
+  }
+
+  function handleTranscriptSeek(timestampSeconds: number) {
+    setSeekTarget(timestampSeconds)
+    setPlaybackTime(timestampSeconds)
+    prevActiveIndexRef.current = -1
   }
 
   return (
@@ -178,6 +216,10 @@ export function ConversationDetailSheet({
                       agentName={agentLabel}
                       downloadFilename={`conversation-${conversation.id}${conversation.recordingPath?.endsWith('.ogg') ? '.ogg' : '.mp3'}`}
                       showWaveform
+                      onTimeUpdate={setPlaybackTime}
+                      onPlayingChange={setIsPlaying}
+                      seekToSeconds={seekTarget}
+                      onSeekApplied={() => setSeekTarget(null)}
                     />
                   )}
                 </div>
@@ -288,10 +330,15 @@ export function ConversationDetailSheet({
                     <ul className="space-y-5">
                       {conversation.transcript.map((line, index) => {
                         const isAgent = line.role === 'agent'
+                        const isActive = canSyncTranscript && index === activeTranscriptIndex
                         return (
                           <li
                             key={`${line.timestampSeconds}-${index}`}
-                            className={isAgent ? 'space-y-2' : 'space-y-2 pl-6'}
+                            id={`transcript-line-${index}`}
+                            className={cn(
+                              'flex flex-col gap-1.5',
+                              isAgent ? 'items-start' : 'items-end'
+                            )}
                           >
                             {isAgent && (
                               <div className="flex items-center gap-2">
@@ -301,16 +348,30 @@ export function ConversationDetailSheet({
                                 <span className="text-sm font-medium">{agentLabel}</span>
                               </div>
                             )}
-                            <div
-                              className={
+                            <button
+                              type="button"
+                              disabled={!canSyncTranscript}
+                              onClick={() => handleTranscriptSeek(line.timestampSeconds)}
+                              className={cn(
+                                'w-fit max-w-[85%] rounded-xl px-3 py-2.5 text-left text-sm leading-relaxed text-foreground transition-colors',
                                 isAgent
-                                  ? 'rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm leading-relaxed text-foreground'
-                                  : 'rounded-xl bg-[#f4f4f4] px-3 py-2.5 text-sm leading-relaxed text-foreground'
-                              }
+                                  ? 'border border-border bg-muted/40'
+                                  : 'bg-[#f4f4f4]',
+                                canSyncTranscript && 'cursor-pointer hover:opacity-90',
+                                isActive &&
+                                  (isAgent
+                                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
+                                    : 'bg-primary/15 ring-2 ring-primary/30')
+                              )}
                             >
                               {line.text}
-                            </div>
-                            <p className="text-xs text-muted-foreground">
+                            </button>
+                            <p
+                              className={cn(
+                                'text-xs text-muted-foreground',
+                                isAgent ? 'pl-0' : 'pr-1'
+                              )}
+                            >
                               {formatDuration(line.timestampSeconds)}
                             </p>
                           </li>
