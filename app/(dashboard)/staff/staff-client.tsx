@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { FilterToggleButton } from '@/components/layout/filter-menu-button'
 import { Card, CardContent } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import {
   Empty,
   EmptyContent,
@@ -47,6 +48,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import type { StaffMember } from '@/lib/data/staff'
+import type { StaffAvailabilityNow } from '@/lib/data/availability-engine'
 import { createStaffMember, updateStaffMember, deleteStaffMember } from './actions'
 
 type StaffFormState = {
@@ -76,7 +78,13 @@ function getInitials(name: string) {
   return initials.join('') || '?'
 }
 
-export function StaffClient({ staff }: { staff: StaffMember[] }) {
+export function StaffClient({
+  staff,
+  availabilityNow,
+}: {
+  staff: StaffMember[]
+  availabilityNow: StaffAvailabilityNow[]
+}) {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<StaffFormState>(emptyForm)
@@ -84,10 +92,14 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
   const [deleteTarget, setDeleteTarget] = useState<StaffMember | null>(null)
   const [isPending, startTransition] = useTransition()
 
-  // TODO: "Available now" / "In session" filters are UI-only for now — there's
-  // no real-time presence system yet to back them with live staff status.
-  const [presenceFilter, setPresenceFilter] = useState<'available' | 'in-session' | null>(
-    null
+  // "In session" has no backend yet — nothing links a live call to a staff
+  // member, so it stays disabled. "Available now" is real: derived from
+  // staff/business hours + active time-off, computed server-side at load.
+  const [presenceFilter, setPresenceFilter] = useState<'available' | null>(null)
+
+  const availabilityById = useMemo(
+    () => new Map(availabilityNow.map((row) => [row.staffId, row.isAvailableNow])),
+    [availabilityNow]
   )
 
   const isEditMode = Boolean(form.id)
@@ -103,8 +115,11 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
           .includes(query)
       )
     }
+    if (presenceFilter === 'available') {
+      result = result.filter((member) => availabilityById.get(member.id) === true)
+    }
     return result
-  }, [staff, search])
+  }, [staff, search, presenceFilter, availabilityById])
 
   function openAddDialog() {
     setForm(emptyForm)
@@ -203,8 +218,6 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
           icon={UserCheck}
           label="Available now"
           active={presenceFilter === 'available'}
-          disabled
-          title="Live presence tracking is coming soon"
           onClick={() =>
             setPresenceFilter((current) => (current === 'available' ? null : 'available'))
           }
@@ -212,12 +225,10 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
         <FilterToggleButton
           icon={Headset}
           label="In session"
-          active={presenceFilter === 'in-session'}
+          active={false}
           disabled
-          title="Live presence tracking is coming soon"
-          onClick={() =>
-            setPresenceFilter((current) => (current === 'in-session' ? null : 'in-session'))
-          }
+          title="Requires tracking which staff member a live call is transferred to, which isn't built yet"
+          onClick={() => {}}
         />
       </div>
 
@@ -259,7 +270,15 @@ export function StaffClient({ staff }: { staff: StaffMember[] }) {
                       <AvatarFallback>{getInitials(member.fullName)}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 space-y-0.5">
-                      <p className="font-medium">{member.fullName}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{member.fullName}</p>
+                        {availabilityById.get(member.id) === true && (
+                          <Badge variant="outline" className="gap-1 text-emerald-600 dark:text-emerald-400">
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                            Available now
+                          </Badge>
+                        )}
+                      </div>
                       <p className="text-sm text-muted-foreground">
                         {member.displayName || member.email || ''}
                       </p>

@@ -1,8 +1,17 @@
+import { redirect } from 'next/navigation'
 import { getStaffForOrg } from '@/lib/data/staff'
+import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getStaffAvailabilityNow } from '@/lib/data/availability-engine'
 import { StaffClient } from './staff-client'
 
 export default async function StaffPage() {
-  const staff = await getStaffForOrg()
+  const context = await getCurrentOrgAndUser()
+  if (!context) redirect('/login')
 
-  return <StaffClient staff={staff} />
+  const [staff, availabilityNow] = await Promise.all([
+    getStaffForOrg(),
+    getStaffAvailabilityNow(context.org.id),
+  ])
+
+  return <StaffClient staff={staff} availabilityNow={availabilityNow} />
 }

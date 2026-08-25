@@ -211,6 +211,115 @@ export async function getAvailableSlots(
   })
 }
 
+/** Day-of-week (0=Sunday) and "HH:mm:ss" time-of-day for `date` in `timeZone`, matching the `time`/`day_of_week` columns used by `business_hours`/`staff_hours`. */
+function nowInTimezone(date: Date, timeZone: string): { dayOfWeek: number; timeOfDay: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? '00'
+  const weekdayShort = parts.find((p) => p.type === 'weekday')?.value ?? 'Sun'
+  const dayOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekdayShort)
+
+  return {
+    dayOfWeek: dayOfWeek === -1 ? 0 : dayOfWeek,
+    timeOfDay: `${get('hour')}:${get('minute')}:${get('second')}`,
+  }
+}
+
+export type StaffAvailabilityNow = { staffId: string; isAvailableNow: boolean }
+
+/**
+ * Whether each active staff member's working hours (staff-hours override,
+ * falling back to business hours) cover the current moment, minus any
+ * all-day or currently-active time off. Ignores appointments/bookings —
+ * this is "on the clock", not "not currently in a session" (no backend
+ * tracks which staff a live call transferred to yet).
+ */
+export async function getStaffAvailabilityNow(
+  organizationId: string
+): Promise<StaffAvailabilityNow[]> {
+  const supabase = createServiceRoleClient()
+  const now = new Date()
+
+  const [{ data: profile }, { data: staffRows }, { data: hoursRows }, { data: timeOffRows }] =
+    await Promise.all([
+      supabase
+        .from('business_profile')
+        .select('timezone')
+        .eq('organization_id', organizationId)
+        .maybeSingle(),
+      supabase
+        .from('staff_members')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('is_active', true),
+      supabase.from('business_hours').select('day_of_week, is_open, start_time, end_time').eq(
+        'organization_id',
+        organizationId
+      ),
+      supabase
+        .from('time_off')
+        .select('staff_id, scope, all_day, starts_at, ends_at')
+        .eq('organization_id', organizationId)
+        .lte('starts_at', now.toISOString())
+        .gte('ends_at', now.toISOString()),
+    ])
+
+  const timezone = (profile as { timezone: string } | null)?.timezone ?? 'UTC'
+  const { dayOfWeek, timeOfDay } = nowInTimezone(now, timezone)
+
+  const businessHoursForToday = ((hoursRows ?? []) as BusinessHoursRow[]).find(
+    (row) => row.day_of_week === dayOfWeek
+  )
+
+  const staffIds = ((staffRows ?? []) as { id: string }[]).map((row) => row.id)
+  const staffHoursRows =
+    staffIds.length > 0
+      ? (
+          await supabase
+            .from('staff_hours')
+            .select('staff_id, day_of_week, is_open, start_time, end_time')
+            .in('staff_id', staffIds)
+            .eq('day_of_week', dayOfWeek)
+        ).data
+      : []
+
+  const staffOverrideById = new Map<string, BusinessHoursRow>(
+    ((staffHoursRows ?? []) as (BusinessHoursRow & { staff_id: string })[]).map((row) => [
+      row.staff_id,
+      row,
+    ])
+  )
+
+  const activeTimeOff = (timeOffRows ?? []) as TimeOffRow[]
+
+  return staffIds.map((staffId) => {
+    const hours = staffOverrideById.get(staffId) ?? businessHoursForToday
+
+    if (!hours || !hours.is_open || !hours.start_time || !hours.end_time) {
+      return { staffId, isAvailableNow: false }
+    }
+    if (timeOfDay < hours.start_time || timeOfDay >= hours.end_time) {
+      return { staffId, isAvailableNow: false }
+    }
+
+    const onTimeOff = activeTimeOff.some(
+      (block) => block.scope === 'company' || (block.scope === 'staff' && block.staff_id === staffId)
+    )
+    if (onTimeOff) {
+      return { staffId, isAvailableNow: false }
+    }
+
+    return { staffId, isAvailableNow: true }
+  })
+}
+
 export type BookingPageStaff = { id: string; name: string }
 
 export async function getStaffForBookingPage(organizationId: string): Promise<BookingPageStaff[]> {
