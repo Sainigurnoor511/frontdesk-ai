@@ -66,6 +66,11 @@ export type UpdateAgentCallSettingsInput = z.infer<typeof updateAgentCallSetting
 
 export const updateAgentAdvancedSettingsSchema = z.object({
   agentId: z.string().uuid(),
+  // Which engine runs this agent's calls. `llmModel` and `reasoningEffort` below
+  // only apply to 'livekit' — the 'assemblyai' provider uses AssemblyAI's own
+  // managed conversational model. They stay required so the stored values
+  // survive a round-trip through the form regardless of provider.
+  voiceProvider: z.enum(['livekit', 'assemblyai']),
   llmModel: z.enum(['llama-3.1-8b-instant', 'llama-3.3-70b-versatile', 'openai/gpt-oss-120b']),
   reasoningEffort: z.enum(['minimal', 'low', 'medium', 'high']),
   filterBackgroundSpeech: z.boolean(),

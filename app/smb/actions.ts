@@ -2,15 +2,32 @@
 
 import { AccessToken } from 'livekit-server-sdk'
 import { headers } from 'next/headers'
-import { createConversation, updateConversationStatus } from '@/lib/data/conversations-service'
+import {
+  createConversation,
+  getConversationAssemblyAiSessionId,
+  getConversationOwnership,
+  setConversationAssemblyAiSessionId,
+  updateConversationStatus,
+} from '@/lib/data/conversations-service'
+import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { endLiveKitCallRoom } from '@/lib/voice/end-call'
 import { createLiveKitCallRoom } from '@/lib/voice/livekit-room'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
+import type { StartCallResult } from '@/lib/voice/call-session'
+import { startAssemblyAiCall } from '@/lib/voice/providers/assemblyai/start-call'
+import { enqueueAssemblyAiFinalize } from '@/lib/voice/providers/assemblyai/enqueue-finalize'
+import { runVoiceToolForConversation } from '@/lib/voice/providers/assemblyai/tool-relay'
 import {
   startPublicCallSchema,
   endCallSchema,
+  endAssemblyAiCallSchema,
+  executeVoiceToolSchema,
+  linkAssemblyAiSessionSchema,
   type StartPublicCallInput,
   type EndCallInput,
+  type EndAssemblyAiCallInput,
+  type ExecuteVoiceToolInput,
+  type LinkAssemblyAiSessionInput,
 } from '@/lib/validations/voice'
 import { getAvailableSlots } from '@/lib/data/availability-engine'
 import {
@@ -40,9 +57,7 @@ const ROOM_DEPARTURE_TIMEOUT_SECONDS = 5
 const MAX_CALLS_PER_HOUR_PER_IP = 5
 const MAX_BOOKINGS_PER_HOUR_PER_IP = 5
 
-export async function startPublicCall(
-  input: StartPublicCallInput
-): Promise<{ error: string } | { token: string; url: string; roomName: string; conversationId: string }> {
+export async function startPublicCall(input: StartPublicCallInput): Promise<StartCallResult> {
   const parsed = startPublicCallSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
@@ -102,6 +117,17 @@ export async function startPublicCall(
     return { error: 'Too many calls from this network. Please try again later.' }
   }
 
+  // The org id comes from the public page's URL, so confirm the requested agent
+  // actually belongs to it before doing anything with the agent's configuration.
+  const agent = await getAgentByIdServiceRole(parsed.data.agentId)
+  if (!agent || agent.organization_id !== parsed.data.organizationId) {
+    return { error: 'Agent not found.' }
+  }
+
+  if (agent.voice_provider === 'assemblyai') {
+    return startAssemblyAiCall({ organizationId: parsed.data.organizationId, agent })
+  }
+
   const roomName = `${parsed.data.organizationId}:call:${crypto.randomUUID()}`
   const conversation = await createConversation({
     organizationId: parsed.data.organizationId,
@@ -129,6 +155,7 @@ export async function startPublicCall(
     at.addGrant({ room: roomName, roomJoin: true, canPublish: true, canSubscribe: true })
 
     return {
+      provider: 'livekit',
       token: await at.toJwt(),
       url: process.env.LIVEKIT_URL!,
       roomName,
@@ -163,6 +190,87 @@ export async function endPublicCall(
   }
 
   await endLiveKitCallRoom(parsed.data.roomName)
+  return { success: true }
+}
+
+/**
+ * Public counterparts of the dashboard's AssemblyAI actions.
+ *
+ * These run unauthenticated, so `organizationId` comes from the public page's URL
+ * rather than a session. Every one of them re-reads the conversation server-side
+ * and requires it to belong to that org, which is the same trust model the rest of
+ * this file already uses (org scoping by URL, plus IP rate limiting on the
+ * expensive entry points).
+ */
+export async function linkPublicAssemblyAiSession(
+  input: LinkAssemblyAiSessionInput & { organizationId: string }
+): Promise<{ error: string } | { success: true }> {
+  const parsed = linkAssemblyAiSessionSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const linked = await setConversationAssemblyAiSessionId(
+    parsed.data.conversationId,
+    parsed.data.sessionId,
+    input.organizationId
+  )
+
+  if (!linked) {
+    return { error: 'Could not link the call session.' }
+  }
+
+  return { success: true }
+}
+
+export async function executePublicVoiceTool(
+  input: ExecuteVoiceToolInput & { organizationId: string }
+): Promise<{ result: unknown }> {
+  const parsed = executeVoiceToolSchema.safeParse(input)
+  if (!parsed.success) {
+    return { result: { error: 'invalid_request' } }
+  }
+
+  const result = await runVoiceToolForConversation({
+    conversationId: parsed.data.conversationId,
+    organizationId: input.organizationId,
+    toolName: parsed.data.toolName,
+    arguments: parsed.data.arguments,
+  })
+
+  return { result }
+}
+
+export async function endPublicAssemblyAiCall(
+  input: EndAssemblyAiCallInput & { organizationId: string }
+): Promise<{ error: string } | { success: true }> {
+  const parsed = endAssemblyAiCallSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const conversation = await getConversationOwnership(parsed.data.conversationId)
+  if (!conversation || conversation.organizationId !== input.organizationId) {
+    return { error: 'Conversation not found.' }
+  }
+
+  // Leaves the conversation `active` on purpose so the queued job can perform the
+  // terminal write with the transcript attached — see `endAssemblyAiCall`.
+  const sessionId = await getConversationAssemblyAiSessionId(parsed.data.conversationId)
+  if (!sessionId) {
+    try {
+      await updateConversationStatus(parsed.data.conversationId, {
+        status: 'failed',
+        outcome: 'failed',
+        endedReason: 'assemblyai_session_never_started',
+      })
+    } catch (err) {
+      console.error(`Failed to mark conversation ${parsed.data.conversationId} as failed:`, err)
+    }
+    return { success: true }
+  }
+
+  await enqueueAssemblyAiFinalize({ conversationId: parsed.data.conversationId, sessionId })
   return { success: true }
 }
 

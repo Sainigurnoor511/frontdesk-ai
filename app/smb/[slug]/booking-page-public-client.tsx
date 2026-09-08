@@ -8,7 +8,13 @@ import type { BookingPageStaff } from '@/lib/data/availability-engine'
 import type { BookingPageConfig } from '@/lib/data/booking-page-config'
 import { ThinkingOrb } from 'thinking-orbs'
 import { useVoiceCall } from '@/components/voice/use-voice-call'
-import { startPublicCall, endPublicCall } from '@/app/smb/actions'
+import {
+  startPublicCall,
+  endPublicCall,
+  endPublicAssemblyAiCall,
+  executePublicVoiceTool,
+  linkPublicAssemblyAiSession,
+} from '@/app/smb/actions'
 import { BookingFlow } from './booking-flow'
 import { ManageBookingFlow } from './manage-booking-flow'
 
@@ -111,9 +117,19 @@ function ReceptionistPanel({
   fullBleed?: boolean
 }) {
   const [chatMessage, setChatMessage] = useState('')
+  // Handles both voice engines; which one runs is decided per agent by
+  // `agents.voice_provider` and reported back by `startPublicCall`.
   const { status, connect, disconnect } = useVoiceCall(
     () => startPublicCall({ organizationId, agentId }),
-    ({ roomName }) => endPublicCall({ roomName, organizationId })
+    {
+      endLiveKitCall: ({ roomName }) => endPublicCall({ roomName, organizationId }),
+      endAssemblyAiCall: ({ conversationId }) =>
+        endPublicAssemblyAiCall({ conversationId, organizationId }),
+      linkAssemblyAiSession: ({ conversationId, sessionId }) =>
+        linkPublicAssemblyAiSession({ conversationId, sessionId, organizationId }),
+      executeVoiceTool: ({ conversationId, toolName, arguments: args }) =>
+        executePublicVoiceTool({ conversationId, toolName, arguments: args, organizationId }),
+    }
   )
   const isConnected = status === 'connected'
   const isConnecting = status === 'connecting'

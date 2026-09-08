@@ -4,6 +4,7 @@ import Groq from 'groq-sdk'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
+import { isLanguageSupportedByAssemblyAi } from '@/lib/voice/providers/assemblyai/voices'
 import {
   updateAgentGeneralSchema,
   updateAgentCallSettingsSchema,
@@ -121,9 +122,29 @@ export async function updateAgentAdvancedSettings(
     return { error: 'Could not determine organization.' }
   }
 
+  // AssemblyAI can recognize 18 languages but only speaks six. Refuse the switch
+  // rather than saving a configuration that would fail at call time, when the
+  // caller is already on the line.
+  if (parsed.data.voiceProvider === 'assemblyai') {
+    const { data: agentRow } = await supabase
+      .from('agents')
+      .select('language')
+      .eq('id', parsed.data.agentId)
+      .eq('organization_id', member.organization_id)
+      .single()
+
+    if (!isLanguageSupportedByAssemblyAi(agentRow?.language)) {
+      return {
+        error:
+          'AssemblyAI cannot speak this receptionist\u2019s language yet. Supported languages are English, Spanish, German, French, Portuguese, and Italian.',
+      }
+    }
+  }
+
   const { error } = await supabase
     .from('agents')
     .update({
+      voice_provider: parsed.data.voiceProvider,
       llm_model: parsed.data.llmModel,
       reasoning_effort: parsed.data.reasoningEffort,
       filter_background_speech: parsed.data.filterBackgroundSpeech,

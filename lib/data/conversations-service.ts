@@ -193,3 +193,148 @@ export async function updateConversationStatus(
     }
   }
 }
+
+/**
+ * Records the AssemblyAI session id for a conversation, so the
+ * `session.completed` webhook can find it later — that id is the only
+ * correlation key the delivery carries.
+ *
+ * The browser is what learns the session id (it arrives in `session.ready`), so
+ * this write is gated on `organization_id` *and* on the conversation still being
+ * active and unlinked. That prevents a caller from attaching an arbitrary session
+ * to a conversation, or re-pointing one that already has a session. The unique
+ * index from migration 044 blocks the remaining case: two conversations claiming
+ * the same session.
+ *
+ * Returns false when nothing matched, rather than throwing — a losing race here
+ * is not an error worth failing the call over.
+ */
+export async function setConversationAssemblyAiSessionId(
+  conversationId: string,
+  sessionId: string,
+  organizationId: string
+): Promise<boolean> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('conversations')
+    .update({ assemblyai_session_id: sessionId })
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .eq('status', 'active')
+    .is('assemblyai_session_id', null)
+    .select('id')
+    .maybeSingle()
+
+  if (error) {
+    console.error(
+      `[conversations-service] failed to link AssemblyAI session ${sessionId} to conversation ${conversationId}:`,
+      error.message
+    )
+    return false
+  }
+
+  return Boolean(data)
+}
+
+export type AssemblyAiConversationContext = {
+  conversationId: string
+  organizationId: string
+  agentId: string | null
+  startedAt: string | null
+  status: string
+}
+
+/** Resolves the conversation an AssemblyAI webhook delivery refers to. */
+export async function getConversationByAssemblyAiSessionId(
+  sessionId: string
+): Promise<AssemblyAiConversationContext | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, organization_id, agent_id, started_at, status')
+    .eq('assemblyai_session_id', sessionId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return {
+    conversationId: data.id,
+    organizationId: data.organization_id,
+    agentId: data.agent_id,
+    startedAt: data.started_at,
+    status: data.status,
+  }
+}
+
+/**
+ * Points a conversation at its stored recording object key inside
+ * `call-recordings`. Separate from `updateConversationStatus` because the
+ * recording arrives on its own schedule — LiveKit delivers it via the
+ * `egress_ended` webhook, AssemblyAI via its session artifacts — and in both
+ * cases that can land after the conversation has already been finalized.
+ */
+export async function setConversationRecordingPath(
+  conversationId: string,
+  recordingPath: string
+): Promise<void> {
+  const supabase = createServiceRoleClient()
+  const { error } = await supabase
+    .from('conversations')
+    .update({ recording_path: recordingPath })
+    .eq('id', conversationId)
+
+  if (error) {
+    console.error(
+      `[conversations-service] failed to write recording_path for conversation ${conversationId}:`,
+      error.message
+    )
+  }
+}
+
+export type ConversationOwnership = {
+  conversationId: string
+  organizationId: string
+  agentId: string | null
+  status: string
+}
+
+/**
+ * Minimal ownership lookup used to authorize a mid-call tool invocation relayed
+ * from the browser. Callers must compare `organizationId` against an org they
+ * resolved themselves (from the session, or from the public page's own org) —
+ * never against one supplied by the client.
+ */
+export async function getConversationOwnership(
+  conversationId: string
+): Promise<ConversationOwnership | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('id, organization_id, agent_id, status')
+    .eq('id', conversationId)
+    .maybeSingle()
+
+  if (error || !data) return null
+
+  return {
+    conversationId: data.id,
+    organizationId: data.organization_id,
+    agentId: data.agent_id,
+    status: data.status,
+  }
+}
+
+/** The AssemblyAI session linked to a conversation, if the browser reported one. */
+export async function getConversationAssemblyAiSessionId(
+  conversationId: string
+): Promise<string | null> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('conversations')
+    .select('assemblyai_session_id')
+    .eq('id', conversationId)
+    .maybeSingle()
+
+  if (error || !data) return null
+  return data.assemblyai_session_id ?? null
+}

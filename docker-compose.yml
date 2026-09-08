@@ -83,6 +83,20 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
 
+  # Pulls transcripts and recordings for calls that ran on the AssemblyAI
+  # provider. Plain BullMQ worker — it never touches audio, so it uses the
+  # standard worker image rather than the heavier voice one.
+  worker-assemblyai:
+    image: frontdesk-ai-worker:local
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "workers/assemblyai-session.ts"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file: .env.local
+    environment:
+      REDIS_URL: redis://redis:6379/0
+
   worker-voice:
     build:
       context: .

@@ -35,12 +35,21 @@ export type AgentDetail = Agent & {
   typing_sound_enabled: boolean
   secure_mode: boolean
   identity_verification_enabled: boolean
+  voice_provider: VoiceProvider
   created_at: string
   updated_at: string
 }
 
+/**
+ * Which engine runs this agent's calls. See migration 044 for the tradeoffs;
+ * in short, `livekit` is the Groq + Fish Audio pipeline (all languages, cloned
+ * voices) and `assemblyai` is the managed Voice Agent API (6 spoken languages,
+ * fixed voice set, its own recording and transcript source).
+ */
+export type VoiceProvider = 'livekit' | 'assemblyai'
+
 const AGENT_DETAIL_COLUMNS =
-  'id, organization_id, name, business_name, industry, country, language, detect_language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, llm_model, reasoning_effort, filter_background_speech, skip_knowledge_retrieval, allow_dtmf, hold_sound, typing_sound_enabled, secure_mode, identity_verification_enabled, is_default, created_at, updated_at'
+  'id, organization_id, name, business_name, industry, country, language, detect_language, greeting_prompt, personality_notes, answering_mode, staff_phone_number, max_ring_seconds, hold_music, additional_instructions, first_message, tone_traits, voice_id, llm_model, reasoning_effort, filter_background_speech, skip_knowledge_retrieval, allow_dtmf, hold_sound, typing_sound_enabled, secure_mode, identity_verification_enabled, voice_provider, is_default, created_at, updated_at'
 
 export async function getAgentsForOrg(organizationId: string): Promise<Agent[]> {
   const supabase = await createClient()

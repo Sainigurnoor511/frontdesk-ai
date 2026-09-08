@@ -15,8 +15,20 @@ import { cn } from '@/lib/utils'
 import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { useVoiceCall } from './use-voice-call'
-import { startDashboardCall, endDashboardCall } from '@/app/(dashboard)/actions/voice'
-import { startPublicCall, endPublicCall } from '@/app/smb/actions'
+import {
+  startDashboardCall,
+  endDashboardCall,
+  endAssemblyAiCall,
+  executeVoiceTool,
+  linkAssemblyAiSession,
+} from '@/app/(dashboard)/actions/voice'
+import {
+  startPublicCall,
+  endPublicCall,
+  endPublicAssemblyAiCall,
+  executePublicVoiceTool,
+  linkPublicAssemblyAiSession,
+} from '@/app/smb/actions'
 
 export function CallDialog({
   open,
@@ -37,15 +49,32 @@ export function CallDialog({
   authenticated: boolean
   turnstileToken?: string | null
 }) {
+  // The voice engine is chosen per agent (`agents.voice_provider`) and reported
+  // back by the call-start action, so this component stays provider-agnostic and
+  // just supplies both sets of callbacks.
   const { status, agentState, errorMessage, transcript, connect, disconnect, prewarm } = useVoiceCall(
     () =>
       authenticated
         ? startDashboardCall({ agentId })
         : startPublicCall({ organizationId, agentId, turnstileToken: turnstileToken ?? undefined }),
-    ({ roomName }) =>
-      authenticated
-        ? endDashboardCall({ roomName })
-        : endPublicCall({ roomName, organizationId })
+    {
+      endLiveKitCall: ({ roomName }) =>
+        authenticated
+          ? endDashboardCall({ roomName })
+          : endPublicCall({ roomName, organizationId }),
+      endAssemblyAiCall: ({ conversationId }) =>
+        authenticated
+          ? endAssemblyAiCall({ conversationId })
+          : endPublicAssemblyAiCall({ conversationId, organizationId }),
+      linkAssemblyAiSession: ({ conversationId, sessionId }) =>
+        authenticated
+          ? linkAssemblyAiSession({ conversationId, sessionId })
+          : linkPublicAssemblyAiSession({ conversationId, sessionId, organizationId }),
+      executeVoiceTool: ({ conversationId, toolName, arguments: args }) =>
+        authenticated
+          ? executeVoiceTool({ conversationId, toolName, arguments: args })
+          : executePublicVoiceTool({ conversationId, toolName, arguments: args, organizationId }),
+    }
   )
 
   const transcriptEndRef = useRef<HTMLDivElement>(null)

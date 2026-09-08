@@ -18,7 +18,9 @@
     "dev:webhook": "tsx watch workers/webhook.ts",
     "start:webhook": "tsx workers/webhook.ts start",
     "dev:knowledge": "tsx watch workers/knowledge-indexing.ts",
-    "start:knowledge": "tsx workers/knowledge-indexing.ts start"
+    "start:knowledge": "tsx workers/knowledge-indexing.ts start",
+    "dev:assemblyai": "tsx watch workers/assemblyai-session.ts",
+    "start:assemblyai": "tsx workers/assemblyai-session.ts start"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

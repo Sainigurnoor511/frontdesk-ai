@@ -23,7 +23,14 @@ import {
   type AgentLlmModel,
   type AgentReasoningEffort,
 } from '@/lib/data/agent-advanced-options'
+import type { VoiceProvider } from '@/lib/data/agents'
+import { isLanguageSupportedByAssemblyAi } from '@/lib/voice/providers/assemblyai/voices'
 import { updateAgentAdvancedSettings } from './actions'
+
+const VOICE_PROVIDERS = [
+  { value: 'livekit', label: 'Groq + Fish Audio (default)' },
+  { value: 'assemblyai', label: 'AssemblyAI Voice Agent' },
+] as const
 
 function SettingRow({
   title,
@@ -53,6 +60,10 @@ function normalizeHoldSound(value: string | null): AgentHoldSound {
 export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   const router = useRouter()
   const normalizedLlmModel = normalizeAgentLlmModel(agent.llm_model)
+  const savedVoiceProvider: VoiceProvider = agent.voice_provider ?? 'livekit'
+  const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>(savedVoiceProvider)
+  const assemblyAiAvailable = isLanguageSupportedByAssemblyAi(agent.language)
+  const usingAssemblyAi = voiceProvider === 'assemblyai'
   const [llmModel, setLlmModel] = useState<AgentLlmModel>(normalizedLlmModel)
   const [reasoningEffort, setReasoningEffort] = useState<AgentReasoningEffort>(
     agent.reasoning_effort ?? 'minimal'
@@ -76,6 +87,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   const [isSaving, startSaveTransition] = useTransition()
 
   const dirty =
+    voiceProvider !== savedVoiceProvider ||
     llmModel !== normalizedLlmModel ||
     reasoningEffort !== (agent.reasoning_effort ?? 'minimal') ||
     filterBackgroundSpeech !== (agent.filter_background_speech ?? false) ||
@@ -87,6 +99,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
     identityVerificationEnabled !== (agent.identity_verification_enabled ?? false)
 
   function handleCancel() {
+    setVoiceProvider(savedVoiceProvider)
     setLlmModel(normalizeAgentLlmModel(agent.llm_model))
     setReasoningEffort(agent.reasoning_effort ?? 'minimal')
     setFilterBackgroundSpeech(agent.filter_background_speech ?? false)
@@ -103,6 +116,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
     setError(null)
     startSaveTransition(async () => {
       const result = await updateAgentAdvancedSettings(agent.id, {
+        voiceProvider,
         llmModel,
         reasoningEffort,
         filterBackgroundSpeech,
@@ -124,15 +138,73 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   return (
     <div className="max-w-3xl space-y-6">
       <SettingsCard
+        title="Voice engine"
+        description="Which stack runs live calls for this receptionist. Both answer calls in the browser; they differ in who does the listening, thinking, and speaking."
+      >
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>Provider</Label>
+            <Select
+              value={voiceProvider}
+              onValueChange={(value) => setVoiceProvider(value as VoiceProvider)}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {VOICE_PROVIDERS.map((provider) => (
+                  <SelectItem
+                    key={provider.value}
+                    value={provider.value}
+                    disabled={provider.value === 'assemblyai' && !assemblyAiAvailable}
+                  >
+                    {provider.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-muted-foreground">
+              {usingAssemblyAi
+                ? 'AssemblyAI handles speech recognition, the conversation, and speech synthesis in one managed pipeline. Recordings and transcripts come from AssemblyAI instead of the call recorder.'
+                : 'Groq Whisper transcribes, a Groq model replies, and Fish Audio speaks. Supports every language in the voice catalog, plus your cloned voices.'}
+            </p>
+          </div>
+
+          {!assemblyAiAvailable && (
+            <p className="text-sm text-muted-foreground">
+              AssemblyAI is unavailable for this receptionist because it cannot speak the
+              configured language yet. It supports English, Spanish, German, French,
+              Portuguese, and Italian.
+            </p>
+          )}
+
+          {usingAssemblyAi && (
+            <p className="text-sm text-muted-foreground">
+              Heads up: AssemblyAI uses its own fixed set of voices, so the voice picked on the
+              Voices tab and any cloned voices are ignored while this provider is selected.
+            </p>
+          )}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
         title="Models"
         description="Choose the language model that powers the receptionist. Different models trade off speed, cost, and quality."
       >
         <div className="space-y-4">
+          {usingAssemblyAi && (
+            <p className="text-sm text-muted-foreground">
+              These settings apply to the Groq + Fish Audio engine. AssemblyAI runs the
+              conversation on its own managed model, so they have no effect right now.
+            </p>
+          )}
+
           <div className="space-y-1.5">
             <Label>Model</Label>
             <Select
               value={llmModel}
               onValueChange={(value) => setLlmModel(value as AgentLlmModel)}
+              disabled={usingAssemblyAi}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -155,6 +227,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
             <Select
               value={reasoningEffort}
               onValueChange={(value) => setReasoningEffort(value as AgentReasoningEffort)}
+              disabled={usingAssemblyAi}
             >
               <SelectTrigger className="w-full">
                 <SelectValue />
