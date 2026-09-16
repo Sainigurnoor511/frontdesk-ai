@@ -104,22 +104,39 @@ export async function mintVoiceAgentToken(options: {
   return data.token
 }
 
+/**
+ * Artifact kinds, verified against a live completed session. Note the recording
+ * is `audio`, not `recording` — the *URL path* contains `recording/audio.ogg`,
+ * which makes `recording` a tempting but wrong guess.
+ */
+export type AssemblyAiArtifactType = 'audio' | 'timeline' | 'metadata'
+
 export type AssemblyAiArtifact = {
-  /** One of `recording` | `timeline` | `metadata`. */
-  type?: string
-  name?: string
+  type: AssemblyAiArtifactType | string
+  content_type?: string
   url: string
 }
 
+/**
+ * Shape of `GET /v1/sessions/{id}`, verified against a live session.
+ *
+ * Careful: this is NOT the same shape as the `session.ended` WebSocket event.
+ * That event carries `session_duration_seconds` and `audio_duration_seconds`;
+ * this REST object carries a single `duration_seconds` and identifies itself with
+ * `id` rather than `session_id`. Conflating the two silently yields a duration of
+ * zero on every call.
+ */
 export type AssemblyAiSession = {
-  id?: string
-  session_id?: string
+  id: string
   status: string
   agent_id?: string | null
   created_at?: string
-  session_duration_seconds?: number | null
-  audio_duration_seconds?: number | null
+  ended_at?: string | null
+  duration_seconds?: number | null
+  /** Why the session closed, e.g. `client_end`. Useful as `ended_reason`. */
+  public_close_reason?: string | null
   artifacts?: AssemblyAiArtifact[] | null
+  config?: unknown
 }
 
 /**
@@ -147,12 +164,7 @@ export async function downloadArtifact(url: string): Promise<ArrayBuffer> {
 
 export function findArtifact(
   session: AssemblyAiSession,
-  type: 'recording' | 'timeline' | 'metadata'
+  type: AssemblyAiArtifactType
 ): AssemblyAiArtifact | null {
-  const artifacts = session.artifacts ?? []
-  return (
-    artifacts.find((artifact) => artifact.type === type) ??
-    artifacts.find((artifact) => artifact.name?.includes(type)) ??
-    null
-  )
+  return (session.artifacts ?? []).find((artifact) => artifact.type === type) ?? null
 }

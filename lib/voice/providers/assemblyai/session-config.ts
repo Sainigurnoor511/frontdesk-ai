@@ -44,6 +44,7 @@ export type AssemblyAiSessionConfig = {
     transcription_mode: 'min_latency' | 'balanced' | 'max_accuracy'
     transcription_prompt?: string
     language_codes?: string[]
+    voice_focus?: 'near-field' | 'far-field'
     voice_focus_threshold?: number
     turn_detection: {
       vad_threshold: number
@@ -159,10 +160,19 @@ export function buildAssemblyAiSessionConfig(options: {
       ...(agent.detect_language || !isLanguageSupportedByAssemblyAi(languageCode)
         ? {}
         : { language_codes: [languageCode] }),
-      // `voice_focus` defaults to near-field, which is right for a browser mic;
-      // the agent's "filter background speech" setting only raises how
-      // aggressively the server isolates the caller.
-      ...(agent.filter_background_speech ? { voice_focus_threshold: 0.95 } : {}),
+      // `voice_focus` is documented as defaulting to near-field, but the server
+      // rejects a threshold without the parent field:
+      //   invalid_value: 'input.voice_focus_threshold' requires 'input.voice_focus'
+      //                  to be set (param=input.voice_focus)
+      // So send both, or neither. Verified against the live API — omitting
+      // `voice_focus` here fails the session before `session.ready`, which would
+      // have broken every call for an agent with "filter background speech" on.
+      //
+      // near-field is correct for a browser mic (far-field is for a room mic);
+      // the agent's setting only raises how aggressively the caller is isolated.
+      ...(agent.filter_background_speech
+        ? { voice_focus: 'near-field' as const, voice_focus_threshold: 0.95 }
+        : {}),
       turn_detection: {
         vad_threshold: 0.5,
         // Seeded from the LiveKit session's endpointing window

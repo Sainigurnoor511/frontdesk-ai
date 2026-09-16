@@ -40,13 +40,18 @@ Use this as the completion gate before marking a feature item done.
       `pnpm start:assemblyai`, or the `worker-assemblyai` service in `docker-compose.yml`.
       Without it, AssemblyAI calls complete but their conversations stay `active` forever
       and never get a transcript, summary, or recording.
-- [ ] **Verify an AssemblyAI call end to end against live audio** (added: 2026-09-06) — none
-      of the runtime path has been exercised; only typecheck, scoped lint, and the build
-      were verified. Confirm: token mint, greeting plays, barge-in interrupts cleanly, a
-      booking tool call round-trips through the server action, and the transcript,
-      summary, and recording land on the conversation. Test in Firefox and Safari too —
-      the in-worklet resampling exists specifically because those two break the
-      forced-24 kHz shortcut, and that fix is unverified.
+- [ ] **Verify an AssemblyAI call end to end from a real browser** (added: 2026-09-06,
+      narrowed 2026-09-06 after a live protocol probe) — the wire protocol is now verified
+      against the live API (see Completed Recently; three real bugs were found and fixed
+      this way). Confirmed working: token mint, `session.update` acceptance, the greeting
+      synthesizing and streaming back, `input.audio` pacing without
+      `audio_rate_violation`, `session.end` → `session.ended` → close 1000, and session
+      artifact retrieval.
+      **Still unverified, because it needs a real microphone and a browser:** caller speech
+      actually transcribing, barge-in mid-reply, a booking `tool.call` round-tripping
+      through the server action, and the browser capture/playback path itself. Test in
+      Firefox and Safari specifically — the in-worklet resampling exists because those two
+      break the forced-24 kHz shortcut, and that code has never run.
 - [ ] Google Calendar OAuth + token storage + sync on create/cancel
 - [ ] Enforce `answering_mode`/routing logic in `workers/voice-agent.ts`
 - [ ] Add voice tools: cancel appointment, reschedule appointment
@@ -57,15 +62,6 @@ Use this as the completion gate before marking a feature item done.
 
 ## P1 - Knowledge + Conversations
 
-- [ ] **Timeline fixture test for `timelineToTranscript`** (added: 2026-09-06) — highest-risk
-      piece of the AssemblyAI integration. `reply.audio`'s payload field was confirmed
-      against AssemblyAI's AsyncAPI spec (it is `data`, not `audio`), but the session
-      *timeline* shape is only documented in prose, so the field names in
-      `lib/voice/providers/assemblyai/timeline.ts` are inferred. If they are wrong,
-      transcripts come back empty while every other part of the call looks healthy. The
-      function is pure — capture one real timeline artifact as a fixture and assert the
-      mapping, including the documented edge cases: a null `user_transcript` on the
-      greeting turn, and turns with neither transcript nor agent text.
 - [ ] **Revisit multi-language support for AssemblyAI agents** (added: 2026-09-06) — root
       `TODO.md` item 4 closed "Additional languages" as infeasible because Groq Whisper
       offers only one fixed language or auto-detect. That constraint does not apply to
@@ -119,11 +115,28 @@ Use this as the completion gate before marking a feature item done.
 
 ## Completed Recently
 
+- [x] Verified the AssemblyAI wire protocol against the live API and fixed three bugs that
+      typecheck, lint, and the build had all missed. Every one came from trusting prose
+      documentation, and every one would have shipped broken:
+      1. `input.voice_focus_threshold` is rejected unless `input.voice_focus` is also sent,
+         despite the docs saying `voice_focus` defaults to `near-field`. This failed the
+         session before `session.ready`, so **every call by an agent with "filter
+         background speech" enabled would have died on connect.**
+      2. The recording artifact's `type` is `audio`, not `recording` (the URL path is
+         `recording/audio.ogg`, which is what made `recording` look right). The lookup
+         found nothing, so **no recording would ever have been stored.**
+      3. The REST session object exposes `duration_seconds`. `session_duration_seconds` and
+         `audio_duration_seconds` exist only on the `session.ended` *WebSocket* event, so
+         **every conversation would have shown a duration of 0:00.**
+      Also corrected the timeline shape: turns have no `started_at_ms`. They carry
+      `user_speech_started_at_ms` and `agent_reply_started_at_ms` separately, with the
+      session zero point at top-level `started_at_unix_ms` — the inferred version collapsed
+      every transcript timestamp to 0, silently breaking transcript-to-audio seeking.
+      Added `timeline.test.ts` (7 tests) around a verbatim captured artifact.
 - [x] Added AssemblyAI Voice Agent API as a per-agent switchable voice provider
       (`agents.voice_provider`), alongside the existing LiveKit pipeline which stays the
       default — commits `76f70f3` (provider-neutral tool extraction) and `8404deb`.
-      Ships code-complete but **unverified at runtime**; see the P0 items above before
-      treating it as working.
+      Protocol-verified, but no browser call has run yet; see the P0 items above.
 - [x] Added calendar block edit/cancel flows
 - [x] Added call recording persistence + playback path
 - [x] Added compact shared filter button patterns

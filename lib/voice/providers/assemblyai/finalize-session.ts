@@ -128,11 +128,13 @@ export async function finalizeAssemblyAiSession(options: {
     }
   }
 
-  // Prefer AssemblyAI's own measurement over wall-clock: it excludes the 30s
-  // resume grace window, so it matches what the caller experienced.
-  const durationSeconds = Math.round(
-    session.session_duration_seconds ?? session.audio_duration_seconds ?? 0
-  )
+  // AssemblyAI's own measurement, preferred over wall-clock because it excludes
+  // the 30s resume grace window and so matches what the caller experienced.
+  //
+  // The field is `duration_seconds` on this REST object. The `session.ended`
+  // WebSocket event uses `session_duration_seconds` / `audio_duration_seconds`
+  // instead — reading those here yields 0 on every call.
+  const durationSeconds = Math.round(session.duration_seconds ?? 0)
 
   // Terminal write. Passing `status` here is what fires the org's
   // `conversation.completed` webhook and the caller-message inbox check, both of
@@ -146,11 +148,15 @@ export async function finalizeAssemblyAiSession(options: {
       durationSeconds,
       transcript,
       ...(summary ? { summary } : {}),
+      // e.g. `client_end` when the caller hung up cleanly.
+      ...(session.public_close_reason ? { endedReason: session.public_close_reason } : {}),
     },
     conversation.organizationId
   )
 
-  const recordingArtifact = findArtifact(session, 'recording')
+  // `audio`, not `recording` — the URL path is `recording/audio.ogg`, but the
+  // artifact's `type` discriminator is `audio`.
+  const recordingArtifact = findArtifact(session, 'audio')
   if (recordingArtifact) {
     try {
       const audio = await downloadArtifact(recordingArtifact.url)
