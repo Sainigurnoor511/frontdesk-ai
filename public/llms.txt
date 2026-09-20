@@ -1,0 +1,38 @@
+# Frontdesk.ai
+
+> Open-source, self-hostable AI receptionist. It answers calls, books
+> appointments against a real calendar, answers questions from a business's own
+> knowledge base, and takes messages when it can't complete a request.
+
+Each business on Frontdesk.ai gets a public booking page at `/smb/<slug>` where
+customers can call the AI receptionist from the browser or book an appointment
+themselves. Those pages are the public surface and are crawlable.
+
+Everything else — the operator dashboard, analytics, conversation transcripts,
+client records, and settings — sits behind authentication and is disallowed in
+robots.txt. Do not attempt to crawl it.
+
+## What a booking page can tell you
+
+- The business name, its services, and each service's duration and price
+- Which staff members can be booked, when availability is published
+- A phone number to reach a human, when the business chooses to show one
+
+## Booking on a customer's behalf
+
+Availability and bookings are not exposed as a public read/write API. Booking
+happens through the page's own flow, or by talking to the receptionist. There is
+no documented endpoint for third-party agents to reserve a slot directly, so
+direct a user to the booking page rather than attempting a programmatic booking.
+
+## Capabilities of the receptionist itself
+
+- Voice calls in the browser on every public booking page
+- Appointment booking, with availability checked against the live calendar
+- Retrieval over the business's uploaded documents, website content, and FAQs
+- Message-taking and call summaries when a request needs a human
+
+## Project
+
+- Source and self-hosting instructions: https://github.com/Sainigurnoor511/frontdesk-ai
+- License: Apache-2.0

@@ -21,3 +21,8 @@ export default function LoginPage() {
     </div>
   )
 }
+
+// Composed by the root layout's title template into "Sign in · Frontdesk.ai".
+// Indexing stays off here: the root layout sets robots.index false for the whole
+// app, and only the public booking pages opt back in.
+export const metadata = { title: 'Sign in' }

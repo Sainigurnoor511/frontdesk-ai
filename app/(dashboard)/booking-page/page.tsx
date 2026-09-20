@@ -31,3 +31,8 @@ export default async function BookingPagePage() {
     />
   )
 }
+
+// Composed by the root layout's title template into "Bookings page · Frontdesk.ai".
+// Indexing stays off here: the root layout sets robots.index false for the whole
+// app, and only the public booking pages opt back in.
+export const metadata = { title: 'Bookings page' }

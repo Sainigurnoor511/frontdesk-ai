@@ -48,3 +48,36 @@ export async function getOrganizationBySlug(
 
   return data
 }
+
+/**
+ * Slugs of organizations whose public booking page is live, for the sitemap.
+ *
+ * Mirrors the gate in `app/smb/[slug]/page.tsx`: a row in `organization_settings`
+ * with `booking_page_enabled` true. Listing a disabled page would advertise a URL
+ * that answers 404, which is worse for crawl budget than omitting it.
+ *
+ * Uses the service-role client because the sitemap is generated without a user
+ * session, and returns an empty list on failure so a transient database error
+ * degrades to an empty sitemap rather than a 500 on /sitemap.xml.
+ */
+export async function getPublicBookingPageSlugs(): Promise<
+  Array<{ slug: string; updatedAt: string | null }>
+> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('organization_settings')
+    .select('booking_page_enabled, organizations!inner(slug, updated_at)')
+    .eq('booking_page_enabled', true)
+
+  if (error) {
+    console.error('getPublicBookingPageSlugs failed:', error.message)
+    return []
+  }
+
+  type Row = { organizations: { slug: string | null; updated_at: string | null } | null }
+
+  return ((data ?? []) as unknown as Row[])
+    .map((row) => row.organizations)
+    .filter((org): org is { slug: string; updated_at: string | null } => Boolean(org?.slug))
+    .map((org) => ({ slug: org.slug, updatedAt: org.updated_at }))
+}

@@ -38,3 +38,8 @@ export default async function CalendarPage({
     />
   );
 }
+
+// Composed by the root layout's title template into "Calendar · Frontdesk.ai".
+// Indexing stays off here: the root layout sets robots.index false for the whole
+// app, and only the public booking pages opt back in.
+export const metadata = { title: 'Calendar' }
