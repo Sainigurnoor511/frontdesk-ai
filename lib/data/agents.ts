@@ -103,11 +103,21 @@ export async function getPublicAgentsForOrg(organizationId: string): Promise<Pub
 
 export async function getAgentById(id: string): Promise<AgentDetail | null> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('agents')
     .select(AGENT_DETAIL_COLUMNS)
     .eq('id', id)
     .single()
+
+  // Log rather than swallow. Callers turn a null into `notFound()`, so without
+  // this an infrastructure problem is indistinguishable from a genuinely missing
+  // agent: a single unapplied migration makes every column in
+  // AGENT_DETAIL_COLUMNS unselectable and the whole page 404s with no clue why.
+  // `PGRST116` is the expected "no rows" case for `.single()` and is not an error
+  // worth logging.
+  if (error && error.code !== 'PGRST116') {
+    console.error(`getAgentById(${id}) failed:`, error.message)
+  }
 
   return data
 }
