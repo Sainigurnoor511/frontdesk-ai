@@ -12,8 +12,7 @@ import {
   Bot,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import FluidOrb from '@/components/ui/fluid-orb'
-import type { AgentState } from './use-voice-call'
+import { Orb } from '@/components/ui/orb'
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog'
 import { useVoiceCall } from './use-voice-call'
 import {
@@ -30,23 +29,6 @@ import {
   executePublicVoiceTool,
   linkPublicAssemblyAiSession,
 } from '@/app/smb/actions'
-
-/**
- * FluidOrb drifts at a constant rate and has no equivalent of the previous orb's
- * `agentState` prop, which drove its motion from listening/thinking/talking. Hue
- * is the only channel left to signal call state, so map it — otherwise the orb
- * looks identical whether the caller is being heard, waited on, or replied to.
- *
- * Kept in the blue/teal family the old orb defaulted to. The shader treats
- * `color` as the dark end of a ramp toward white, so saturated mid-tones read
- * well here and pastels wash out.
- */
-const ORB_COLOR_BY_AGENT_STATE: Record<NonNullable<AgentState> | 'idle', string> = {
-  idle: '#3B82F6',
-  listening: '#14B8A6',
-  thinking: '#8B5CF6',
-  talking: '#0EA5E9',
-}
 
 export function CallDialog({
   open,
@@ -168,7 +150,11 @@ export function CallDialog({
                 </div>
 
                 <div className="flex flex-col items-center">
-                  <FluidOrb size={192} color={ORB_COLOR_BY_AGENT_STATE[agentState ?? 'idle']} />
+                  <Orb
+                    agentState={agentState}
+                    size={192}
+                    className="overflow-hidden rounded-full"
+                  />
                   {isConnected ? (
                     <button
                       type="button"

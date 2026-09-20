@@ -25,7 +25,7 @@ import {
   EmptyTitle,
 } from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
-import FluidOrb from '@/components/ui/fluid-orb'
+import { Orb } from '@/components/ui/orb'
 import {
   Table,
   TableHeader,
@@ -171,9 +171,7 @@ export function HomeClient({
         <CardContent className="flex items-center justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <div className="size-9 shrink-0 overflow-hidden rounded-full border border-foreground/10 sm:size-11">
-              {/* Buffer sized for the larger `sm:size-11` (44px) breakpoint; the
-                  style override lets the element track the responsive parent. */}
-              <FluidOrb size={44} style={{ width: '100%', height: '100%' }} />
+              <Orb className="h-full w-full" />
             </div>
             <div className="min-w-0 space-y-1">
               <h2 className="text-base font-semibold">{agent?.name ?? 'Your receptionist'}</h2>

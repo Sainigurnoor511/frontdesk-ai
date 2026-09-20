@@ -61,7 +61,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
-import FluidOrb from '@/components/ui/fluid-orb'
+import { Orb } from '@/components/ui/orb'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
 
@@ -131,10 +131,7 @@ function CallReceptionistPill({
         }}
       >
         <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
-          {/* `size` drives the WebGL buffer; the style override makes the element
-              itself fill this 16px (12px when collapsed) parent, since FluidOrb
-              otherwise pins explicit pixel dimensions. */}
-          <FluidOrb size={16} style={{ width: '100%', height: '100%' }} />
+          <Orb className="h-full w-full" />
         </div>
         {state !== 'collapsed' && <span className="truncate">{label}</span>}
         {state !== 'collapsed' && <Phone strokeWidth={2.5} className="ml-auto shrink-0" />}
