@@ -32,7 +32,7 @@ export default function NotFound() {
       {/* Neutral label on purpose: `/` is the dashboard root, which redirects to
           /login when there's no session, and this boundary is reachable either
           signed in or out. */}
-      <Button render={<Link href="/" />} size="sm">
+      <Button render={<Link href="/" />} nativeButton={false} size="sm">
         Take me home
       </Button>
     </main>

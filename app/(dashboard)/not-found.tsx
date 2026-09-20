@@ -39,7 +39,10 @@ export default function DashboardNotFound() {
         </EmptyDescription>
       </EmptyHeader>
       <EmptyContent>
-        <Button render={<Link href="/" />} size="sm" variant="outline">
+        {/* `nativeButton={false}` is required whenever `render` is an anchor: Base
+            UI otherwise expects a real <button> and warns that native button
+            semantics are being dropped. */}
+        <Button render={<Link href="/" />} nativeButton={false} size="sm" variant="outline">
           Back to dashboard
         </Button>
       </EmptyContent>
