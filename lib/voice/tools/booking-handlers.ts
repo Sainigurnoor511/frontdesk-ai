@@ -26,7 +26,14 @@ async function isSlotOpen(
     rangeEnd: date,
   })
   const slotsForDay = days[0]?.slots ?? []
-  return slotsForDay.some((slot) => slot.startsAt === startsAt && slot.endsAt === endsAt)
+  // Compared as instants: the model sends "…:00Z" while slots carry "…:00.000Z".
+  const requestedStart = new Date(startsAt).getTime()
+  const requestedEnd = new Date(endsAt).getTime()
+  return slotsForDay.some(
+    (slot) =>
+      new Date(slot.startsAt).getTime() === requestedStart &&
+      new Date(slot.endsAt).getTime() === requestedEnd
+  )
 }
 
 function buildCheckAvailability(context: VoiceToolContext): VoiceToolHandler {

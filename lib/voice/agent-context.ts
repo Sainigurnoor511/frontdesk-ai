@@ -19,7 +19,21 @@ export function buildToneTag(toneTraits: string[]): string | null {
  * agent's configured persona fields. Field names match `AgentDetail` in
  * `lib/data/agents.ts` exactly (verified against that file, not guessed).
  */
-export function buildSystemPrompt(agent: AgentDetail, rules: AgentRuleServiceRole[] = []): string {
+export function buildSystemPrompt(
+  agent: AgentDetail,
+  rules: AgentRuleServiceRole[] = [],
+  now: Date = new Date()
+): string {
+  // Without the current date the model guesses the year when resolving "Thursday" or "tomorrow".
+  const today = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  }).format(now)
+  const dateContext = `Today is ${today} (${now.toISOString().slice(0, 10)}, UTC). Resolve relative dates such as "tomorrow" or "Thursday" against this date, and always pass tool times as ISO 8601 in UTC. Opening hours and appointment times are in UTC.`
+
   const rulesText =
     rules.length > 0
       ? `Rules to follow on every call:\n${rules
@@ -33,6 +47,7 @@ export function buildSystemPrompt(agent: AgentDetail, rules: AgentRuleServiceRol
     agent.additional_instructions,
     agent.tone_traits.length > 0 ? `Tone: ${agent.tone_traits.join(', ')}` : null,
     rulesText,
+    dateContext,
     agent.secure_mode
       ? 'Secure mode is enabled: only look up or edit client records when the caller ID matches the number on file, or after identity has been verified through the verification tool.'
       : null,

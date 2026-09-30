@@ -45,5 +45,5 @@ export const assemblyAiSessionQueue = new Queue<AssemblyAiSessionFinalizeJobData
  * transcript twice.
  */
 export function assemblyAiSessionJobId(conversationId: string): string {
-  return `assemblyai-session:${conversationId}`
+  return `assemblyai-session-${conversationId}`
 }
