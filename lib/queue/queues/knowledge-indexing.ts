@@ -1,5 +1,4 @@
-import { Queue } from 'bullmq'
-import { redisConnection } from '@/lib/queue/connection'
+import { lazyQueue } from '@/lib/queue/lazy-queue'
 
 export type KnowledgeIndexingJobData =
   | { action: 'index_source'; sourceId: string }
@@ -7,10 +6,9 @@ export type KnowledgeIndexingJobData =
   | { action: 'delete_source'; organizationId: string; sourceId: string }
   | { action: 'delete_faq'; organizationId: string; faqId: string }
 
-export const knowledgeIndexingQueue = new Queue<KnowledgeIndexingJobData>(
+export const knowledgeIndexingQueue = lazyQueue<KnowledgeIndexingJobData>(
   'knowledge-indexing',
   {
-    connection: redisConnection,
     defaultJobOptions: {
       attempts: 3,
       backoff: { type: 'exponential', delay: 5000 },

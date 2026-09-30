@@ -1,5 +1,4 @@
-import { Queue } from 'bullmq'
-import { redisConnection } from '@/lib/queue/connection'
+import { lazyQueue } from '@/lib/queue/lazy-queue'
 
 export type ScanDepth = 'single' | 'quick' | 'deep'
 
@@ -9,6 +8,4 @@ export type ScanWebsiteJobData = {
   scanDepth: ScanDepth
 }
 
-export const scanWebsiteQueue = new Queue<ScanWebsiteJobData>('scan-website', {
-  connection: redisConnection,
-})
+export const scanWebsiteQueue = lazyQueue<ScanWebsiteJobData>('scan-website')

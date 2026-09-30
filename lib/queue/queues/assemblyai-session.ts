@@ -1,5 +1,4 @@
-import { Queue } from 'bullmq'
-import { redisConnection } from '@/lib/queue/connection'
+import { lazyQueue } from '@/lib/queue/lazy-queue'
 
 export type AssemblyAiSessionFinalizeJobData = {
   conversationId: string
@@ -26,10 +25,9 @@ export const ASSEMBLYAI_SESSION_QUEUE = 'assemblyai-session-finalize'
  * reaches `completed`, and the job intentionally throws to retry while it's still
  * settling.
  */
-export const assemblyAiSessionQueue = new Queue<AssemblyAiSessionFinalizeJobData>(
+export const assemblyAiSessionQueue = lazyQueue<AssemblyAiSessionFinalizeJobData>(
   ASSEMBLYAI_SESSION_QUEUE,
   {
-    connection: redisConnection,
     defaultJobOptions: {
       attempts: 8,
       backoff: { type: 'exponential', delay: 5000 },
