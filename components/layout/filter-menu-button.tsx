@@ -15,7 +15,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 
-const FILTER_BUTTON_SIZE: 'xs' = 'xs'
+const FILTER_BUTTON_SIZE = 'xs' as const
 const FILTER_ICON_CLASS = 'size-3'
 
 export function FilterMenuButton({

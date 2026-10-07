@@ -79,7 +79,11 @@ function SidebarButton({
       onClick={() => onSelect(item.id)}
       aria-label={item.label}
       title={item.label}
-      aria-selected={isActive}
+      // `aria-selected` is not valid on a button — it only applies to roles like
+      // option/tab/row, so screen readers ignored it and the active section was
+      // never announced. `aria-current` is the correct attribute for "this is the
+      // one you're on" within a set of navigation controls.
+      aria-current={isActive ? 'true' : undefined}
       className={cn(
         'inline-flex size-9 shrink-0 items-center justify-center rounded-[7px] px-0 text-sm font-medium transition-all duration-200 ease-out',
         'text-muted-foreground hover:scale-[1.01] hover:bg-muted hover:text-foreground',

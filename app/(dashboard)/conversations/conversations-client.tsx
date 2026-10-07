@@ -25,7 +25,6 @@ import {
 import { Card, CardContent } from '@/components/ui/card'
 import {
   Empty,
-  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -220,7 +219,7 @@ export function ConversationsClient({
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-semibold">Conversations</h1>
-        <p className="mt-1 text-sm font-normal text-[#96989d]">
+        <p className="mt-1 text-sm text-muted-foreground">
           Review calls and chats, and follow up on requests your receptionist could not complete.
         </p>
       </div>

@@ -711,7 +711,7 @@ export function IntegrationsClient({
             <h1 className="font-heading text-2xl font-semibold">Integrations</h1>
             <Badge variant="secondary">Alpha</Badge>
           </div>
-          <p className="mt-1 text-sm font-normal text-[#96989d]">
+          <p className="mt-1 text-sm text-muted-foreground">
             Connect external tools and services to your account.
           </p>
         </div>
@@ -1027,7 +1027,8 @@ export function IntegrationsClient({
                           placeholder="primary"
                         />
                         <p className="text-xs text-muted-foreground">
-                          Usually "primary" for your main calendar, or the email address of a shared calendar.
+                          Usually &quot;primary&quot; for your main calendar, or the email
+                          address of a shared calendar.
                         </p>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">

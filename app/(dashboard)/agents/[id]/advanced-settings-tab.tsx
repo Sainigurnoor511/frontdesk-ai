@@ -138,12 +138,12 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
   return (
     <div className="max-w-3xl space-y-6">
       <SettingsCard
-        title="Voice engine"
-        description="Which stack runs live calls for this receptionist. Both answer calls in the browser; they differ in who does the listening, thinking, and speaking."
+        title="Models"
+        description="The engine that runs live calls, and the language model behind it. Both engines answer calls in the browser; they differ in who does the listening, thinking, and speaking."
       >
         <div className="space-y-4">
           <div className="space-y-1.5">
-            <Label>Provider</Label>
+            <Label>Voice engine</Label>
             <Select
               value={voiceProvider}
               onValueChange={(value) => setVoiceProvider(value as VoiceProvider)}
@@ -165,8 +165,8 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
             </Select>
             <p className="text-sm text-muted-foreground">
               {usingAssemblyAi
-                ? 'AssemblyAI handles speech recognition, the conversation, and speech synthesis in one managed pipeline. Recordings and transcripts come from AssemblyAI instead of the call recorder.'
-                : 'Groq Whisper transcribes, a Groq model replies, and Fish Audio speaks. Supports every language in the voice catalog, plus your cloned voices.'}
+                ? 'AssemblyAI handles speech recognition, the conversation, and speech synthesis in one managed pipeline, so the model settings below do not apply. Recordings and transcripts come from AssemblyAI instead of the call recorder, and its own fixed voices replace the one picked on the Voices tab.'
+                : 'Groq Whisper transcribes, the Groq model below replies, and Fish Audio speaks. Supports every language in the voice catalog, plus your cloned voices.'}
             </p>
           </div>
 
@@ -175,27 +175,6 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
               AssemblyAI is unavailable for this receptionist because it cannot speak the
               configured language yet. It supports English, Spanish, German, French,
               Portuguese, and Italian.
-            </p>
-          )}
-
-          {usingAssemblyAi && (
-            <p className="text-sm text-muted-foreground">
-              Heads up: AssemblyAI uses its own fixed set of voices, so the voice picked on the
-              Voices tab and any cloned voices are ignored while this provider is selected.
-            </p>
-          )}
-        </div>
-      </SettingsCard>
-
-      <SettingsCard
-        title="Models"
-        description="Choose the language model that powers the receptionist. Different models trade off speed, cost, and quality."
-      >
-        <div className="space-y-4">
-          {usingAssemblyAi && (
-            <p className="text-sm text-muted-foreground">
-              These settings apply to the Groq + Fish Audio engine. AssemblyAI runs the
-              conversation on its own managed model, so they have no effect right now.
             </p>
           )}
 

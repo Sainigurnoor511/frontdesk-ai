@@ -43,7 +43,7 @@ import {
   EmptyContent,
   EmptyMedia,
 } from '@/components/ui/empty'
-import { updateBusinessHours, createException, deleteException } from './actions'
+import { updateBusinessHours, createException } from './actions'
 import { DatePickerField } from '@/components/calendar/date-picker-field'
 import type { BusinessHoursRow, ExceptionRow } from '@/lib/data/availability'
 import type { BusinessHoursDayInput } from '@/lib/validations/availability'

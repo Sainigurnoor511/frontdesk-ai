@@ -356,7 +356,7 @@ export function ConversationDetailSheet({
                                 'w-fit max-w-[85%] rounded-xl px-3 py-2.5 text-left text-sm leading-relaxed text-foreground transition-colors',
                                 isAgent
                                   ? 'border border-border bg-muted/40'
-                                  : 'bg-[#f4f4f4]',
+                                  : 'bg-muted',
                                 canSyncTranscript && 'cursor-pointer hover:opacity-90',
                                 isActive &&
                                   (isAgent

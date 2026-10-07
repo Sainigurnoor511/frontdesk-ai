@@ -48,12 +48,9 @@ import {
   DialogDescription,
   DialogFooter,
 } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+// Only the item is used directly; the menu/trigger/content wrappers come from
+// `FilterMenuButton`.
+import { DropdownMenuItem } from '@/components/ui/dropdown-menu'
 import {
   AlertDialog,
   AlertDialogContent,
@@ -181,7 +178,7 @@ export function BusinessClient({
     <div className="space-y-6">
       <div>
         <h1 className="font-heading text-2xl font-semibold">{profile.businessName || 'Business'}</h1>
-        <p className="mt-1 text-sm font-normal text-[#96989d]">
+        <p className="mt-1 text-sm text-muted-foreground">
           Your business profile, services, and scheduling settings.
         </p>
       </div>

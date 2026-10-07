@@ -6,7 +6,9 @@ import { generateUniqueSlug } from '@/lib/data/organization-slug'
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
+  // A `next` param was read here but never used. Deliberately not wiring it up:
+  // redirecting to a caller-supplied URL after sign-in is an open-redirect unless
+  // it's validated against an allowlist, and nothing currently needs it.
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)

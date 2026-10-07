@@ -231,10 +231,13 @@ export function CallDialog({
                     )}
                     <div
                       className={cn(
-                        'max-w-[75%] rounded-2xl px-3 py-2 text-sm text-black',
+                        // Theme tokens, not fixed colors: this was `text-black`
+                        // on a `bg-transparent` agent bubble, which rendered
+                        // black-on-dark (invisible) in dark mode.
+                        'max-w-[75%] rounded-2xl px-3 py-2 text-sm text-foreground',
                         message.speaker === 'agent'
                           ? 'rounded-bl-sm bg-transparent'
-                          : 'rounded-br-sm bg-[#f4f4f4]',
+                          : 'rounded-br-sm bg-muted',
                         !message.final && 'opacity-70'
                       )}
                     >

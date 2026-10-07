@@ -29,7 +29,6 @@ import type { AgentDetail } from '@/lib/data/agents'
 
 const GENDER_OPTIONS = ['male', 'female'] as const
 const AGE_OPTIONS = ['young', 'middle-aged', 'old'] as const
-const ALL_VALUE = '__all'
 
 export function VoicesTab({
   agent,
