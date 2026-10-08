@@ -214,12 +214,26 @@ Modules ending in `-service.ts` use the service-role client (bypass RLS). Regula
 
 Two standalone Node processes in `workers/`:
 
-### `scan-website.ts` (BullMQ)
+### `jobs.ts` (BullMQ — all queues)
 
-- Consumes jobs from `scan-website` queue
-- Crawls a URL, extracts business info via Groq LLM
-- Updates `agent_scan_jobs` table with results
-- Run: `pnpm worker`
+One process hosting every queue, with per-queue concurrency:
+
+| Queue | Concurrency | Does |
+| --- | --- | --- |
+| `scan-website` | 1 | Crawls a URL, extracts business info via Groq, updates `agent_scan_jobs` |
+| `knowledge-indexing` | 1 | Chunks and embeds knowledge sources and FAQs |
+| `webhook-deliver` | 5 | Delivers outbound webhooks to an org's endpoint |
+| `assemblyai-session-finalize` | 5 | Pulls transcript and recording for a finished AssemblyAI call |
+
+Handlers live in `lib/queue/processors/*.ts`; `workers/jobs.ts` only wires them to
+queues and owns graceful shutdown. The two queues at concurrency 1 are the
+CPU-bound ones (crawling, embedding) — raising them would stall the other queues
+in the shared event loop.
+
+Set `WORKER_QUEUES` to a comma-separated subset to split a queue onto its own
+container without touching code. Unset runs everything.
+
+- Run: `pnpm start:jobs` (or `pnpm dev:jobs` to watch)
 
 ### `voice-agent.ts` (LiveKit Agent)
 
@@ -335,7 +349,7 @@ Never inline validation in actions or components — always import from these mo
 | `nginx` | `nginx:alpine` | Reverse proxy on port 80 |
 | `app` | Built from `runner` target | Next.js standalone server |
 | `redis` | `redis:7-alpine` | BullMQ queue backend |
-| `worker-scan` | Built from `worker` target | Website scan worker (Alpine) |
+| `worker-jobs` | Built from `worker` target | All BullMQ queues (Alpine) |
 | `worker-voice` | Built from `worker-voice` target | Voice agent (Debian — LiveKit needs glibc) |
 
 ### Key Details

@@ -47,13 +47,21 @@ services:
       REDIS_URL: redis://redis:6379/0
 
   # ── BullMQ workers ─────────────────────────────────────────────
-  worker-scan:
+  # One process hosts every queue: website scanning, knowledge indexing, outbound
+  # webhooks, and AssemblyAI transcript retrieval. These were four containers that
+  # differed only in queue name and concurrency, so they were paying four Node
+  # runtimes' baseline memory to run identical boilerplate.
+  #
+  # To peel one back out for independent scaling, add a second service with the
+  # same image and set WORKER_QUEUES on both — no code change needed. For example
+  # WORKER_QUEUES=knowledge-indexing here and the rest on another service.
+  worker-jobs:
     image: frontdesk-ai-worker:local
     build:
       context: .
       target: worker
     restart: unless-stopped
-    command: ["node", "--import", "tsx", "workers/scan-website.ts"]
+    command: ["node", "--import", "tsx", "workers/jobs.ts"]
     depends_on:
       redis:
         condition: service_healthy
@@ -61,42 +69,9 @@ services:
     environment:
       REDIS_URL: redis://redis:6379/0
 
-  worker-knowledge:
-    image: frontdesk-ai-worker:local
-    restart: unless-stopped
-    command: ["node", "--import", "tsx", "workers/knowledge-indexing.ts"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file: .env.local
-    environment:
-      REDIS_URL: redis://redis:6379/0
-
-  worker-webhook:
-    image: frontdesk-ai-worker:local
-    restart: unless-stopped
-    command: ["node", "--import", "tsx", "workers/webhook.ts"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file: .env.local
-    environment:
-      REDIS_URL: redis://redis:6379/0
-
-  # Pulls transcripts and recordings for calls that ran on the AssemblyAI
-  # provider. Plain BullMQ worker — it never touches audio, so it uses the
-  # standard worker image rather than the heavier voice one.
-  worker-assemblyai:
-    image: frontdesk-ai-worker:local
-    restart: unless-stopped
-    command: ["node", "--import", "tsx", "workers/assemblyai-session.ts"]
-    depends_on:
-      redis:
-        condition: service_healthy
-    env_file: .env.local
-    environment:
-      REDIS_URL: redis://redis:6379/0
-
+  # Stays separate on purpose. It bootstraps through LiveKit's agent CLI, which
+  # forks child processes that re-import its module — a BullMQ Worker declared
+  # there would be duplicated into every fork. It also owns argv and signals.
   worker-voice:
     build:
       context: .

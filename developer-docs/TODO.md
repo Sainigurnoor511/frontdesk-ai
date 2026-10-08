@@ -37,7 +37,8 @@ Use this as the completion gate before marking a feature item done.
       `getPublicAgentsForOrg` were not touched). CI applies it on merge to main; locally
       run `supabase db push`.
 - [ ] **Run the AssemblyAI session worker wherever the app is deployed** (added: 2026-09-06) —
-      `pnpm start:assemblyai`, or the `worker-assemblyai` service in `docker-compose.yml`.
+      `pnpm start:jobs`, or the `worker-jobs` service in `docker-compose.yml`, which
+      hosts the `assemblyai-session-finalize` queue along with the other three.
       Without it, AssemblyAI calls complete but their conversations stay `active` forever
       and never get a transcript, summary, or recording.
 - [ ] **Verify an AssemblyAI call end to end from a real browser** (added: 2026-09-06,

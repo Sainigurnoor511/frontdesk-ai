@@ -11,16 +11,10 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dev:scan": "tsx watch workers/scan-website.ts",
-    "start:scan": "tsx workers/scan-website.ts start",
+    "dev:jobs": "tsx watch workers/jobs.ts",
+    "start:jobs": "tsx workers/jobs.ts",
     "dev:voice": "tsx scripts/dev-voice.ts",
-    "start:voice": "tsx workers/voice-agent.ts start",
-    "dev:webhook": "tsx watch workers/webhook.ts",
-    "start:webhook": "tsx workers/webhook.ts start",
-    "dev:knowledge": "tsx watch workers/knowledge-indexing.ts",
-    "start:knowledge": "tsx workers/knowledge-indexing.ts start",
-    "dev:assemblyai": "tsx watch workers/assemblyai-session.ts",
-    "start:assemblyai": "tsx workers/assemblyai-session.ts start"
+    "start:voice": "tsx workers/voice-agent.ts start"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",

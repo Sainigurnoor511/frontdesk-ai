@@ -189,9 +189,7 @@ Use this for full self-hosted runtime in containers. Requires [Docker](https://d
    | `nginx` | Reverse proxy on port **80** |
    | `app` | Next.js production server |
    | `redis` | Redis for BullMQ job queue |
-   | `worker-scan` | Website scan worker |
-   | `worker-knowledge` | Knowledge indexing worker |
-   | `worker-webhook` | Webhook delivery worker |
+   | `worker-jobs` | All BullMQ queues: website scans, knowledge indexing, webhooks, AssemblyAI transcripts |
    | `worker-voice` | Voice agent worker (LiveKit rooms) |
 
 5. Open [http://localhost](http://localhost).
