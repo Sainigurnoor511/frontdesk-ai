@@ -6,7 +6,65 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+/**
+ * Walks a React children tree collecting `value -> label` for every `SelectItem`.
+ *
+ * Recursive because items are commonly wrapped (in `SelectGroup`, fragments, or
+ * `.map()` output). The nodes are unrendered React elements, so their props are
+ * readable here even though the popup itself hasn't mounted yet — which is the
+ * whole point: the trigger needs the label before the dropdown is ever opened.
+ */
+function collectSelectItems(
+  node: React.ReactNode,
+  into: Record<string, React.ReactNode>
+): void {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+
+    const childProps = child.props as { value?: unknown; children?: React.ReactNode }
+
+    if (child.type === SelectItem && childProps.value != null) {
+      into[String(childProps.value)] = childProps.children
+    }
+
+    if (childProps.children != null) {
+      collectSelectItems(childProps.children, into)
+    }
+  })
+}
+
+/**
+ * Base UI's `Select.Value` renders the raw *value* unless `Select.Root` is given an
+ * `items` map — so a trigger would read "llama-3.1-8b-instant" while its own
+ * dropdown listed "Llama 3.1 8B Instant". Every select in the app had this, because
+ * none of them passed `items`.
+ *
+ * Rather than require all ~30 call sites to hand-maintain a parallel label map
+ * (which would drift from the `SelectItem`s immediately), derive it from the items
+ * that are already there. An explicit `items` prop still wins if a caller needs to
+ * override, e.g. to set a null-item placeholder label.
+ */
+function Select<Value, Multiple extends boolean | undefined = false>({
+  items,
+  children,
+  ...props
+}: SelectPrimitive.Root.Props<Value, Multiple>) {
+  const derivedItems = React.useMemo(() => {
+    if (items) return items
+
+    const collected: Record<string, React.ReactNode> = {}
+    collectSelectItems(children, collected)
+    // Undefined rather than an empty object: passing `{}` would make Base UI treat
+    // every value as unlabelled and render a blank trigger.
+    return Object.keys(collected).length > 0 ? collected : undefined
+  }, [items, children])
+
+  return (
+    <SelectPrimitive.Root<Value, Multiple> items={derivedItems} {...props}>
+      {children}
+    </SelectPrimitive.Root>
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
@@ -61,9 +119,16 @@ function SelectContent({
   children,
   side = "bottom",
   sideOffset = 4,
-  align = "center",
+  // Left edges line up with the trigger. `center` made wide triggers open a popup
+  // that straddled them, which read as misalignment rather than intent.
+  align = "start",
   alignOffset = 0,
-  alignItemWithTrigger = true,
+  // Base UI's native-select behaviour: position the popup so the *selected item*
+  // sits on top of the trigger. It made the dropdown appear to swallow the control
+  // it belongs to, and it moved depending on which item was selected and how much
+  // room was below. A dropdown that consistently opens under its trigger is the
+  // behaviour every other menu in this app already has.
+  alignItemWithTrigger = false,
   ...props
 }: SelectPrimitive.Popup.Props &
   Pick<
