@@ -1,5 +1,6 @@
 'use client'
 
+import { DotColumns, MatrixNumber } from '@/components/ui/matrix'
 import { useState, useTransition } from 'react'
 import {
   Phone,
@@ -229,7 +230,7 @@ function MetricTile({
         <Icon className="size-3.5" />
         {label}
       </p>
-      <p className="mt-2 font-mono text-3xl font-medium tracking-tight">{value}</p>
+      <MatrixNumber value={String(value)} className="mt-2 block font-mono text-3xl font-medium tracking-tight" />
     </div>
   )
 }
@@ -250,7 +251,7 @@ function OverviewTab({
   const rawVolume = data.callVolume ?? []
   const callVolume =
     granularity === 'week' ? aggregateVolumeByWeek(rawVolume) : rawVolume
-  const maxCount = Math.max(1, ...callVolume.map((d) => d?.count ?? 0))
+
 
   return (
     <div className="space-y-6">
@@ -285,28 +286,15 @@ function OverviewTab({
               </EmptyHeader>
             </Empty>
           ) : (
-            <div className="flex h-40 items-end gap-1">
-              {callVolume.map((day) => (
-                <div
-                  key={day.date}
-                  className="flex flex-1 flex-col items-center gap-1"
-                  title={`${day.date}: ${day.count ?? 0} calls`}
-                >
-                  <div
-                    className="w-full min-w-[4px] rounded-t bg-primary"
-                    style={{
-                      height: `${((day.count ?? 0) / maxCount) * 100}%`,
-                      minHeight: (day.count ?? 0) > 0 ? '4px' : '1px',
-                    }}
-                  />
-                  {callVolume.length <= 31 && (
-                    <span className="text-[10px] text-muted-foreground">
-                      {formatDayLabel(day.date)}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <DotColumns
+              className="pt-2"
+              data={callVolume.map((day) => ({
+                key: day.date,
+                value: day.count ?? 0,
+                label: callVolume.length <= 31 ? formatDayLabel(day.date) : undefined,
+                title: `${day.date}: ${day.count ?? 0} calls`,
+              }))}
+            />
           )}
         </CardContent>
       </Card>

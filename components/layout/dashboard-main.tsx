@@ -25,7 +25,9 @@ export function DashboardMain({ children }: { children: React.ReactNode }) {
         layout.overflow
       )}
     >
-      {children}
+      <div key={pathname} className="page-enter flex min-h-0 flex-1 flex-col">
+        {children}
+      </div>
     </div>
   )
 }

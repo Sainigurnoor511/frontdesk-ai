@@ -89,7 +89,6 @@ export default async function PublicBookingPage({
   const org = await getOrganizationBySlug(slug)
   if (!org) notFound()
 
-  // Preview is for the page's own team only; anyone else adding ?preview=1 gets the normal public rules.
   const previewMode = preview === '1' && (await isOrganizationMember(org.id))
 
   const [settings, services, agents, staff, config, businessProfile] = await Promise.all([

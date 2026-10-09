@@ -91,7 +91,6 @@ export async function logIn(input: LoginInput): Promise<{ error: string }> {
   redirect('/')
 }
 
-// Always reports success, whether or not the address has an account, so the form cannot be used to discover registered emails.
 export async function requestPasswordReset(
   input: RequestPasswordResetInput
 ): Promise<{ error: string } | { success: true }> {

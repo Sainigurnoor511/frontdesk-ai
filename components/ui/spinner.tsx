@@ -1,10 +1,7 @@
-import { cn } from "@/lib/utils"
-import { Loader2Icon } from "lucide-react"
+import { DotLoader } from "@/components/ui/matrix"
 
-function Spinner({ className, ...props }: React.ComponentProps<"svg">) {
-  return (
-    <Loader2Icon data-slot="spinner" role="status" aria-label="Loading" className={cn("size-4 animate-spin", className)} {...props} />
-  )
+function Spinner(props: React.ComponentProps<"span">) {
+  return <DotLoader data-slot="spinner" {...props} />
 }
 
 export { Spinner }

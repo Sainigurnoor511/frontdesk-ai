@@ -132,8 +132,14 @@ export function ScanProgressStep({
         </div>
         <div className="space-y-2" role="status">
           <p className="text-base font-medium">{STATUS_LABELS[status]}</p>
-          <div className="h-1 overflow-hidden rounded-full bg-border">
-            <div className="h-full w-1/3 animate-[scan-progress_1.6s_ease-in-out_infinite] rounded-full bg-foreground" />
+          <div className="flex justify-between" aria-hidden="true">
+            {Array.from({ length: 40 }, (_, index) => (
+              <span
+                key={index}
+                className="dot-chase size-1.5 rounded-full bg-border"
+                style={{ animationDelay: `${index * 35}ms` }}
+              />
+            ))}
           </div>
         </div>
         <div className="flex justify-end">

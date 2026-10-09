@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/empty'
 import { Button } from '@/components/ui/button'
 import { Orb } from '@/components/ui/orb'
+import { MatrixNumber } from '@/components/ui/matrix'
 import {
   Table,
   TableHeader,
@@ -85,13 +86,13 @@ function StatTile({
   return (
     <Link
       href={href}
-      className="group rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+      className="lift group rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <p className="label-mono flex items-center gap-1.5 text-muted-foreground">
         <TileIcon className="size-3.5" />
         {label}
       </p>
-      <p className="mt-2 font-mono text-3xl font-medium tracking-tight">{value}</p>
+      <MatrixNumber value={value} className="mt-2 block font-mono text-3xl font-medium tracking-tight" />
       <p
         className={cn(
           'mt-1 flex items-center gap-0.5 text-xs',
@@ -259,7 +260,7 @@ export function HomeClient({
         />
       )}
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="stagger-in grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           href="/analytics?tab=calls"
           label="Calls this week"

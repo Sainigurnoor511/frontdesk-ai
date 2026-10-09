@@ -29,7 +29,6 @@ function dotLevel(state: AgentState, distance: number, angle: number, time: numb
   return 0.6 + 0.3 * Math.sin(distance * 5 - time * 1.1)
 }
 
-// The receptionist's avatar: a disc of dots in the logo's dot-matrix style that ripples with what the agent is doing.
 export function Orb({ size, className, agentState = null, colors }: OrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const stateRef = useRef<AgentState>(agentState)
