@@ -36,7 +36,7 @@ export const createAgentSchema = z.object({
   language: z.string().min(1),
   industry: z.string().min(1),
   answeringMode: z.enum(['staff_first', 'agent_first']),
-  staffPhoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/),
+  staffPhoneNumber: z.string().regex(/^\+?[1-9]\d{6,14}$/).optional(),
   maxRingSeconds: z.number().int().min(5).max(60),
   holdMusic: z.string().optional(),
   greetingPrompt: z.string().optional(),

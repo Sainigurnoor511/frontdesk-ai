@@ -2,46 +2,56 @@
 
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
+import {
+  ChoiceTile,
+  OnboardingShell,
+  StepFooter,
+  StepHeading,
+} from '@/components/onboarding/onboarding-ui'
 
 const LANGUAGES = ['English', 'Hindi']
 
 export function LanguageStep({
   initialLanguage,
+  dots,
   onNext,
   onBack,
 }: {
   initialLanguage?: string
+  dots: { total: number; current: number }
   onNext: (language: string) => void
   onBack: () => void
 }) {
   const [selected, setSelected] = useState(initialLanguage ?? 'English')
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">What language should your agent speak?</h1>
-        <p className="text-muted-foreground">Your agent&apos;s greeting and replies will use this language.</p>
+    <OnboardingShell width="md" centered>
+      <div className="space-y-8">
+        <StepHeading
+          title="What language should your agent speak?"
+          description="Your agent's greeting and replies will use this language. You can change it later."
+        />
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {LANGUAGES.map((language) => (
+            <ChoiceTile
+              key={language}
+              selected={selected === language}
+              onClick={() => setSelected(language)}
+              className="h-16"
+            >
+              {language}
+            </ChoiceTile>
+          ))}
+        </div>
+        <StepFooter dots={dots}>
+          <Button variant="ghost" size="lg" onClick={onBack}>
+            Back
+          </Button>
+          <Button size="lg" onClick={() => onNext(selected)}>
+            Continue
+          </Button>
+        </StepFooter>
       </div>
-      <div className="flex gap-2">
-        {LANGUAGES.map((lang) => (
-          <button
-            key={lang}
-            type="button"
-            onClick={() => setSelected(lang)}
-            className={`rounded-lg border px-4 py-2 text-sm transition-colors ${
-              selected === lang ? 'border-primary bg-accent font-medium' : 'hover:bg-accent'
-            }`}
-          >
-            {lang}
-          </button>
-        ))}
-      </div>
-      <div className="flex justify-between">
-        <Button variant="ghost" onClick={onBack}>
-          Back
-        </Button>
-        <Button onClick={() => onNext(selected)}>Continue</Button>
-      </div>
-    </div>
+    </OnboardingShell>
   )
 }

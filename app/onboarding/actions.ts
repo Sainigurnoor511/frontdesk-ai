@@ -92,7 +92,7 @@ export async function createAgent(input: CreateAgentInput): Promise<{ error: str
       language: parsed.data.language,
       industry: parsed.data.industry,
       answering_mode: parsed.data.answeringMode,
-      staff_phone_number: parsed.data.staffPhoneNumber,
+      staff_phone_number: parsed.data.staffPhoneNumber ?? null,
       max_ring_seconds: parsed.data.maxRingSeconds,
       hold_music: parsed.data.holdMusic,
       greeting_prompt: parsed.data.greetingPrompt,
@@ -106,5 +106,5 @@ export async function createAgent(input: CreateAgentInput): Promise<{ error: str
     return { error: 'Could not create agent. Please try again.' }
   }
 
-  redirect(`/agents/${agent.id}`)
+  redirect('/')
 }

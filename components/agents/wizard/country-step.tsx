@@ -1,53 +1,84 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { countries } from '@/lib/data/countries'
+import { flagUrl } from '@/lib/flags'
+import {
+  ChoiceTile,
+  OnboardingShell,
+  StepFooter,
+  StepHeading,
+} from '@/components/onboarding/onboarding-ui'
 
 export function CountryStep({
   initialCountry,
+  dots,
   onNext,
   onBack,
 }: {
   initialCountry?: string
+  dots: { total: number; current: number }
   onNext: (country: string) => void
   onBack: () => void
 }) {
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState(initialCountry ?? '')
 
-  const filtered = countries.filter((c) => c.name.toLowerCase().includes(search.toLowerCase()))
+  const filtered = countries.filter((country) =>
+    country.name.toLowerCase().includes(search.trim().toLowerCase())
+  )
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Where is your business located?</h1>
-        <p className="text-muted-foreground">This helps us set up the right phone numbers and regional settings.</p>
+    <OnboardingShell width="xl">
+      <div className="space-y-8">
+        <StepHeading
+          title="Where is your business located?"
+          description="This helps us set up the right phone numbers and regional settings."
+        />
+        <Input
+          aria-label="Search countries"
+          placeholder="Search countries..."
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="h-9 rounded-lg px-3 text-sm"
+        />
+        <div className="scrollbar-thin -mx-1 grid max-h-[392px] grid-cols-2 gap-2.5 overflow-y-auto p-1 sm:grid-cols-4">
+          {filtered.map((country) => (
+            <ChoiceTile
+              key={country.code}
+              selected={selected === country.name}
+              onClick={() => setSelected(country.name)}
+              className="h-16 px-3"
+            >
+              <Image
+                src={flagUrl(country.code)}
+                alt=""
+                width={20}
+                height={20}
+                className="size-5 shrink-0"
+                unoptimized
+              />
+              <span className="truncate">{country.name}</span>
+            </ChoiceTile>
+          ))}
+          {filtered.length === 0 && (
+            <p className="col-span-full py-10 text-center text-sm text-muted-foreground">
+              No country matches that search.
+            </p>
+          )}
+        </div>
+        <StepFooter dots={dots}>
+          <Button variant="ghost" size="lg" onClick={onBack}>
+            Back
+          </Button>
+          <Button size="lg" disabled={!selected} onClick={() => onNext(selected)}>
+            Continue
+          </Button>
+        </StepFooter>
       </div>
-      <Input placeholder="Search countries..." value={search} onChange={(e) => setSearch(e.target.value)} />
-      <div className="grid max-h-72 grid-cols-4 gap-2 overflow-y-auto">
-        {filtered.map((country) => (
-          <button
-            key={country.code}
-            type="button"
-            onClick={() => setSelected(country.name)}
-            className={`rounded-lg border p-3 text-left text-sm transition-colors ${
-              selected === country.name ? 'border-primary bg-accent' : 'hover:bg-accent'
-            }`}
-          >
-            {country.name}
-          </button>
-        ))}
-      </div>
-      <div className="flex justify-between">
-        <Button variant="ghost" onClick={onBack}>
-          Back
-        </Button>
-        <Button disabled={!selected} onClick={() => onNext(selected)}>
-          Continue
-        </Button>
-      </div>
-    </div>
+    </OnboardingShell>
   )
 }

@@ -1,176 +1,225 @@
 'use client'
 
 import { useState } from 'react'
-import { Globe, Pencil, Zap, Target, FileText } from 'lucide-react'
-import { Card, CardContent } from '@/components/ui/card'
+import {
+  Globe,
+  SquarePen,
+  Clock,
+  Tag,
+  CircleCheck,
+  Store,
+  FileText,
+  ListOrdered,
+  File,
+  Zap,
+  Radar,
+  Timer,
+  ScanSearch,
+  Sparkles,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
+import { scanRequestSchema, type ScanRequestInput } from '@/lib/validations/agent'
 import {
-  scanRequestSchema,
-  manualBusinessInfoSchema,
-  type ScanRequestInput,
-} from '@/lib/validations/agent'
+  BulletList,
+  GradientCard,
+  OnboardingShell,
+  StepHeading,
+  type GradientName,
+} from '@/components/onboarding/onboarding-ui'
 
-type SourceChoice = 'menu' | 'scan-url' | 'scan-depth' | 'manual-name'
+type ScanDepth = ScanRequestInput['scanDepth']
+type SourceView = 'menu' | 'scan-depth' | 'scan-url'
+
+const DEPTH_OPTIONS: {
+  value: ScanDepth
+  label: string
+  gradient: GradientName
+  icon: typeof File
+  bullets: string[]
+}[] = [
+  {
+    value: 'single',
+    label: 'Single page',
+    gradient: 'forest',
+    icon: File,
+    bullets: [
+      'Ready in under a minute',
+      'Reads just the link you provide',
+      'Ideal for a business profile or listing',
+    ],
+  },
+  {
+    value: 'quick',
+    label: 'Quick scan',
+    gradient: 'ocean',
+    icon: Zap,
+    bullets: [
+      'Ready in about a minute',
+      'Scans a smart selection of your pages',
+      'Great for most business websites',
+    ],
+  },
+  {
+    value: 'deep',
+    label: 'Deep scan',
+    gradient: 'meadow',
+    icon: Radar,
+    bullets: [
+      'Takes 4-5 minutes',
+      'Systematically maps and reads your site',
+      'Best for large, content-heavy sites',
+    ],
+  },
+]
+
+const DEPTH_BULLET_ICONS = [Timer, ScanSearch, Sparkles]
 
 export function SourceStep({
   onScanStarted,
   onManual,
 }: {
-  onScanStarted: (input: ScanRequestInput) => void
-  onManual: (businessName: string) => void
+  onScanStarted: (input: ScanRequestInput) => Promise<void>
+  onManual: () => void
 }) {
-  const [choice, setChoice] = useState<SourceChoice>('menu')
+  const [view, setView] = useState<SourceView>('menu')
+  const [depth, setDepth] = useState<ScanDepth>('quick')
   const [url, setUrl] = useState('')
   const [urlError, setUrlError] = useState<string | null>(null)
-  const [businessName, setBusinessName] = useState('')
-  const [businessNameError, setBusinessNameError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
-  if (choice === 'menu') {
+  if (view === 'menu') {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Let&apos;s get your receptionist live</h1>
-          <p className="text-muted-foreground">
-            Drop a URL and we&apos;ll have it ready in less than one minute, or enter details manually.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <Card
-            className="cursor-pointer transition-colors hover:bg-accent"
-            onClick={() => setChoice('scan-url')}
-          >
-            <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-              <Globe className="size-8" />
-              <p className="font-medium">Scan my website</p>
-            </CardContent>
-          </Card>
-          <Card
-            className="cursor-pointer transition-colors hover:bg-accent"
-            onClick={() => setChoice('manual-name')}
-          >
-            <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-              <Pencil className="size-8" />
-              <p className="font-medium">Enter information manually</p>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    )
-  }
-
-  if (choice === 'manual-name') {
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">Tell us about your business</h1>
-          <p className="text-muted-foreground">What&apos;s your business called?</p>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="business-name">Business name</Label>
-          <Input
-            id="business-name"
-            placeholder="Acme Dental"
-            value={businessName}
-            onChange={(e) => setBusinessName(e.target.value)}
+      <OnboardingShell width="lg">
+        <div className="space-y-8">
+          <StepHeading
+            title="Let's get your receptionist live"
+            description="Drop a URL and we'll have it ready in about a minute. No website? Enter your details by hand instead."
           />
-          {businessNameError && (
-            <p className="text-sm text-destructive">{businessNameError}</p>
-          )}
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="space-y-6">
+              <GradientCard
+                gradient="ocean"
+                icon={Globe}
+                label="Scan my website"
+                onClick={() => setView('scan-depth')}
+              />
+              <BulletList
+                items={[
+                  { icon: Clock, text: 'Detect business hours and info' },
+                  { icon: Tag, text: 'Pull services & pricing automatically' },
+                  { icon: CircleCheck, text: 'Live agent in about a minute' },
+                ]}
+              />
+            </div>
+            <div className="space-y-6">
+              <GradientCard
+                gradient="meadow"
+                icon={SquarePen}
+                label="Enter information manually"
+                onClick={onManual}
+              />
+              <BulletList
+                items={[
+                  { icon: Store, text: 'Tell us about your business' },
+                  { icon: FileText, text: 'Set hours, services and staff' },
+                  { icon: ListOrdered, text: "We'll guide you step-by-step" },
+                ]}
+              />
+            </div>
+          </div>
         </div>
-        <div className="flex justify-between">
-          <Button variant="ghost" onClick={() => setChoice('menu')}>
-            Back
-          </Button>
-          <Button
-            onClick={() => {
-              const parsed = manualBusinessInfoSchema.safeParse({ businessName })
-              if (!parsed.success) {
-                setBusinessNameError(parsed.error.issues[0].message)
-                return
-              }
-              onManual(parsed.data.businessName)
-            }}
-          >
-            Continue
-          </Button>
-        </div>
-      </div>
+      </OnboardingShell>
     )
   }
 
-  if (choice === 'scan-url') {
+  if (view === 'scan-depth') {
     return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-semibold">We&apos;ll get your agent up and running!</h1>
-          <p className="text-muted-foreground">Paste a link to your website or any other knowledge source</p>
+      <OnboardingShell width="2xl">
+        <div className="space-y-8">
+          <StepHeading
+            title="How thoroughly should we scan?"
+            description="Single page is ideal for profiles and listings. Quick scan picks a smart selection of your pages. Deep scan maps your site for the most complete results."
+          />
+          <div className="grid gap-6 md:grid-cols-3">
+            {DEPTH_OPTIONS.map((option) => (
+              <div key={option.value} className="space-y-6">
+                <GradientCard
+                  gradient={option.gradient}
+                  icon={option.icon}
+                  label={option.label}
+                  onClick={() => {
+                    setDepth(option.value)
+                    setView('scan-url')
+                  }}
+                />
+                <BulletList
+                  items={option.bullets.map((text, index) => ({
+                    icon: DEPTH_BULLET_ICONS[index],
+                    text,
+                  }))}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end border-t pt-6">
+            <Button variant="ghost" size="lg" onClick={() => setView('menu')}>
+              Back
+            </Button>
+          </div>
         </div>
+      </OnboardingShell>
+    )
+  }
+
+  async function submitUrl(event: React.FormEvent) {
+    event.preventDefault()
+    const trimmed = url.trim()
+    const candidate = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`
+    const parsed = scanRequestSchema.safeParse({ url: candidate, scanDepth: depth })
+    if (!parsed.success) {
+      setUrlError(parsed.error.issues[0].message)
+      return
+    }
+    setUrlError(null)
+    setSubmitting(true)
+    await onScanStarted(parsed.data)
+    setSubmitting(false)
+  }
+
+  return (
+    <OnboardingShell width="sm" centered>
+      <form onSubmit={submitUrl} className="space-y-8">
+        <StepHeading
+          title="We'll get your agent up and running in no time"
+          description="Paste a link to your website or any other knowledge source"
+        />
         <div className="space-y-2">
-          <Label htmlFor="website-url">Website URL</Label>
           <Input
-            id="website-url"
-            placeholder="https://example.com"
+            aria-label="Website URL"
+            aria-invalid={Boolean(urlError)}
+            autoFocus
+            inputMode="url"
+            autoComplete="url"
+            placeholder="Enter your website URL..."
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(event) => setUrl(event.target.value)}
+            className="h-12 rounded-xl px-4 text-base"
           />
           {urlError && <p className="text-sm text-destructive">{urlError}</p>}
         </div>
-        <div className="flex justify-between">
-          <Button variant="ghost" onClick={() => setChoice('manual-name')}>
+        <div className="flex items-center justify-end gap-2">
+          <Button type="button" variant="ghost" size="lg" onClick={() => setView('scan-depth')}>
+            Back
+          </Button>
+          <Button type="button" variant="ghost" size="lg" onClick={onManual}>
             Skip
           </Button>
-          <Button
-            onClick={() => {
-              const parsed = scanRequestSchema.safeParse({ url, scanDepth: 'single' })
-              if (!parsed.success) {
-                setUrlError(parsed.error.issues[0].message)
-                return
-              }
-              setChoice('scan-depth')
-            }}
-          >
-            Continue
+          <Button type="submit" size="lg" disabled={!url.trim() || submitting}>
+            {submitting ? 'Starting…' : 'Continue'}
           </Button>
         </div>
-      </div>
-    )
-  }
-
-  const depthOptions: { value: 'single' | 'quick' | 'deep'; label: string; description: string; icon: typeof FileText }[] = [
-    { value: 'single', label: 'Single page', description: 'Ideal for a business profile or listing', icon: FileText },
-    { value: 'quick', label: 'Quick scan', description: 'Scans a smart selection of your pages', icon: Zap },
-    { value: 'deep', label: 'Deep scan', description: 'Systematically maps and reads your site', icon: Target },
-  ]
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">How thoroughly should we scan?</h1>
-        <p className="text-muted-foreground">
-          Single page is ideal for profiles. Quick scan picks a smart selection. Deep scan maps your
-          whole site.
-        </p>
-      </div>
-      <div className="grid grid-cols-3 gap-4">
-        {depthOptions.map((option) => (
-          <Card
-            key={option.value}
-            className="cursor-pointer transition-colors hover:bg-accent"
-            onClick={() => onScanStarted({ url, scanDepth: option.value })}
-          >
-            <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
-              <option.icon className="size-8" />
-              <p className="font-medium">{option.label}</p>
-              <p className="text-xs text-muted-foreground">{option.description}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <Button variant="ghost" onClick={() => setChoice('scan-url')}>
-        Back
-      </Button>
-    </div>
+      </form>
+    </OnboardingShell>
   )
 }

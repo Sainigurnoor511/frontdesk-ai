@@ -3,47 +3,59 @@
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { industries } from '@/lib/data/industries'
+import {
+  ChoiceTile,
+  OnboardingShell,
+  StepFooter,
+  StepHeading,
+} from '@/components/onboarding/onboarding-ui'
 
 export function IndustryStep({
   initialIndustry,
+  dots,
+  nextLabel,
+  submitting = false,
   onNext,
   onBack,
 }: {
   initialIndustry?: string
+  dots: { total: number; current: number }
+  nextLabel: string
+  submitting?: boolean
   onNext: (industry: string) => void
   onBack: () => void
 }) {
   const [selected, setSelected] = useState(initialIndustry ?? '')
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold">What industry are you in?</h1>
-        <p className="text-muted-foreground">We&apos;ll set up your booking system accordingly.</p>
+    <OnboardingShell width="xl">
+      <div className="space-y-8">
+        <StepHeading
+          title="What industry are you in?"
+          description="We'll set up your booking system accordingly. You can change this anytime."
+        />
+        <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+          {industries.map((industry) => (
+            <ChoiceTile
+              key={industry.value}
+              selected={selected === industry.value}
+              onClick={() => setSelected(industry.value)}
+              className="h-24 flex-col gap-2 px-2"
+            >
+              <industry.icon className="size-4" />
+              {industry.label}
+            </ChoiceTile>
+          ))}
+        </div>
+        <StepFooter dots={dots}>
+          <Button variant="ghost" size="lg" onClick={onBack} disabled={submitting}>
+            Back
+          </Button>
+          <Button size="lg" disabled={!selected || submitting} onClick={() => onNext(selected)}>
+            {submitting ? 'Setting up…' : nextLabel}
+          </Button>
+        </StepFooter>
       </div>
-      <div className="grid grid-cols-4 gap-3">
-        {industries.map((industry) => (
-          <button
-            key={industry.value}
-            type="button"
-            onClick={() => setSelected(industry.value)}
-            className={`flex flex-col items-center gap-2 rounded-lg border p-4 text-sm transition-colors ${
-              selected === industry.value ? 'border-primary bg-accent' : 'hover:bg-accent'
-            }`}
-          >
-            <industry.icon className="size-6" />
-            {industry.label}
-          </button>
-        ))}
-      </div>
-      <div className="flex justify-between">
-        <Button variant="ghost" onClick={onBack}>
-          Back
-        </Button>
-        <Button disabled={!selected} onClick={() => onNext(selected)}>
-          Continue
-        </Button>
-      </div>
-    </div>
+    </OnboardingShell>
   )
 }
