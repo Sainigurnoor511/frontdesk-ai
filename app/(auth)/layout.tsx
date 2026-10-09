@@ -1,15 +1,12 @@
 import Link from 'next/link'
+import { Logo } from '@/components/brand/logo'
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <div className="flex flex-1 flex-col items-center justify-center gap-10 p-4">
-        <Link
-          href="/"
-          aria-label="Frontdesk.ai"
-          className="font-brand text-5xl"
-        >
-          Frontdesk.ai
+        <Link href="/" aria-label="Frontdesk.ai">
+          <Logo className="h-10 w-auto" />
         </Link>
         <div className="w-full max-w-xs">{children}</div>
       </div>

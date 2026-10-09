@@ -1,0 +1,14 @@
+- name: App
+  cwd: "E:/Projects/frontdesk-ai"
+  shell: powershell
+  command: "pnpm dev"
+
+- name: Jobs Worker
+  cwd: "E:/Projects/frontdesk-ai"
+  shell: powershell
+  command: "pnpm dev:jobs"
+
+- name: Voice Agent
+  cwd: "E:/Projects/frontdesk-ai"
+  shell: powershell
+  command: "pnpm dev:voice"

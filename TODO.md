@@ -1,14 +1,10 @@
 # Frontdesk.ai — Remaining Work
 
 Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_Guide.md`'s
-11-phase implementation order (audited 2026-08-25). Update this file as items complete.
+11-phase implementation order (audited 2026-08-25). `docs/` is gitignored, so that file exists
+only in local checkouts. The ongoing team backlog lives in `developer-docs/TODO.md`. Update this file as items complete.
 
 ## Queue
-
-
-
-
-
 
 - [ ] **7. E2E / load testing pass** (Phase 11)
       No integration/E2E harness beyond unit tests + voice-latency instrumentation.
@@ -71,7 +67,7 @@ Tracks gaps found against `docs/FrontDesk.ai_Design_Document_Page_4_Claude_Code_
       `main` already reports 2127 pre-existing errors repo-wide (unrelated files like
       `waveform.tsx`, `use-mobile.ts`, `lib/crawler/crawl.ts`) — confirmed via
       stash-compare, not caused by this session's work. Full-repo `pnpm lint` is no longer a
-      reliable gate; verify with `pnpm exec eslint <changed files>` scoped to just the
+      reliable gate (2026-10-08: down to 29 errors, still not zero); verify with `pnpm exec eslint <changed files>` scoped to just the
       touched paths instead.
 
 - [x] **6. Staff presence: "Available now" filter** — commit `fab0221`.

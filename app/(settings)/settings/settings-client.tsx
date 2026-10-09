@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
+import { Logo } from '@/components/brand/logo'
 import {
   ArrowLeft,
   FileText,
@@ -115,14 +115,7 @@ export function SettingsClient({
                 className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
                 render={<Link href="/" />}
               >
-                <Image
-                  src="/images/logo/logo.png"
-                  alt="Frontdesk.ai"
-                  width={1123}
-                  height={203}
-                  priority
-                  className="h-6 w-auto"
-                />
+                <Logo className="h-5! w-auto!" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

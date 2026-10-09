@@ -53,7 +53,6 @@ Use this as the completion gate before marking a feature item done.
       through the server action, and the browser capture/playback path itself. Test in
       Firefox and Safari specifically — the in-worklet resampling exists because those two
       break the forced-24 kHz shortcut, and that code has never run.
-- [ ] Google Calendar OAuth + token storage + sync on create/cancel
 - [ ] Enforce `answering_mode`/routing logic in `workers/voice-agent.ts`
 - [ ] Add voice tools: cancel appointment, reschedule appointment
       (now provider-neutral: add to `lib/voice/tools/booking-handlers.ts` once and both
@@ -89,18 +88,27 @@ Use this as the completion gate before marking a feature item done.
 - [ ] Calendar per-slot buffer time support
 - [ ] Notification center UI (header popover currently shell)
 - [ ] Billing/upgrade flow behind sidebar upgrade card
-- [ ] 2FA implementation in settings
+- [ ] Enforce TOTP at login: after password sign-in, check
+      `getAuthenticatorAssuranceLevel()` and require the code before the session counts
+      (enrollment shipped in `98692e0`; login does not challenge yet)
 
 ---
 
 ## Known Technical Issues
 
+- [ ] **Pre-existing test failures** (recorded 2026-10-08): 10 tests across
+      `app/smb/actions.test.ts`, `lib/data/analytics.test.ts`,
+      `lib/data/availability-engine.test.ts` (date/timezone fixtures), and
+      `lib/voice/adapters/fish-audio-tts.test.ts`. Present on `main` since at least
+      `9dfb2d8`.
+- [ ] **Pre-existing lint errors** (recorded 2026-10-08): `pnpm lint` reports 29 errors,
+      4 warnings — down from ~2100 in August. Clear them so full-repo lint becomes a gate again.
 - [ ] Fix TypeScript errors in `app/smb/actions.ts` (`parsed.data` undefined cases)
-      — **may be stale** (checked 2026-09-06): repo-wide `pnpm tsc --noEmit` is currently
+      — **may be stale** (checked 2026-09-06, again 2026-10-08): repo-wide `pnpm tsc --noEmit` is
       clean, so this no longer reproduces as a type error. Either fixed already or hidden
       behind a cast; worth confirming before someone spends time hunting it.
 - [ ] Fix type mismatch issues in `lib/data/knowledge-service.ts` around `RankedChunkHit`
-      — **may be stale** (checked 2026-09-06): same as above, `tsc --noEmit` reports clean.
+      — **may be stale** (checked 2026-09-06, again 2026-10-08): same as above, `tsc --noEmit` reports clean.
 - [ ] **AssemblyAI recordings are OGG/Opus** (added: 2026-09-06) — their Sessions API returns
       OGG, whereas the LiveKit path deliberately records MP3 because OGG cannot be decoded
       by `decodeAudioData` in Chromium and does not play in Safari (see the comment in
@@ -116,6 +124,12 @@ Use this as the completion gate before marking a feature item done.
 
 ## Completed Recently
 
+- [x] Google Calendar OAuth + encrypted token storage + sync on appointment
+      create/update/cancel (`lib/integrations/google-calendar-sync.ts`, migration `038`);
+      Microsoft Calendar, Cal.com, and Calendly followed the same pattern (`039`, `040`)
+- [x] Consolidated the four BullMQ worker processes into one `workers/jobs.ts` host
+      (`6f648ce`); `WORKER_QUEUES` splits a queue back out without code changes
+- [x] TOTP 2FA enrollment + sign-out-all-devices in settings (`98692e0`)
 - [x] Verified the AssemblyAI wire protocol against the live API and fixed three bugs that
       typecheck, lint, and the build had all missed. Every one came from trusting prose
       documentation, and every one would have shipped broken:

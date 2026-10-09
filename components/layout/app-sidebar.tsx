@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
-import Image from 'next/image'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
 import {
@@ -62,6 +61,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Badge } from '@/components/ui/badge'
 import { Orb } from '@/components/ui/orb'
+import { Logo, LogoMark } from '@/components/brand/logo'
 import { CallDialog } from '@/components/voice/call-dialog'
 import { setSidebarItemHidden } from '@/app/(dashboard)/actions/sidebar-preferences'
 
@@ -198,14 +198,8 @@ export function AppSidebar({
               className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
               render={<Link href="/" />}
             >
-              <Image
-                src="/images/logo/logo.png"
-                alt="Frontdesk.ai"
-                width={1123}
-                height={203}
-                priority
-                className="h-6 w-auto shrink-0 group-data-[collapsible=icon]:size-4 group-data-[collapsible=icon]:object-cover group-data-[collapsible=icon]:object-left"
-              />
+              <Logo className="h-5! w-auto! group-data-[collapsible=icon]:hidden" />
+              <LogoMark className="hidden group-data-[collapsible=icon]:block" />
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

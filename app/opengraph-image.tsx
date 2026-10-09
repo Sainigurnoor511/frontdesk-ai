@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og'
+import { Logo, LOGO_ASPECT } from '@/components/brand/logo'
 import { SITE_DESCRIPTION, SITE_NAME } from '@/lib/seo/site'
 
 /**
@@ -32,16 +33,7 @@ export default async function OpengraphImage() {
             'radial-gradient(900px circle at 0% 0%, #1e3a8a 0%, transparent 55%)',
         }}
       >
-        <div
-          style={{
-            display: 'flex',
-            fontSize: 30,
-            color: '#a1a1aa',
-            letterSpacing: '-0.01em',
-          }}
-        >
-          {SITE_NAME}
-        </div>
+        <Logo title="" height={56} width={56 * LOGO_ASPECT} fill="#fafafa" />
         <div
           style={{
             display: 'flex',

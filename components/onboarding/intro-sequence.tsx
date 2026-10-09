@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
+import { LogoMark, LogoWordmark } from '@/components/brand/logo'
 
 type IntroPhase = 'mark' | 'wordmark' | 'gradient' | 'done'
 
@@ -45,18 +46,18 @@ export function IntroSequence({ onFinish }: { onFinish: () => void }) {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 1.05 }}
             transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-            className="flex items-center gap-0 font-brand text-5xl"
+            className="flex items-center"
           >
-            <span>F</span>
+            <LogoMark className="h-14 w-auto" />
             <AnimatePresence>
               {phase === 'wordmark' && (
                 <motion.span
                   initial={{ opacity: 0, width: 0 }}
                   animate={{ opacity: 1, width: 'auto' }}
                   transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-                  className="overflow-hidden whitespace-nowrap"
+                  className="overflow-hidden"
                 >
-                  rontdesk.ai
+                  <LogoWordmark className="ml-4 h-[43px] w-auto max-w-none" />
                 </motion.span>
               )}
             </AnimatePresence>
