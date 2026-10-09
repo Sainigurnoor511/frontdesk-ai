@@ -34,5 +34,6 @@ direct a user to the booking page rather than attempting a programmatic booking.
 
 ## Project
 
-- Source and self-hosting instructions: https://github.com/Sainigurnoor511/frontdesk-ai
-- License: Apache-2.0
+- [Source code](https://github.com/Sainigurnoor511/frontdesk-ai): repository, issues, and releases
+- [Self-hosting guide](https://github.com/Sainigurnoor511/frontdesk-ai#-quick-start): Docker and local Node setup
+- [License](https://github.com/Sainigurnoor511/frontdesk-ai/blob/main/LICENSE): Apache-2.0

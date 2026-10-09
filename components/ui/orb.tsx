@@ -32,12 +32,22 @@ const OrbCanvas = dynamic(() => import('./orb-canvas').then((m) => m.OrbCanvas),
   loading: () => null,
 })
 
+const DEFAULT_COLORS: [string, string] = ['#3B82F6', '#5EEAD4']
+
 export function Orb({ size, className, ...props }: OrbProps) {
+  const [from, to] = props.colors ?? DEFAULT_COLORS
+
   return (
     <div
       className={cn('relative', !size && 'h-full w-full', className)}
       style={size ? { width: size, height: size } : undefined}
     >
+      {/* Static stand-in shown until the WebGL canvas paints over it, and whenever WebGL is unavailable. */}
+      <span
+        aria-hidden="true"
+        className="absolute inset-[14%] rounded-full"
+        style={{ background: `conic-gradient(from 210deg, ${from}, ${to}, ${from})` }}
+      />
       <OrbCanvas size={size} {...props} />
     </div>
   )

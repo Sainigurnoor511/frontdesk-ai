@@ -105,7 +105,7 @@ function Scene({
   const targetColor2Ref = useRef(new THREE.Color(colors[1]))
   const animSpeedRef = useRef(0.1)
   const perlinNoiseTexture = useTexture(
-    "https://storage.googleapis.com/eleven-public-cdn/images/perlin-noise.png"
+    "/textures/perlin-noise.png"
   )
 
   const agentRef = useRef<AgentState>(agentState)

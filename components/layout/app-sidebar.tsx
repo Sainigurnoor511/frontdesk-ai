@@ -209,7 +209,7 @@ export function AppSidebar({
           </SidebarMenu>
         )}
       </SidebarHeader>
-      <SidebarContent className="gap-0 py-1">
+      <SidebarContent role="navigation" aria-label="Main" className="gap-0 py-1">
         {navSections.map((section, i) => {
           const visibleItems = section.items.filter((item) => !hidden.has(item.url))
           if (visibleItems.length === 0 && !('isSetup' in section && section.isSetup)) return null
@@ -251,7 +251,7 @@ export function AppSidebar({
                         {item.badge && (
                           <Badge
                             variant="outline"
-                            className="h-4 shrink-0 border-current px-1.5 text-[10px] font-medium text-muted-foreground"
+                            className="h-4 shrink-0 border-current px-1.5 text-xs font-medium text-muted-foreground"
                           >
                             {item.badge}
                           </Badge>

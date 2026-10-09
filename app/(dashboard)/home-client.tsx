@@ -100,7 +100,12 @@ function StatTile({
           trend.direction === 'flat' && 'text-muted-foreground'
         )}
       >
-        {trend.direction !== 'flat' && <TrendIcon className="size-3" />}
+        {trend.direction !== 'flat' && (
+          <>
+            <TrendIcon className="size-3" aria-hidden="true" />
+            <span className="sr-only">{trend.direction === 'up' ? 'Up' : 'Down'}</span>
+          </>
+        )}
         {trend.label}
       </p>
     </Link>
@@ -189,7 +194,7 @@ export function HomeClient({
       )}
 
       <Card>
-        <CardContent className="flex items-center justify-between gap-4">
+        <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="size-9 shrink-0 overflow-hidden rounded-full border border-foreground/10 sm:size-11">
               <Orb className="h-full w-full" />
@@ -218,7 +223,6 @@ export function HomeClient({
             {agent ? (
               <button
                 type="button"
-                aria-label="Test your receptionist"
                 onClick={() => setCallOpen(true)}
                 className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               >
@@ -335,7 +339,12 @@ export function HomeClient({
                     <TableRow
                       key={call.id}
                       onClick={() => router.push('/conversations')}
-                      className="cursor-pointer"
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') router.push('/conversations')
+                      }}
+                      tabIndex={0}
+                      aria-label={`Open call from ${formatRelativeDate(call.createdAt)}`}
+                      className="cursor-pointer outline-none focus-visible:bg-muted"
                     >
                       <TableCell className="text-muted-foreground">
                         {formatRelativeDate(call.createdAt)}

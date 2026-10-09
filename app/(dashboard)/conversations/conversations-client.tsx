@@ -242,7 +242,8 @@ export function ConversationsClient({
             <div className="relative max-w-sm flex-1 min-w-[200px]">
               <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search conversations"
+                aria-label="Search conversations"
+          placeholder="Search conversations"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-8"
@@ -360,6 +361,7 @@ export function ConversationsClient({
                             <span
                               role="button"
                               tabIndex={0}
+                              aria-label="Open conversation details"
                               onClick={(e) => {
                                 e.stopPropagation()
                                 openConversation(conversation)
@@ -370,7 +372,7 @@ export function ConversationsClient({
                                 e.preventDefault()
                                 openConversation(conversation)
                               }}
-                              className="rounded p-0.5 hover:text-foreground"
+                              className="rounded p-1 hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                             >
                               <SquareArrowOutUpRight className="size-4" />
                             </span>

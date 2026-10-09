@@ -105,6 +105,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
 
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
       if (event.data?.type === 'booking-page-preview-ready') {
         setReady(true)
       }
@@ -124,7 +125,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
       type: BOOKING_PAGE_PREVIEW_MESSAGE_TYPE,
       ...initialDraft,
     }
-    frameRef.current.contentWindow.postMessage(message, '*')
+    frameRef.current.contentWindow.postMessage(message, window.location.origin)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready])
 
@@ -132,7 +133,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
     if (!ready || !frameRef.current?.contentWindow) return
     frameRef.current.contentWindow.postMessage(
       { type: BOOKING_PAGE_PREVIEW_TAB_MESSAGE_TYPE, tab: previewTab },
-      '*'
+      window.location.origin
     )
   }, [ready, previewTab])
 
@@ -246,7 +247,6 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
             ref={frameRef}
             src={`${getPublicBookingPath(slug)}?preview=1`}
             title="Booking page preview"
-            sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
             className="border-0 bg-background"
             style={{
               position: 'absolute',

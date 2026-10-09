@@ -66,7 +66,14 @@ export function VoicePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
-        render={<Button variant="outline" role="combobox" className="w-full justify-start gap-2" />}
+        render={
+          <Button
+            variant="outline"
+            role="combobox"
+            aria-label="Receptionist voice"
+            className="w-full justify-start gap-2"
+          />
+        }
       >
         {selected && selectedColors ? (
           <>

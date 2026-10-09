@@ -50,6 +50,7 @@ import {
   type ReschedulePublicAppointmentInput,
   type CancelPublicAppointmentInput,
 } from '@/lib/validations/booking'
+import { BOOKING_PAGE_UNAVAILABLE, canUseBookingPage } from './access'
 
 const MAX_CALL_SECONDS = 300
 const ROOM_EMPTY_TIMEOUT_SECONDS = 30
@@ -61,6 +62,10 @@ export async function startPublicCall(input: StartPublicCallInput): Promise<Star
   const parsed = startPublicCallSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
+  }
+
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
   const headersList = await headers()
@@ -282,6 +287,10 @@ export async function getPublicAvailableSlots(
     return { error: parsed.error.issues[0].message }
   }
 
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
+  }
+
   const days = await getAvailableSlots(parsed.data.organizationId, {
     serviceId: parsed.data.serviceId ?? '',
     staffId: parsed.data.staffId ?? null,
@@ -298,6 +307,10 @@ export async function createPublicAppointment(
   const parsed = createPublicAppointmentSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
+  }
+
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
   const headersList = await headers()
@@ -409,6 +422,10 @@ export async function lookupPublicAppointments(
     return { error: parsed.error.issues[0].message }
   }
 
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
+  }
+
   const rows = await getUpcomingAppointmentsByEmailServiceRole(parsed.data.organizationId, parsed.data.email)
 
   return {
@@ -428,6 +445,10 @@ export async function reschedulePublicAppointment(
   const parsed = reschedulePublicAppointmentSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
+  }
+
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
   // Re-check the new slot is still open before moving the appointment onto
@@ -461,6 +482,10 @@ export async function cancelPublicAppointment(
   const parsed = cancelPublicAppointmentSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
+  }
+
+  if (!(await canUseBookingPage(parsed.data.organizationId))) {
+    return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
   return cancelPublicAppointmentServiceRole(

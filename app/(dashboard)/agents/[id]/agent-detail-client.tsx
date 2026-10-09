@@ -1,5 +1,6 @@
 'use client'
 
+import { flagUrl } from '@/lib/flags'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -556,8 +557,9 @@ export function AgentDetailClient({
                   title="Additional instructions"
                   description={`Extra instructions for the receptionist. E.g. "If someone asks about parking, mention the free parking lot behind the building."`}
                 />
-                <div className="overflow-hidden rounded-2xl border border-border">
+                <div className="overflow-hidden rounded-2xl border border-border focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
                   <Textarea
+                    aria-label="Additional instructions"
                     value={additionalInstructions}
                     onChange={(e) =>
                       setAdditionalInstructions(e.target.value.slice(0, MAX_INSTRUCTIONS_LENGTH))
@@ -590,8 +592,9 @@ export function AgentDetailClient({
                   title="First message"
                   description="The first message the receptionist says when a call connects. If empty, they say: “Hello! Thanks for calling [business]. How can I help you today?”"
                 />
-                <div className="overflow-hidden rounded-2xl border border-border">
+                <div className="overflow-hidden rounded-2xl border border-border focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
                   <Textarea
+                    aria-label="First message"
                     value={firstMessage}
                     onChange={(e) => setFirstMessage(e.target.value)}
                     rows={2}
@@ -664,14 +667,14 @@ export function AgentDetailClient({
                     value={defaultLanguage}
                     onValueChange={(value) => setDefaultLanguage(value as string)}
                   >
-                    <SelectTrigger className="w-full">
+                    <SelectTrigger aria-label="Default language" className="w-full">
                       <SelectValue placeholder="Select a language">
                         {(value: string) => {
                           const selectedLang = languageOptions.find((lang) => lang.code === value)
                           return selectedLang ? (
                             <span className="flex items-center gap-2">
                               <Image
-                                src={`https://hatscripts.github.io/circle-flags/flags/${selectedLang.countryCode}.svg`}
+                                src={flagUrl(selectedLang.countryCode)}
                                 alt={`${selectedLang.label} flag`}
                                 width={20}
                                 height={20}
@@ -691,7 +694,7 @@ export function AgentDetailClient({
                         <SelectItem key={lang.code} value={lang.code}>
                           <span className="flex items-center gap-2">
                             <Image
-                              src={`https://hatscripts.github.io/circle-flags/flags/${lang.countryCode}.svg`}
+                              src={flagUrl(lang.countryCode)}
                               alt={`${lang.label} flag`}
                               width={20}
                               height={20}
@@ -712,6 +715,7 @@ export function AgentDetailClient({
                     <span className="text-sm font-medium">Detect language</span>
                     <CircleQuestionMark className="size-3.5 shrink-0 text-muted-foreground" />
                     <Switch
+                      aria-label="Detect language"
                       checked={detectLanguage}
                       onCheckedChange={setDetectLanguage}
                       className="ml-auto"
@@ -819,6 +823,11 @@ export function AgentDetailClient({
                 title="Answering mode"
                 description="Decide who should answer inbound calls first."
               />
+              <p className="max-w-xl rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning">
+                Not active yet. Inbound phone calls are not supported in this version, so every
+                call is answered by the receptionist. Your choice is saved for when phone calling
+                is available.
+              </p>
               <div className="space-y-1.5">
                 <Label>Who answers first</Label>
                 <Select

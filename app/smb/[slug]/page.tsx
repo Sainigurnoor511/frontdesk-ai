@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { isOrganizationMember } from '../access'
 import { notFound } from 'next/navigation'
 import { getOrganizationBySlug } from '@/lib/data/organization-slug'
 import { getOrganizationSettings } from '@/lib/data/settings'
@@ -25,10 +26,13 @@ function bookingPageDescription(businessName: string): string {
  */
 export async function generateMetadata({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ preview?: string }>
 }): Promise<Metadata> {
   const { slug } = await params
+  const { preview } = await searchParams
   const org = await getOrganizationBySlug(slug)
 
   if (!org) {
@@ -42,6 +46,10 @@ export async function generateMetadata({
 
   const businessName = businessProfile.businessName ?? org.name
   const isLive = Boolean(settings.id && settings.bookingPageEnabled)
+  const isMemberPreview = !isLive && preview === '1' && (await isOrganizationMember(org.id))
+  if (!isLive && !isMemberPreview) {
+    return { title: 'Booking page not found', robots: { index: false, follow: false } }
+  }
   const canonical = `/smb/${slug}`
   const description = bookingPageDescription(businessName)
 
@@ -78,10 +86,11 @@ export default async function PublicBookingPage({
 }) {
   const { slug } = await params
   const { preview } = await searchParams
-  const previewMode = preview === '1'
-
   const org = await getOrganizationBySlug(slug)
   if (!org) notFound()
+
+  // Preview is for the page's own team only; anyone else adding ?preview=1 gets the normal public rules.
+  const previewMode = preview === '1' && (await isOrganizationMember(org.id))
 
   const [settings, services, agents, staff, config, businessProfile] = await Promise.all([
     getOrganizationSettings(org.id),

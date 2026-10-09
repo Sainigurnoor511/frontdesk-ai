@@ -17,47 +17,27 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { logOut } from '@/app/(auth)/actions'
 
-function UsageRing({ percent, avatarUrl }: { percent: number; avatarUrl: string | null }) {
-  const radius = 15
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference * (1 - percent / 100)
+function UserAvatar({ email, avatarUrl }: { email: string; avatarUrl: string | null }) {
+  if (avatarUrl) {
+    return (
+      <Image
+        src={avatarUrl}
+        alt=""
+        width={28}
+        height={28}
+        className="size-7 rounded-full object-cover"
+        unoptimized
+      />
+    )
+  }
 
   return (
-    <div className="relative flex size-9 items-center justify-center">
-      <svg viewBox="0 0 36 36" className="size-9 -rotate-90">
-        <circle
-          cx="18"
-          cy="18"
-          r={radius}
-          fill="none"
-          className="stroke-border"
-          strokeWidth="2.5"
-        />
-        <circle
-          cx="18"
-          cy="18"
-          r={radius}
-          fill="none"
-          className="stroke-foreground"
-          strokeWidth="2.5"
-          strokeDasharray={circumference}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-        />
-      </svg>
-      {avatarUrl ? (
-        <Image
-          src={avatarUrl}
-          alt=""
-          width={24}
-          height={24}
-          className="absolute size-6 rounded-full object-cover"
-          unoptimized
-        />
-      ) : (
-        <span className="absolute text-[9px] font-medium">{percent}%</span>
-      )}
-    </div>
+    <span
+      aria-hidden="true"
+      className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground uppercase"
+    >
+      {email.charAt(0)}
+    </span>
   )
 }
 
@@ -74,8 +54,11 @@ export function NavUser({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="outline-none">
-        <UsageRing percent={0} avatarUrl={avatarUrl} />
+      <DropdownMenuTrigger
+        aria-label="Account menu"
+        className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      >
+        <UserAvatar email={email} avatarUrl={avatarUrl} />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <div className="px-2 py-1.5">

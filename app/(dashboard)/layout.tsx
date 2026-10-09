@@ -32,6 +32,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <ThemeProvider>
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:text-sm focus:ring-3 focus:ring-ring/50"
+      >
+        Skip to content
+      </a>
       <SidebarProvider>
         <AppSidebar
           agent={{

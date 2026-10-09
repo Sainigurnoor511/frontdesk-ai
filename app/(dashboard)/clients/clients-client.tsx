@@ -151,6 +151,7 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
       <div className="relative max-w-sm">
         <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
+          aria-label="Search clients"
           placeholder="Search clients"
           value={search}
           onChange={(e) => setSearch(e.target.value)}

@@ -642,6 +642,7 @@ export function CalendarClient({
                         key={`${date.toISOString()}-${hour}`}
                         role="button"
                         tabIndex={0}
+                        aria-label={`New appointment, ${date.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}, ${formatHourLabel(hour)}`}
                         onClick={() => openNewAppointmentAt(date, hour)}
                         onKeyDown={(event) => {
                           if (event.key === "Enter" || event.key === " ") {
@@ -650,7 +651,7 @@ export function CalendarClient({
                           }
                         }}
                         className={cn(
-                          "relative h-[90px] cursor-pointer border-b border-r last:border-r-0",
+                          "relative h-[90px] cursor-pointer border-b border-r outline-none last:border-r-0 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                           isTimeOff
                             ? "bg-warning-subtle/60 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
                             : isBusinessHour

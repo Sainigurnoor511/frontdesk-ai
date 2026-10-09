@@ -16,14 +16,16 @@ export function DashboardMain({ children }: { children: React.ReactNode }) {
   const layout = PAGE_LAYOUT[pathname] ?? DEFAULT_LAYOUT
 
   return (
-    <main
+    <div
+      id="main-content"
+      tabIndex={-1}
       className={cn(
-        'scrollbar-thin flex min-h-0 flex-1 flex-col',
+        'scrollbar-thin flex min-h-0 flex-1 flex-col outline-none',
         layout.padding,
         layout.overflow
       )}
     >
       {children}
-    </main>
+    </div>
   )
 }

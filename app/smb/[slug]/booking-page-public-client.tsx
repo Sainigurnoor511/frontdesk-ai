@@ -281,6 +281,7 @@ export function BookingPagePublicClient({
     if (!previewMode) return
 
     function handleMessage(event: MessageEvent) {
+      if (event.origin !== window.location.origin) return
       const data = event.data as
         | BookingPagePreviewMessage
         | BookingPagePreviewTabMessage
@@ -302,7 +303,7 @@ export function BookingPagePublicClient({
     window.addEventListener('message', handleMessage)
     // Tell the parent we're ready to receive the first draft snapshot —
     // otherwise a message posted before this listener mounts is lost.
-    window.parent.postMessage({ type: 'booking-page-preview-ready' }, '*')
+    window.parent.postMessage({ type: 'booking-page-preview-ready' }, window.location.origin)
     return () => window.removeEventListener('message', handleMessage)
   }, [previewMode])
 

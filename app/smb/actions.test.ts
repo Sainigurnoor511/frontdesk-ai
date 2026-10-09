@@ -20,6 +20,16 @@ vi.mock('@/lib/data/conversations-service', () => ({
   createConversation: vi.fn(),
   updateConversationStatus: vi.fn(),
 }))
+vi.mock('@/lib/voice/end-call', () => ({
+  endLiveKitCallRoom: vi.fn(),
+}))
+vi.mock('@/lib/voice/livekit-room', () => ({
+  createLiveKitCallRoom: vi.fn(),
+}))
+vi.mock('./access', () => ({
+  canUseBookingPage: vi.fn().mockResolvedValue(true),
+  BOOKING_PAGE_UNAVAILABLE: 'Online booking is not available for this business.',
+}))
 vi.mock('livekit-server-sdk', () => ({
   AccessToken: vi.fn().mockImplementation(() => ({
     addGrant: vi.fn(),
@@ -141,5 +151,21 @@ describe('createPublicAppointment', () => {
     expect(sendAppointmentConfirmationEmail).toHaveBeenCalledWith(
       expect.objectContaining({ businessName: 'Acme Gym' })
     )
+  })
+})
+
+describe('booking page availability gate', () => {
+  it('refuses slot lookups for a business whose booking page is off', async () => {
+    const { canUseBookingPage } = await import('./access')
+    vi.mocked(canUseBookingPage).mockResolvedValueOnce(false)
+
+    const result = await getPublicAvailableSlots({
+      organizationId: '11111111-1111-1111-1111-111111111111',
+      serviceId: '22222222-2222-2222-2222-222222222222',
+      date: '2026-08-10',
+    })
+
+    expect(result).toEqual({ error: 'Online booking is not available for this business.' })
+    expect(getAvailableSlots).not.toHaveBeenCalled()
   })
 })

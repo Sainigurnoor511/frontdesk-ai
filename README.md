@@ -484,7 +484,7 @@ If Frontdesk.ai is useful to you, a ⭐ on GitHub helps others find it.
 
 Frontdesk.ai stands on great open-source work and services, including [Next.js](https://nextjs.org), [Supabase](https://supabase.com), [LiveKit Agents](https://github.com/livekit/agents-js), [BullMQ](https://bullmq.io), [shadcn/ui](https://ui.shadcn.com), [Base UI](https://base-ui.com), [FastEmbed](https://github.com/Anush008/fastembed-js), and [Lucide](https://lucide.dev). Voice and language by [Groq](https://groq.com), [Fish Audio](https://fish.audio), and [AssemblyAI](https://www.assemblyai.com).
 
-The logo is set in [Bitcount Prop Single](https://fonts.google.com/specimen/Bitcount+Prop+Single) (SIL Open Font License), the same dot-matrix face the app uses. The mark is that font's own lowercase **f** and **d** sharing one stem. Sources live in [`brand/`](./brand/).
+The logo is drawn in the dot-matrix style of [Bitcount Prop Single](https://fonts.google.com/specimen/Bitcount+Prop+Single) (SIL Open Font License). The mark is a lowercase **f** and **d** sharing one stem.
 
 ---
 

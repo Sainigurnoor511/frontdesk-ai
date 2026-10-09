@@ -42,7 +42,7 @@ frontdesk-ai/
 │   ├── ui/                     # Vendored shadcn/Base UI primitives (+ orb, waveform, chat bubbles)
 │   ├── agents/                 # Agent creation wizard, voice dialogs, instructions generator
 │   ├── auth/                   # Login/signup forms
-│   ├── brand/                  # Logo components (generated dot data)
+│   ├── brand/                  # Logo components
 │   ├── calendar/               # Date picker field
 │   ├── conversations/          # Detail sheet, audio player, status badge
 │   ├── layout/                 # Sidebar, header, nav, feedback, unsaved-changes bar
@@ -96,6 +96,7 @@ frontdesk-ai/
 
 - Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings; login-time AAL2 challenge not yet enforced — see `TODO.md`)
 - `(auth)/callback/route.ts` handles OAuth callbacks
+- Password reset: `/forgot-password` emails a link through `requestPasswordReset`; the link returns to `/callback?flow=recovery`, which signs the user in and sends them to `/reset-password` to choose a new password (`updatePassword`). The callback also sets a 15-minute `fd_password_recovery` cookie; without it `/reset-password` and `updatePassword` refuse, so an ordinary signed-in session cannot change the password without a reset link
 - Next 16 uses `proxy.ts` (not `middleware.ts`): its `proxy()` calls `updateSession()` from `lib/supabase/middleware.ts`, which calls `supabase.auth.getUser()` to refresh session cookies on every non-static request
 
 ### Organization Scoping
@@ -198,6 +199,8 @@ Apply with `npx supabase db push`. CI applies them on merge to `main` (see [CI](
 | `(settings)` | Account + organization settings | Settings-specific layout |
 | `onboarding` | Post-signup wizard (website scan → agent) | Standalone flow |
 | `smb/[slug]` | Public booking page: call, book, reschedule/cancel | Public, no auth required |
+
+Public booking pages and every action in `app/smb/actions.ts` are gated by `canUseBookingPage()` (`app/smb/access.ts`): open to anyone while the page is enabled, and to the organization's own members at any time. `?preview=1` only takes effect for members.
 
 ### Server-Wrapper + Client-Component Pattern
 
@@ -413,7 +416,7 @@ The catalog shown in the UI is `lib/data/integration-catalog.ts`.
 | `components/ui/` | Vendored shadcn/Base UI primitives, plus orb, waveform, message/bubble chat pieces |
 | `components/agents/` | Agent creation wizard (`wizard/` steps), voice creation, instructions generator |
 | `components/auth/` | Login/signup forms |
-| `components/brand/` | `<Logo />`, `<LogoMark />`, `<LogoWordmark />` (generated from `brand/tools/`) |
+| `components/brand/` | `<Logo />`, `<LogoMark />`, `<LogoWordmark />` drawn from the dot coordinates in `logo-data.ts` |
 | `components/calendar/` | Date picker field |
 | `components/conversations/` | Conversation detail sheet, call audio player, status badge |
 | `components/layout/` | Sidebar, header, nav, feedback dialog, filter button, unsaved-changes bar, skeletons |
