@@ -127,7 +127,7 @@ function CallReceptionistPill({
         onClick={onClick}
         className="h-8 justify-center border border-border bg-background text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:gap-0 hover:bg-sidebar-accent"
       >
-        <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
+        <div className="size-4 shrink-0">
           <Orb className="h-full w-full" />
         </div>
         {state !== 'collapsed' && <span className="truncate">{label}</span>}

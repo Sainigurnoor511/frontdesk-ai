@@ -87,11 +87,11 @@ function StatTile({
       href={href}
       className="group rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <p className="label-mono flex items-center gap-1.5 text-muted-foreground">
         <TileIcon className="size-3.5" />
         {label}
       </p>
-      <p className="mt-1.5 text-3xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 font-mono text-3xl font-medium tracking-tight">{value}</p>
       <p
         className={cn(
           'mt-1 flex items-center gap-0.5 text-xs',
@@ -196,7 +196,7 @@ export function HomeClient({
       <Card>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="size-9 shrink-0 overflow-hidden rounded-full border border-foreground/10 sm:size-11">
+            <div className="size-9 shrink-0 sm:size-11">
               <Orb className="h-full w-full" />
             </div>
             <div className="min-w-0 space-y-1">

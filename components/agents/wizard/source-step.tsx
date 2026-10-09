@@ -22,10 +22,10 @@ import { Input } from '@/components/ui/input'
 import { scanRequestSchema, type ScanRequestInput } from '@/lib/validations/agent'
 import {
   BulletList,
-  GradientCard,
+  PatternCard,
   OnboardingShell,
   StepHeading,
-  type GradientName,
+  type PatternName,
 } from '@/components/onboarding/onboarding-ui'
 
 type ScanDepth = ScanRequestInput['scanDepth']
@@ -34,14 +34,14 @@ type SourceView = 'menu' | 'scan-depth' | 'scan-url'
 const DEPTH_OPTIONS: {
   value: ScanDepth
   label: string
-  gradient: GradientName
+  pattern: PatternName
   icon: typeof File
   bullets: string[]
 }[] = [
   {
     value: 'single',
     label: 'Single page',
-    gradient: 'forest',
+    pattern: 'wide',
     icon: File,
     bullets: [
       'Ready in under a minute',
@@ -52,7 +52,7 @@ const DEPTH_OPTIONS: {
   {
     value: 'quick',
     label: 'Quick scan',
-    gradient: 'ocean',
+    pattern: 'medium',
     icon: Zap,
     bullets: [
       'Ready in about a minute',
@@ -63,7 +63,7 @@ const DEPTH_OPTIONS: {
   {
     value: 'deep',
     label: 'Deep scan',
-    gradient: 'meadow',
+    pattern: 'fine',
     icon: Radar,
     bullets: [
       'Takes 4-5 minutes',
@@ -98,8 +98,8 @@ export function SourceStep({
           />
           <div className="grid gap-6 sm:grid-cols-2">
             <div className="space-y-6">
-              <GradientCard
-                gradient="ocean"
+              <PatternCard
+                pattern="medium"
                 icon={Globe}
                 label="Scan my website"
                 onClick={() => setView('scan-depth')}
@@ -113,8 +113,8 @@ export function SourceStep({
               />
             </div>
             <div className="space-y-6">
-              <GradientCard
-                gradient="meadow"
+              <PatternCard
+                pattern="fine"
                 icon={SquarePen}
                 label="Enter information manually"
                 onClick={onManual}
@@ -144,8 +144,8 @@ export function SourceStep({
           <div className="grid gap-6 md:grid-cols-3">
             {DEPTH_OPTIONS.map((option) => (
               <div key={option.value} className="space-y-6">
-                <GradientCard
-                  gradient={option.gradient}
+                <PatternCard
+                  pattern={option.pattern}
                   icon={option.icon}
                   label={option.label}
                   onClick={() => {

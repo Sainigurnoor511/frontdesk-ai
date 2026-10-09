@@ -1,54 +1,124 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { useEffect, useRef } from 'react'
 import { cn } from '@/lib/utils'
-import type { OrbProps } from './orb-types'
+import type { AgentState, OrbProps } from './orb-types'
 
 export type { AgentState, OrbProps } from './orb-types'
 
-/**
- * Lazy boundary for the WebGL orb.
- *
- * The implementation pulls in `three`, `@react-three/fiber`, and
- * `@react-three/drei`, which together dominated the largest client chunk
- * (~883 KB alongside livekit and rive). The orb is decorative on two of its three
- * call sites — a 16px sidebar glyph and a 44px avatar — so paying for a 3D engine
- * before first paint was a bad trade.
- *
- * Deferring it means `three` lands in its own chunk fetched after hydration
- * instead of in the initial shared bundle.
- *
- * This file must not import anything that reaches `three`, or the split
- * collapses and the lazy chunk is pulled back into the parent. That is why the
- * prop types live in `orb-types.ts`.
- *
- * `ssr: false` because WebGL can't render on the server anyway; the previous
- * implementation also read `document` during setup.
- */
-const OrbCanvas = dynamic(() => import('./orb-canvas').then((m) => m.OrbCanvas), {
-  ssr: false,
-  // Reserves the exact footprint so lazy-loading doesn't shift layout when the
-  // canvas arrives.
-  loading: () => null,
-})
+const FRAME_INTERVAL_MS = 1000 / 30
 
-const DEFAULT_COLORS: [string, string] = ['#3B82F6', '#5EEAD4']
+function gridSizeFor(pixels: number): number {
+  const cells = Math.round(pixels / 11)
+  const clamped = Math.max(5, Math.min(17, cells))
+  return clamped % 2 === 0 ? clamped + 1 : clamped
+}
 
-export function Orb({ size, className, ...props }: OrbProps) {
-  const [from, to] = props.colors ?? DEFAULT_COLORS
+// How full each dot is (0 to 1) for a given state, distance from centre, angle and time.
+function dotLevel(state: AgentState, distance: number, angle: number, time: number): number {
+  if (state === 'talking') {
+    return 0.55 + 0.45 * Math.sin(distance * 9 - time * 7)
+  }
+  if (state === 'listening') {
+    return 0.5 + 0.4 * Math.sin(distance * 7 + time * 4)
+  }
+  if (state === 'thinking') {
+    const sweep = Math.cos(angle - time * 2.6)
+    return 0.3 + 0.7 * Math.max(0, sweep) ** 2
+  }
+  return 0.6 + 0.3 * Math.sin(distance * 5 - time * 1.1)
+}
+
+// The receptionist's avatar: a disc of dots in the logo's dot-matrix style that ripples with what the agent is doing.
+export function Orb({ size, className, agentState = null, colors }: OrbProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const stateRef = useRef<AgentState>(agentState)
+
+  useEffect(() => {
+    stateRef.current = agentState
+  }, [agentState])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    const context = canvas?.getContext('2d')
+    if (!canvas || !context) return
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let frame = 0
+    let lastDraw = 0
+    let dotColor = ''
+    let accentColor = ''
+
+    function readColors() {
+      const styles = getComputedStyle(canvas!)
+      dotColor = colors?.[0] ?? styles.color
+      accentColor = colors?.[1] ?? (styles.getPropertyValue('--brand').trim() || styles.color)
+    }
+
+    function draw(now: number) {
+      const box = canvas!.getBoundingClientRect()
+      const pixels = Math.min(box.width, box.height)
+      if (pixels === 0) return
+
+      const ratio = window.devicePixelRatio || 1
+      const side = Math.round(pixels * ratio)
+      if (canvas!.width !== side || canvas!.height !== side) {
+        canvas!.width = side
+        canvas!.height = side
+        readColors()
+      }
+
+      const grid = gridSizeFor(pixels)
+      const pitch = side / grid
+      const centre = (grid - 1) / 2
+      const time = reduceMotion ? 0 : now / 1000
+      const state = stateRef.current
+
+      context!.clearRect(0, 0, side, side)
+      for (let row = 0; row < grid; row++) {
+        for (let column = 0; column < grid; column++) {
+          const dx = (column - centre) / (grid / 2)
+          const dy = (row - centre) / (grid / 2)
+          const distance = Math.hypot(dx, dy)
+          if (distance > 0.96) continue
+
+          const level = dotLevel(state, distance, Math.atan2(dy, dx), time)
+          const radius = (pitch / 2) * (0.28 + 0.66 * level)
+          context!.fillStyle = state !== null && level > 0.82 ? accentColor : dotColor
+          context!.beginPath()
+          context!.arc((column + 0.5) * pitch, (row + 0.5) * pitch, radius, 0, Math.PI * 2)
+          context!.fill()
+        }
+      }
+    }
+
+    function loop(now: number) {
+      frame = requestAnimationFrame(loop)
+      if (now - lastDraw < FRAME_INTERVAL_MS) return
+      lastDraw = now
+      draw(now)
+    }
+
+    readColors()
+    draw(0)
+    if (!reduceMotion) frame = requestAnimationFrame(loop)
+
+    const themeObserver = new MutationObserver(readColors)
+    themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] })
+
+    return () => {
+      cancelAnimationFrame(frame)
+      themeObserver.disconnect()
+    }
+  }, [colors])
 
   return (
-    <div
-      className={cn('relative', !size && 'h-full w-full', className)}
+    <canvas
+      ref={canvasRef}
+      aria-hidden="true"
+      data-slot="orb"
+      className={cn('block text-foreground', !size && 'h-full w-full', className)}
       style={size ? { width: size, height: size } : undefined}
-    >
-      {/* Static stand-in shown until the WebGL canvas paints over it, and whenever WebGL is unavailable. */}
-      <span
-        aria-hidden="true"
-        className="absolute inset-[14%] rounded-full"
-        style={{ background: `conic-gradient(from 210deg, ${from}, ${to}, ${from})` }}
-      />
-      <OrbCanvas size={size} {...props} />
-    </div>
+    />
   )
 }

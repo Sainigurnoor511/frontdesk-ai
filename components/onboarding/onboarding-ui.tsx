@@ -19,7 +19,7 @@ export function OnboardingShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-dvh flex-col">
+    <div className="bg-dots flex min-h-dvh flex-col">
       <header className="flex justify-center px-4 pt-8">
         <Logo className="h-7 w-auto" />
       </header>
@@ -56,8 +56,8 @@ export function StepDots({ total, current }: { total: number; current: number })
         <span
           key={index}
           className={cn(
-            'h-1 rounded-full transition-all duration-300',
-            index === current ? 'w-3 bg-foreground' : 'w-1 bg-border'
+            'size-1.5 rounded-full transition-colors duration-300',
+            index === current ? 'bg-brand' : index < current ? 'bg-foreground' : 'bg-border'
           )}
         />
       ))}
@@ -90,8 +90,8 @@ export function ChoiceTile({
       type="button"
       aria-pressed={selected}
       className={cn(
-        'flex items-center justify-center gap-2.5 rounded-xl border bg-background text-lg font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px',
-        selected ? 'border-foreground ring-2 ring-foreground' : 'border-border',
+        'flex items-center justify-center gap-2.5 rounded-lg border bg-background text-lg font-medium outline-none transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px',
+        selected ? 'border-foreground ring-2 ring-foreground shadow-[inset_0_-3px_0_var(--brand)]' : 'border-border',
         className
       )}
       {...props}
@@ -99,39 +99,42 @@ export function ChoiceTile({
   )
 }
 
-const GRADIENTS = {
-  ocean:
-    'radial-gradient(at 78% 12%, #6a9a3c 0%, transparent 42%), radial-gradient(at 72% 82%, #4d9fdc 0%, transparent 55%), radial-gradient(at 12% 88%, #0f3550 0%, transparent 52%), radial-gradient(at 18% 14%, #2c6cae 0%, transparent 50%), #1f5482',
-  meadow:
-    'radial-gradient(at 84% 78%, #e3b92c 0%, transparent 46%), radial-gradient(at 92% 8%, #b9773a 0%, transparent 34%), radial-gradient(at 38% 96%, #86a83c 0%, transparent 42%), radial-gradient(at 18% 26%, #1c3a20 0%, transparent 60%), #31502a',
-  forest:
-    'radial-gradient(at 10% 90%, #9dba4c 0%, transparent 40%), radial-gradient(at 22% 8%, #2d6fb2 0%, transparent 44%), radial-gradient(at 88% 14%, #6c9a52 0%, transparent 36%), radial-gradient(at 70% 70%, #0d2a22 0%, transparent 62%), #14392e',
-}
+const PATTERN_PITCH = { fine: 10, medium: 16, wide: 24 }
 
-export type GradientName = keyof typeof GRADIENTS
+export type PatternName = keyof typeof PATTERN_PITCH
 
-export function GradientCard({
-  gradient,
+export function PatternCard({
+  pattern,
   icon: Icon,
   label,
   onClick,
 }: {
-  gradient: GradientName
+  pattern: PatternName
   icon: React.ComponentType<{ className?: string }>
   label: string
   onClick: () => void
 }) {
+  const pitch = PATTERN_PITCH[pattern]
+
   return (
     <button
       type="button"
       onClick={onClick}
-      className="group relative flex aspect-[5/3] w-full flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl text-white outline-none ring-1 ring-foreground/10 ring-offset-2 ring-offset-background transition-transform duration-200 hover:scale-[1.015] focus-visible:ring-3 focus-visible:ring-ring active:scale-[0.99]"
-      style={{ background: GRADIENTS[gradient] }}
+      className="group relative flex aspect-[5/3] w-full flex-col justify-between overflow-hidden rounded-lg bg-primary p-5 text-left text-primary-foreground outline-none transition-transform duration-200 hover:-translate-y-0.5 focus-visible:ring-3 focus-visible:ring-ring/60 active:translate-y-0"
     >
-      <span className="relative flex size-9 items-center justify-center rounded-lg bg-black/25 backdrop-blur-sm">
+      <span
+        aria-hidden="true"
+        className="absolute inset-0 opacity-25 transition-opacity duration-200 group-hover:opacity-45"
+        style={{
+          backgroundImage: 'radial-gradient(currentColor 1.5px, transparent 1.7px)',
+          backgroundSize: `${pitch}px ${pitch}px`,
+          maskImage: 'linear-gradient(135deg, transparent 15%, black 90%)',
+        }}
+      />
+      <span className="relative flex size-9 items-center justify-center rounded-sm bg-brand text-brand-foreground">
         <Icon className="size-4.5" />
       </span>
-      <span className="relative text-xl font-semibold drop-shadow-sm">{label}</span>
+      <span className="relative text-xl font-semibold">{label}</span>
     </button>
   )
 }

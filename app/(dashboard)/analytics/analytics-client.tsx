@@ -225,11 +225,11 @@ function MetricTile({
 }) {
   return (
     <div className="rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10">
-      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+      <p className="label-mono flex items-center gap-1.5 text-muted-foreground">
         <Icon className="size-3.5" />
         {label}
       </p>
-      <p className="mt-1.5 text-3xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-2 font-mono text-3xl font-medium tracking-tight">{value}</p>
     </div>
   )
 }

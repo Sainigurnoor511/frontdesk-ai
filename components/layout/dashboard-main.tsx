@@ -20,7 +20,7 @@ export function DashboardMain({ children }: { children: React.ReactNode }) {
       id="main-content"
       tabIndex={-1}
       className={cn(
-        'scrollbar-thin flex min-h-0 flex-1 flex-col outline-none',
+        'scrollbar-thin bg-dots flex min-h-0 flex-1 flex-col outline-none',
         layout.padding,
         layout.overflow
       )}

@@ -153,7 +153,6 @@ export function CallDialog({
                   <Orb
                     agentState={agentState}
                     size={192}
-                    className="overflow-hidden rounded-full"
                   />
                   {isConnected ? (
                     <button
