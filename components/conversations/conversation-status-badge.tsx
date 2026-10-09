@@ -3,8 +3,8 @@ import { cn } from '@/lib/utils'
 import type { Conversation } from '@/lib/data/conversations'
 
 const STATUS_STYLES: Record<Conversation['outcome'], string> = {
-  successful: 'bg-green-100 text-green-800',
-  failed: 'bg-red-100 text-red-800',
+  successful: 'bg-success-subtle text-success',
+  failed: 'bg-danger-subtle text-danger',
   unknown: 'bg-muted text-muted-foreground',
 }
 

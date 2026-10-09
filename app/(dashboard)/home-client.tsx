@@ -9,6 +9,8 @@ import {
   X,
   CalendarDays,
   ArrowRight,
+  ArrowUpRight,
+  ArrowDownRight,
   CalendarCheck,
   TrendingUp,
   UserPlus,
@@ -47,41 +49,60 @@ type Metrics = {
   newClients: number
 }
 
-function formatTrendSubtitle(current: number, prior: number): string {
-  if (current === 0 && prior === 0) return 'No activity yet'
-  if (prior === 0) return `${current} this period`
-  const change = ((current - prior) / prior) * 100
-  const sign = change >= 0 ? '+' : ''
-  return `${sign}${Math.round(change)}% vs prior 7 days`
+type Trend = { label: string; direction: 'up' | 'down' | 'flat' }
+
+function getTrend(current: number, prior: number): Trend {
+  if (current === 0 && prior === 0) return { label: 'No activity yet', direction: 'flat' }
+  if (prior === 0) return { label: 'New this week', direction: 'up' }
+  const change = Math.round(((current - prior) / prior) * 100)
+  if (change === 0) return { label: 'Same as last week', direction: 'flat' }
+  return {
+    label: `${Math.abs(change)}% vs last week`,
+    direction: change > 0 ? 'up' : 'down',
+  }
 }
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+})
 
 function StatTile({
   href,
   label,
   value,
-  trendSubtitle,
+  trend,
   icon: TileIcon,
-  iconClassName,
 }: {
   href: string
   label: string
   value: string
-  trendSubtitle: string
+  trend: Trend
   icon: LucideIcon
-  iconClassName: string
 }) {
+  const TrendIcon = trend.direction === 'up' ? ArrowUpRight : ArrowDownRight
   return (
-    <Link href={href} className="flex-1">
-      <Card className="h-full transition-colors hover:bg-accent">
-        <CardContent className="space-y-1 py-4">
-          <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <TileIcon className={cn('size-4', iconClassName)} />
-            {label}
-          </p>
-          <p className="font-heading text-2xl font-semibold">{value}</p>
-          <p className="text-xs text-muted-foreground">{trendSubtitle}</p>
-        </CardContent>
-      </Card>
+    <Link
+      href={href}
+      className="group rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10 transition-colors hover:bg-accent focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+    >
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <TileIcon className="size-3.5" />
+        {label}
+      </p>
+      <p className="mt-1.5 text-3xl font-semibold tracking-tight">{value}</p>
+      <p
+        className={cn(
+          'mt-1 flex items-center gap-0.5 text-xs',
+          trend.direction === 'up' && 'text-success',
+          trend.direction === 'down' && 'text-danger',
+          trend.direction === 'flat' && 'text-muted-foreground'
+        )}
+      >
+        {trend.direction !== 'flat' && <TrendIcon className="size-3" />}
+        {trend.label}
+      </p>
     </Link>
   )
 }
@@ -120,7 +141,7 @@ export function HomeClient({
   const router = useRouter()
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <h1 className="font-heading text-2xl font-semibold">Home</h1>
 
       {!agent && !dismissed && (
@@ -234,46 +255,42 @@ export function HomeClient({
         />
       )}
 
-      <div className="flex flex-wrap gap-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           href="/analytics?tab=calls"
-          label="Calls (7d)"
+          label="Calls this week"
           value={String(metrics.calls)}
-          trendSubtitle={formatTrendSubtitle(metrics.calls, priorMetrics.calls)}
+          trend={getTrend(metrics.calls, priorMetrics.calls)}
           icon={Phone}
-          iconClassName="text-blue-500"
         />
         <StatTile
           href="/analytics?tab=services"
-          label="Bookings (7d)"
+          label="Bookings this week"
           value={String(metrics.bookings)}
-          trendSubtitle={formatTrendSubtitle(metrics.bookings, priorMetrics.bookings)}
+          trend={getTrend(metrics.bookings, priorMetrics.bookings)}
           icon={CalendarCheck}
-          iconClassName="text-violet-500"
         />
         <StatTile
           href="/analytics?tab=services"
-          label="Revenue (7d)"
-          value={`$${metrics.revenue}`}
-          trendSubtitle={formatTrendSubtitle(metrics.revenue, priorMetrics.revenue)}
+          label="Revenue this week"
+          value={currencyFormatter.format(metrics.revenue)}
+          trend={getTrend(metrics.revenue, priorMetrics.revenue)}
           icon={TrendingUp}
-          iconClassName="text-emerald-500"
         />
         <StatTile
           href="/analytics?tab=clients"
-          label="New Clients (7d)"
+          label="New clients this week"
           value={String(metrics.newClients)}
-          trendSubtitle={formatTrendSubtitle(metrics.newClients, priorMetrics.newClients)}
+          trend={getTrend(metrics.newClients, priorMetrics.newClients)}
           icon={UserPlus}
-          iconClassName="text-amber-500"
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-3 lg:grid-cols-2">
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-2xl font-semibold">Latest Calls</h2>
+              <h2 className="text-lg font-semibold">Latest calls</h2>
               {latestCalls.length > 0 && (
                 <Link
                   href="/conversations"
@@ -340,7 +357,7 @@ export function HomeClient({
         <Card>
           <CardContent className="space-y-3 py-5">
             <div className="flex items-center justify-between">
-              <h2 className="font-heading text-2xl font-semibold">Upcoming Events</h2>
+              <h2 className="text-lg font-semibold">Upcoming appointments</h2>
               {upcomingAppointments.length > 0 && (
                 <Link
                   href="/calendar"
@@ -357,7 +374,7 @@ export function HomeClient({
                   <EmptyMedia variant="icon">
                     <CalendarDays />
                   </EmptyMedia>
-                  <EmptyTitle>No upcoming events this week</EmptyTitle>
+                  <EmptyTitle>No appointments this week</EmptyTitle>
                   <EmptyDescription>
                     Appointments on your calendar will show up here.
                   </EmptyDescription>
@@ -367,7 +384,7 @@ export function HomeClient({
                     href="/calendar"
                     className="text-sm font-medium text-foreground underline underline-offset-4"
                   >
-                    Open Calendar
+                    Open calendar
                   </Link>
                 </EmptyContent>
               </Empty>

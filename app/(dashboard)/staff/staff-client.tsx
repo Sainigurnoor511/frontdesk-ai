@@ -273,8 +273,8 @@ export function StaffClient({
                       <div className="flex items-center gap-2">
                         <p className="font-medium">{member.fullName}</p>
                         {availabilityById.get(member.id) === true && (
-                          <Badge variant="outline" className="gap-1 text-emerald-600 dark:text-emerald-400">
-                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                          <Badge variant="outline" className="gap-1 text-success">
+                            <span className="size-1.5 rounded-full bg-success" />
                             Available now
                           </Badge>
                         )}

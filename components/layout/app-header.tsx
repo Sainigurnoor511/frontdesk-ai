@@ -9,6 +9,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { NavUser } from './nav-user'
 import { SidebarToggleButton } from './sidebar-toggle-button'
 import { FeedbackDialog } from './feedback-dialog'
+import { CommandMenu } from './command-menu'
 
 const pageTitles: Record<string, string> = {
   '/': 'Home',
@@ -20,6 +21,7 @@ const pageTitles: Record<string, string> = {
   '/conversations': 'Conversations',
   '/analytics': 'Analytics',
   '/agents': 'Receptionists',
+  '/phone-numbers': 'Phone numbers',
   '/business': 'Business',
   '/integrations': 'Integrations',
   '/booking-page': 'Bookings page',
@@ -40,16 +42,18 @@ export function AppHeader({
   businessName?: string
 }) {
   const pathname = usePathname()
-  const title = pathname === '/business' && businessName ? businessName : (pageTitles[pathname] ?? '')
+  const section = `/${pathname.split('/')[1] ?? ''}`
+  const title = pathname === '/business' && businessName ? businessName : (pageTitles[section] ?? '')
   const [feedbackOpen, setFeedbackOpen] = useState(false)
 
   return (
-    <header className="flex h-[50px] items-center justify-between border-b bg-background px-2">
+    <header className="flex h-12 shrink-0 items-center justify-between border-b bg-background px-2">
       <div className="flex items-center gap-2">
         <SidebarToggleButton className="rounded-md border" />
         <span className="text-sm font-medium">{title}</span>
       </div>
       <div className="flex items-center gap-2">
+        <CommandMenu businessName={businessName} />
         <Button
           variant="outline"
           size="sm"

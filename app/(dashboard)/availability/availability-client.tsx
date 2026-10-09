@@ -197,7 +197,7 @@ export function AvailabilityClient({
           <div className="flex items-center gap-2 rounded-2xl border border-border px-4 py-3">
             <span
               className={`size-2 shrink-0 rounded-full ${
-                status.isOpen ? 'bg-green-500' : 'bg-muted-foreground'
+                status.isOpen ? 'bg-success' : 'bg-muted-foreground'
               }`}
             />
             <p className="text-sm font-medium">{status.label}</p>

@@ -67,6 +67,12 @@ const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const VIEWS: CalendarView[] = ["Week", "Day", "Month"];
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const HOUR_ROW_HEIGHT = 90;
+const FIRST_VISIBLE_HOUR = 7;
+
+function scrollToWorkday(element: HTMLDivElement | null) {
+  if (element) element.scrollTop = FIRST_VISIBLE_HOUR * HOUR_ROW_HEIGHT;
+}
 const BUSINESS_START = 9;
 const BUSINESS_END = 17;
 
@@ -520,7 +526,7 @@ export function CalendarClient({
             </div>
           </div>
         ) : (
-        <div className="scrollbar-thin h-full overflow-y-auto">
+        <div ref={scrollToWorkday} className="scrollbar-thin h-full overflow-y-auto">
           <div
             className={cn(
               "grid",
@@ -576,7 +582,7 @@ export function CalendarClient({
                   className="sticky top-8 z-20 flex h-7 min-w-0 flex-1 flex-col justify-center gap-0.5 overflow-hidden border-b border-l border-border bg-background px-4 py-1"
                 >
                   {dayTimeOff.length > 0 && (
-                    <span className="max-w-full truncate rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                    <span className="max-w-full truncate rounded bg-warning-subtle px-1.5 py-0.5 text-[10px] font-medium text-warning">
                       {dayTimeOff[0].name}
                     </span>
                   )}
@@ -646,7 +652,7 @@ export function CalendarClient({
                         className={cn(
                           "relative h-[90px] cursor-pointer border-b border-r last:border-r-0",
                           isTimeOff
-                            ? "bg-amber-500/10 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
+                            ? "bg-warning-subtle/60 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]"
                             : isBusinessHour
                               ? "bg-background"
                               : "bg-muted/40 [background-image:repeating-linear-gradient(135deg,var(--border)_0,var(--border)_1px,transparent_1px,transparent_10px)]",

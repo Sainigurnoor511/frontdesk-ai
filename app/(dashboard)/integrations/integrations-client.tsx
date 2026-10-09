@@ -715,10 +715,12 @@ export function IntegrationsClient({
             Connect external tools and services to your account.
           </p>
         </div>
-        <Button className="gap-1.5" onClick={openBrowseDialog}>
-          <Plus />
-          Add integration
-        </Button>
+        {connectedIntegrations.length > 0 && (
+          <Button className="gap-1.5" onClick={openBrowseDialog}>
+            <Plus />
+            Add integration
+          </Button>
+        )}
       </div>
 
       {connectedIntegrations.length > 0 && (
@@ -782,7 +784,7 @@ export function IntegrationsClient({
                 </div>
                 <Button className="gap-1.5" onClick={openBrowseDialog}>
                   <Plus />
-                  Browse integrations
+                  Add integration
                 </Button>
               </EmptyContent>
             </Empty>
@@ -902,7 +904,7 @@ export function IntegrationsClient({
                             </Badge>
                           )}
                           {integration.availability === 'available' && (
-                            <Badge variant="outline" className="shrink-0 border-emerald-500/40 text-emerald-700 dark:text-emerald-400">
+                            <Badge variant="outline" className="shrink-0 border-success/30 text-success">
                               Available
                             </Badge>
                           )}
@@ -1032,7 +1034,7 @@ export function IntegrationsClient({
                         </p>
                       </div>
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1.5 text-success">
                           <Check className="h-4 w-4" />
                           Connected to Google Calendar
                         </span>
@@ -1306,7 +1308,7 @@ export function IntegrationsClient({
                   {microsoftCalendarConnected ? (
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+                        <span className="flex items-center gap-1.5 text-success">
                           <Check className="h-4 w-4" />
                           Connected to Microsoft Calendar
                         </span>

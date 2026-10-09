@@ -222,7 +222,7 @@ export function AssistantClient({
   return (
     <div className="flex h-full min-h-0 flex-1">
       {migrationRequired && (
-        <div className="absolute inset-x-0 top-0 z-20 border-b border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+        <div className="absolute inset-x-0 top-0 z-20 border-b border-warning/30 bg-warning-subtle px-4 py-3 text-sm text-warning">
           Chat history is not available yet — apply migration{' '}
           <code className="rounded bg-background/60 px-1 py-0.5 text-xs">
             00000000000035_assistant_chats.sql

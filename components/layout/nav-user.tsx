@@ -3,10 +3,15 @@
 import Link from 'next/link'
 import Image from 'next/image'
 import { LogOut } from 'lucide-react'
+import { useTheme } from 'next-themes'
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
@@ -25,7 +30,7 @@ function UsageRing({ percent, avatarUrl }: { percent: number; avatarUrl: string 
           cy="18"
           r={radius}
           fill="none"
-          stroke="hsl(0deg 0% 90%)"
+          className="stroke-border"
           strokeWidth="2.5"
         />
         <circle
@@ -33,7 +38,7 @@ function UsageRing({ percent, avatarUrl }: { percent: number; avatarUrl: string 
           cy="18"
           r={radius}
           fill="none"
-          stroke="hsl(0deg 0% 20%)"
+          className="stroke-foreground"
           strokeWidth="2.5"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
@@ -65,6 +70,8 @@ export function NavUser({
   orgName: string
   avatarUrl: string | null
 }) {
+  const { theme, setTheme } = useTheme()
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="outline-none">
@@ -77,7 +84,15 @@ export function NavUser({
         </div>
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/settings" />}>Settings</DropdownMenuItem>
-        <DropdownMenuItem disabled>Dark mode (coming soon)</DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={theme ?? 'light'} onValueChange={setTheme}>
+            <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system">Match system</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem variant="destructive" onClick={() => logOut()}>
           <LogOut />

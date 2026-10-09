@@ -224,17 +224,21 @@ function MetricTile({
   value: string | number
 }) {
   return (
-    <Card>
-      <CardContent className="space-y-2 p-4">
-        <div className="flex items-center gap-2 text-muted-foreground">
-          <Icon className="size-4" />
-          <p className="text-sm">{label}</p>
-        </div>
-        <p className="text-2xl font-semibold">{value}</p>
-      </CardContent>
-    </Card>
+    <div className="rounded-lg bg-card px-4 py-3.5 ring-1 ring-foreground/10">
+      <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+        <Icon className="size-3.5" />
+        {label}
+      </p>
+      <p className="mt-1.5 text-3xl font-semibold tracking-tight">{value}</p>
+    </div>
   )
 }
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+})
 
 function OverviewTab({
   data,
@@ -250,14 +254,14 @@ function OverviewTab({
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricTile
           icon={DollarSign}
           label="Revenue"
-          value={`$${data.overview.revenue.toFixed(2)}`}
+          value={currencyFormatter.format(data.overview.revenue)}
         />
         <MetricTile icon={Calendar} label="Bookings" value={data.overview.bookings} />
-        <MetricTile icon={UserPlus} label="New Clients" value={data.overview.newClients} />
+        <MetricTile icon={UserPlus} label="New clients" value={data.overview.newClients} />
         <MetricTile icon={XCircle} label="Cancellations" value={data.overview.cancellations} />
       </div>
 
@@ -314,7 +318,7 @@ function OverviewTab({
 
 function CallsTab({ data }: { data: AnalyticsData }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricTile icon={Phone} label="Total Calls" value={data.callStats.totalCalls} />
       <MetricTile icon={Phone} label="Successful" value={data.callStats.successfulCalls} />
       <MetricTile icon={Phone} label="Failed" value={data.callStats.failedCalls} />
@@ -386,9 +390,9 @@ function ServicesTab({
 
 function ClientsTab({ data }: { data: AnalyticsData }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricTile icon={UserPlus} label="Total Clients" value={data.clientStats.totalClients} />
-      <MetricTile icon={UserPlus} label="New Clients" value={data.clientStats.newClients} />
+      <MetricTile icon={UserPlus} label="New clients" value={data.clientStats.newClients} />
     </div>
   )
 }
@@ -397,7 +401,7 @@ function ClientsTab({ data }: { data: AnalyticsData }) {
 
 function ConversionTab({ data }: { data: AnalyticsData }) {
   return (
-    <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       <MetricTile
         icon={Calendar}
         label="Call → Booking Rate"

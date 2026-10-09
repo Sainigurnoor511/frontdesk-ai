@@ -338,7 +338,7 @@ export function ConversationsClient({
                               </p>
                               <ConversationStatusBadge outcome={conversation.outcome} />
                               {conversation.category && (
-                                <Badge variant="secondary">{conversation.category}</Badge>
+                                <Badge variant="outline">{conversation.category}</Badge>
                               )}
                             </div>
                             {conversation.summary && (

@@ -194,8 +194,9 @@ export function ClientsClient({ clients }: { clients: Client[] }) {
                   <div className="min-w-0 flex-1 space-y-0.5">
                     <p className="font-medium">{client.name}</p>
                     <p className="text-sm text-muted-foreground">
-                      {client.phoneNumber}
-                      {client.email ? ` · ${client.email}` : ''}
+                      {[client.phoneNumber === 'unknown' ? null : client.phoneNumber, client.email]
+                        .filter(Boolean)
+                        .join(' · ') || 'No contact details'}
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">

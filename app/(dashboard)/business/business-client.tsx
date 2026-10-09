@@ -190,7 +190,7 @@ export function BusinessClient({
           <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="products">Products</TabsTrigger>
           <TabsTrigger value="scheduling">Scheduling</TabsTrigger>
-          <TabsTrigger value="knowledge">Knowledge Sources</TabsTrigger>
+          <TabsTrigger value="knowledge">Knowledge sources</TabsTrigger>
           <TabsTrigger value="faq">FAQ</TabsTrigger>
         </TabsList>
 
@@ -277,7 +277,7 @@ function InfoTab({
     <div>
       <div className="flex items-start justify-between gap-6 border-b py-6 first:pt-0">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold">Business Name</h3>
+          <h3 className="text-base font-semibold">Business name</h3>
           <p className="text-sm text-muted-foreground">The name of your business as shown to clients.</p>
         </div>
         <Input
@@ -346,11 +346,11 @@ function InfoTab({
 
       <div className="flex items-start justify-between gap-6 border-b py-6">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold">Contact Info</h3>
+          <h3 className="text-base font-semibold">Contact info</h3>
           <p className="text-sm text-muted-foreground">
             Your assigned phone numbers. Manage them in{' '}
             <Link href="/agents" className="underline underline-offset-4">
-              Receptionists / Call Settings
+              Receptionists / Call settings
             </Link>
             .
           </p>
@@ -362,7 +362,7 @@ function InfoTab({
 
       <div className="flex items-start justify-between gap-6 py-6 last:border-0">
         <div className="space-y-1">
-          <h3 className="text-base font-semibold">Locations and Hours</h3>
+          <h3 className="text-base font-semibold">Locations and hours</h3>
           <p className="text-sm text-muted-foreground">
             Physical places your business operates, their addresses and operating hours.
           </p>

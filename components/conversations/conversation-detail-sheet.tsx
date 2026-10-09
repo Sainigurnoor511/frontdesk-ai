@@ -56,7 +56,7 @@ function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]
   if (status === 'success') {
     return (
       <Badge
-        className="h-6 rounded-full border-transparent bg-green-100 px-2.5 text-xs font-medium capitalize text-green-950"
+        className="h-6 rounded-full border-transparent bg-success-subtle px-2.5 text-xs font-medium capitalize text-success"
       >
         success
       </Badge>
@@ -65,7 +65,7 @@ function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]
   if (status === 'failed') {
     return (
       <Badge
-        className="h-6 rounded-full border-transparent bg-red-100 px-2.5 text-xs font-medium capitalize text-red-950"
+        className="h-6 rounded-full border-transparent bg-danger-subtle px-2.5 text-xs font-medium capitalize text-danger"
       >
         failed
       </Badge>

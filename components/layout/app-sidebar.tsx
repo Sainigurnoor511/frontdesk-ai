@@ -72,7 +72,7 @@ type NavItem = {
   badge?: string
 }
 
-const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }[] = [
+export const navSections: { label: string | null; isSetup?: boolean; items: NavItem[] }[] = [
   {
     label: null,
     items: [
@@ -125,10 +125,7 @@ function CallReceptionistPill({
     <SidebarMenuItem>
       <SidebarMenuButton
         onClick={onClick}
-        className="h-8 justify-center rounded-[10px] border-2 bg-[linear-gradient(to_right,hsl(217deg_91%_93%),white)] shadow-xs transition-colors group-data-[collapsible=icon]:gap-0 hover:bg-[linear-gradient(to_right,hsl(217deg_91%_87%),hsl(217deg_91%_97%))]!"
-        style={{
-          borderColor: 'hsl(228.75deg 47.06% 86.67%)',
-        }}
+        className="h-8 justify-center border border-border bg-background text-sidebar-accent-foreground transition-colors group-data-[collapsible=icon]:gap-0 hover:bg-sidebar-accent"
       >
         <div className="size-4 shrink-0 overflow-hidden rounded-sm group-data-[collapsible=icon]:size-3">
           <Orb className="h-full w-full" />

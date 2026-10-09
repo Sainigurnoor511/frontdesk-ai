@@ -3,6 +3,7 @@ import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { DashboardMain } from '@/components/layout/dashboard-main'
+import { ThemeProvider } from '@/components/layout/theme-provider'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 import { getBusinessProfile } from '@/lib/data/business'
@@ -30,27 +31,29 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const businessName = businessProfile.businessName ?? agent.business_name ?? agent.name
 
   return (
-    <SidebarProvider>
-      <AppSidebar
-        agent={{
-          id: agent.id,
-          organizationId: agent.organization_id,
-          name: agent.name,
-          staffPhoneNumber: agent.staff_phone_number,
-        }}
-        businessName={businessName}
-        hiddenItems={hiddenSidebarItems}
-        unreadConversationCount={conversationCounts?.unreadConversations ?? 0}
-      />
-      <SidebarInset className="h-svh overflow-hidden">
-        <AppHeader
-          email={context.user.email}
-          orgName={context.org.name}
-          avatarUrl={context.user.avatarUrl}
+    <ThemeProvider>
+      <SidebarProvider>
+        <AppSidebar
+          agent={{
+            id: agent.id,
+            organizationId: agent.organization_id,
+            name: agent.name,
+            staffPhoneNumber: agent.staff_phone_number,
+          }}
           businessName={businessName}
+          hiddenItems={hiddenSidebarItems}
+          unreadConversationCount={conversationCounts?.unreadConversations ?? 0}
         />
-        <DashboardMain>{children}</DashboardMain>
-      </SidebarInset>
-    </SidebarProvider>
+        <SidebarInset className="h-svh overflow-hidden">
+          <AppHeader
+            email={context.user.email}
+            orgName={context.org.name}
+            avatarUrl={context.user.avatarUrl}
+            businessName={businessName}
+          />
+          <DashboardMain>{children}</DashboardMain>
+        </SidebarInset>
+      </SidebarProvider>
+    </ThemeProvider>
   )
 }
