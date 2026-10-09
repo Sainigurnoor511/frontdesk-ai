@@ -48,5 +48,7 @@ export const PRIVATE_PATH_PREFIXES = [
   '/settings',
   '/staff',
   '/login',
+  '/forgot-password',
+  '/reset-password',
   '/signup',
 ]

@@ -36,7 +36,7 @@ export function SignupForm() {
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <InputGroup>
-          <InputGroupInput id="email" type="email" {...register('email')} />
+          <InputGroupInput id="email" type="email" autoComplete="email" {...register('email')} />
           <InputGroupAddon align="inline-end">
             <Mail />
           </InputGroupAddon>
@@ -49,6 +49,7 @@ export function SignupForm() {
           <InputGroupInput
             id="password"
             type={showPassword ? 'text' : 'password'}
+            autoComplete="new-password"
             {...register('password')}
           />
           <InputGroupAddon align="inline-end">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Mail, Eye, EyeOff } from 'lucide-react'
@@ -36,7 +37,7 @@ export function LoginForm() {
       <div className="space-y-2">
         <Label htmlFor="email">Email</Label>
         <InputGroup>
-          <InputGroupInput id="email" type="email" {...register('email')} />
+          <InputGroupInput id="email" type="email" autoComplete="email" {...register('email')} />
           <InputGroupAddon align="inline-end">
             <Mail />
           </InputGroupAddon>
@@ -46,14 +47,18 @@ export function LoginForm() {
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <Label htmlFor="password">Password</Label>
-          <a href="#" className="text-xs text-muted-foreground underline underline-offset-4">
+          <Link
+            href="/forgot-password"
+            className="text-xs text-muted-foreground underline underline-offset-4"
+          >
             Forgot your password?
-          </a>
+          </Link>
         </div>
         <InputGroup>
           <InputGroupInput
             id="password"
             type={showPassword ? 'text' : 'password'}
+            autoComplete="current-password"
             {...register('password')}
           />
           <InputGroupAddon align="inline-end">

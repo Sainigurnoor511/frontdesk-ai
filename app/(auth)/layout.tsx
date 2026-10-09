@@ -3,24 +3,11 @@ import { Logo } from '@/components/brand/logo'
 
 export default function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
-      <div className="flex flex-1 flex-col items-center justify-center gap-10 p-4">
-        <Link href="/" aria-label="Frontdesk.ai">
-          <Logo className="h-10 w-auto" />
-        </Link>
-        <div className="w-full max-w-xs">{children}</div>
-      </div>
-      <footer className="border-t bg-muted/40 py-4 text-center text-xs text-muted-foreground">
-        By continuing, you agree to our{' '}
-        <Link href="/terms" className="underline underline-offset-4">
-          Terms of Service
-        </Link>{' '}
-        and{' '}
-        <Link href="/privacy" className="underline underline-offset-4">
-          Privacy Policy
-        </Link>
-        .
-      </footer>
-    </div>
+    <main className="flex min-h-dvh flex-col items-center justify-center gap-10 bg-background p-4">
+      <Link href="/" aria-label="Frontdesk.ai">
+        <Logo className="h-10 w-auto" />
+      </Link>
+      <div className="w-full max-w-xs">{children}</div>
+    </main>
   )
 }

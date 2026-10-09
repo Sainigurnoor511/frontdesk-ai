@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
+import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS } from '@/lib/auth/recovery'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -14,7 +15,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  let response = NextResponse.redirect(`${origin}/`)
+  // A fixed destination chosen by a flag, never a caller-supplied URL.
+  const isRecovery = searchParams.get('flow') === 'recovery'
+  const destination = isRecovery ? '/reset-password' : '/'
+  let response = NextResponse.redirect(`${origin}${destination}`)
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,7 +30,7 @@ export async function GET(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.redirect(`${origin}/`)
+          response = NextResponse.redirect(`${origin}${destination}`)
           cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
           )
@@ -64,6 +68,16 @@ export async function GET(request: NextRequest) {
     await serviceClient
       .from('members')
       .insert({ organization_id: org.id, user_id: data.user.id, role: 'owner' })
+  }
+
+  if (isRecovery) {
+    response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', {
+      httpOnly: true,
+      sameSite: 'lax',
+      secure: request.nextUrl.protocol === 'https:',
+      path: '/',
+      maxAge: PASSWORD_RECOVERY_MAX_AGE_SECONDS,
+    })
   }
 
   return response
