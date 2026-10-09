@@ -225,7 +225,7 @@ export function HomeClient({
               <button
                 type="button"
                 onClick={() => setCallOpen(true)}
-                className="group flex shrink-0 items-center gap-2.5 rounded-full border border-border bg-background px-4 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
+                className="group flex shrink-0 items-center gap-2.5 rounded-md border border-border bg-background px-3 py-2 text-sm transition-colors hover:bg-muted focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <span className="relative flex size-2" aria-hidden="true">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-60" />

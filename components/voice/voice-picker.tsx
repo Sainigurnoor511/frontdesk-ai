@@ -117,7 +117,7 @@ export function VoicePicker({
                     onToggle={() => togglePreview(voice)}
                   />
                   <span className="flex-1 truncate text-sm">{voice.label}</span>
-                  <Badge variant="outline" className="rounded-full px-1.5 py-0 text-[10px] font-normal">
+                  <Badge variant="outline" className="rounded-sm px-1.5 py-0 text-[10px] font-normal">
                     {voice.language}
                   </Badge>
                   {voice.id === value && <Check className="size-3.5 shrink-0 text-foreground" />}

@@ -320,7 +320,7 @@ export function CallAudioPlayer({
           <Button
             type="button"
             size="icon"
-            className="size-9 shrink-0 rounded-full"
+            className="size-9 shrink-0 rounded-md"
             disabled={controlsDisabled}
             onClick={togglePlay}
           >

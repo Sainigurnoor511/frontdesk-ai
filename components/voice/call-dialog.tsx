@@ -251,14 +251,14 @@ export function CallDialog({
                     <button
                       type="button"
                       onClick={connect}
-                      className="flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-transform hover:scale-[1.02] active:scale-95"
+                      className="flex items-center gap-1.5 rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-transform hover:scale-[1.02] active:scale-95"
                     >
                       <Plus className="size-4" />
                       New conversation
                     </button>
                     <button
                       type="button"
-                      className="flex items-center gap-1.5 rounded-full border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                      className="flex items-center gap-1.5 rounded-md border border-border bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-muted"
                     >
                       <RotateCcw className="size-4" />
                       View details

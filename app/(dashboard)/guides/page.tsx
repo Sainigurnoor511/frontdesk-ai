@@ -64,7 +64,7 @@ export default function GuidesPage() {
                 <ol className="space-y-3">
                   {openGuide.steps.map((step, i) => (
                     <li key={step.title} className="flex gap-3">
-                      <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-xs font-medium">
+                      <span className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-muted font-mono text-xs font-medium">
                         {i + 1}
                       </span>
                       <div className="space-y-0.5">

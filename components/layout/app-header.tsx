@@ -56,7 +56,6 @@ export function AppHeader({
         <CommandMenu businessName={businessName} />
         <Button
           variant="outline"
-          size="sm"
           className="gap-1.5"
           nativeButton={false}
           render={<Link href="/assistant" />}
@@ -64,7 +63,7 @@ export function AppHeader({
           <MessageCircleMore />
           Assistant
         </Button>
-        <Button variant="outline" size="sm" onClick={() => setFeedbackOpen(true)}>
+        <Button variant="outline" onClick={() => setFeedbackOpen(true)}>
           Help
         </Button>
         <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />

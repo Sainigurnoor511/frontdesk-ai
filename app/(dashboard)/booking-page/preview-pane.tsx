@@ -156,7 +156,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
     <div className="flex h-full min-h-0 flex-col rounded-lg border bg-muted/20">
       <div className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-2">
         <div className="flex items-center gap-2">
-          <div className="flex gap-1 rounded-full border p-0.5">
+          <div className="flex gap-1 rounded-md border p-0.5">
             {(
               [
                 ['book', 'Book appointment'],
@@ -168,7 +168,7 @@ export function PreviewPane({ slug, initialDraft }: { slug: string; initialDraft
                 type="button"
                 onClick={() => setPreviewTab(id)}
                 className={cn(
-                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  'rounded-md px-3 py-1 text-xs font-medium transition-colors',
                   previewTab === id
                     ? 'bg-foreground text-background'
                     : 'text-muted-foreground hover:bg-muted'

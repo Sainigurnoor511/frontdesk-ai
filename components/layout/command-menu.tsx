@@ -40,7 +40,7 @@ export function CommandMenu({ businessName }: { businessName?: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="hidden h-7 w-56 items-center gap-2 rounded-md border bg-background px-2 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:flex"
+        className="hidden h-8 w-56 items-center gap-2 rounded-md border bg-background px-2 text-sm text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none md:flex"
       >
         <Search className="size-3.5" />
         <span className="flex-1 text-left">Jump to...</span>

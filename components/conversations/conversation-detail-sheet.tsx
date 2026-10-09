@@ -44,7 +44,7 @@ function ChannelTypeBadge({ channel }: { channel: Conversation['channel'] }) {
   return (
     <Badge
       variant="secondary"
-      className="h-6 gap-1 rounded-full border-transparent px-2.5 text-xs font-medium"
+      className="h-6 gap-1 rounded-sm border-transparent px-2.5 text-xs font-medium"
     >
       <Icon className="-ms-0.5 size-3.5 shrink-0 opacity-100" />
       {formatChannelLabel(channel)}
@@ -56,7 +56,7 @@ function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]
   if (status === 'success') {
     return (
       <Badge
-        className="h-6 rounded-full border-transparent bg-success-subtle px-2.5 text-xs font-medium capitalize text-success"
+        className="h-6 rounded-sm border-transparent bg-success-subtle px-2.5 text-xs font-medium capitalize text-success"
       >
         success
       </Badge>
@@ -65,7 +65,7 @@ function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]
   if (status === 'failed') {
     return (
       <Badge
-        className="h-6 rounded-full border-transparent bg-danger-subtle px-2.5 text-xs font-medium capitalize text-danger"
+        className="h-6 rounded-sm border-transparent bg-danger-subtle px-2.5 text-xs font-medium capitalize text-danger"
       >
         failed
       </Badge>
@@ -74,7 +74,7 @@ function GoalStatusBadge({ status }: { status: Conversation['callGoals'][number]
   return (
     <Badge
       variant="secondary"
-      className="h-6 rounded-full border-transparent px-2.5 text-xs font-medium capitalize text-muted-foreground"
+      className="h-6 rounded-sm border-transparent px-2.5 text-xs font-medium capitalize text-muted-foreground"
     >
       unknown
     </Badge>

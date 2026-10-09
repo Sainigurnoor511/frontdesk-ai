@@ -74,7 +74,7 @@ export function InstructionsGeneratorPopover({
           <Button
             type="button"
             size="icon"
-            className="size-8 rounded-full"
+            className="size-8 rounded-md"
             disabled={!prompt.trim() || isGenerating}
             onClick={handleSubmit}
             aria-label="Generate"

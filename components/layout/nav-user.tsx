@@ -23,9 +23,9 @@ function UserAvatar({ email, avatarUrl }: { email: string; avatarUrl: string | n
       <Image
         src={avatarUrl}
         alt=""
-        width={28}
-        height={28}
-        className="size-7 rounded-full object-cover"
+        width={32}
+        height={32}
+        className="size-8 rounded-md object-cover"
         unoptimized
       />
     )
@@ -34,7 +34,7 @@ function UserAvatar({ email, avatarUrl }: { email: string; avatarUrl: string | n
   return (
     <span
       aria-hidden="true"
-      className="flex size-7 items-center justify-center rounded-full bg-muted text-xs font-medium text-foreground uppercase"
+      className="flex size-8 items-center justify-center rounded-md border bg-muted font-mono text-xs font-medium text-foreground uppercase"
     >
       {email.charAt(0)}
     </span>
@@ -56,7 +56,7 @@ export function NavUser({
     <DropdownMenu>
       <DropdownMenuTrigger
         aria-label="Account menu"
-        className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+        className="block rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         <UserAvatar email={email} avatarUrl={avatarUrl} />
       </DropdownMenuTrigger>

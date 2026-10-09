@@ -243,7 +243,7 @@ export function AppSidebar({
                         <span className="flex min-w-0 items-center gap-1.5">
                           <span className="truncate">{item.title}</span>
                           {item.url === '/conversations' && unreadConversationCount > 0 && (
-                            <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full border border-current px-0.5 text-[10px] font-medium leading-none tabular-nums group-data-[collapsible=icon]:hidden">
+                            <span className="inline-flex h-4 min-w-4 shrink-0 items-center justify-center rounded-sm border border-current px-0.5 text-[10px] font-medium leading-none tabular-nums group-data-[collapsible=icon]:hidden">
                               {unreadConversationCount > 99 ? '99+' : unreadConversationCount}
                             </span>
                           )}

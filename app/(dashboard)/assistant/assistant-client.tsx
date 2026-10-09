@@ -207,7 +207,7 @@ export function AssistantClient({
           disabled={!canSend}
           aria-label="Send message"
           className={cn(
-            'flex size-8 shrink-0 items-center justify-center rounded-full transition-colors',
+            'flex size-8 shrink-0 items-center justify-center rounded-md transition-colors',
             canSend
               ? 'bg-foreground text-background hover:opacity-90'
               : 'cursor-not-allowed bg-muted text-muted-foreground'

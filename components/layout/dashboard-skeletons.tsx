@@ -53,7 +53,7 @@ export function SkeletonFilterChips({ count = 5 }: { count?: number }) {
   return (
     <div className="flex flex-wrap gap-2">
       {Array.from({ length: count }).map((_, index) => (
-        <Skeleton key={index} className="h-8 w-24 rounded-full" />
+        <Skeleton key={index} className="h-8 w-24 rounded-md" />
       ))}
     </div>
   )
@@ -166,13 +166,13 @@ export function HomePageSkeleton() {
       <Card>
         <CardContent className="flex items-center justify-between gap-4 py-5">
           <div className="flex items-center gap-3">
-            <Skeleton className="size-11 shrink-0 rounded-full" />
+            <Skeleton className="size-11 shrink-0 rounded-md" />
             <div className="space-y-2">
               <Skeleton className="h-5 w-40" />
               <Skeleton className="h-4 w-32" />
             </div>
           </div>
-          <Skeleton className="h-9 w-40 rounded-full" />
+          <Skeleton className="h-9 w-40 rounded-md" />
         </CardContent>
       </Card>
 
@@ -245,7 +245,7 @@ export function IntegrationsPageSkeleton() {
       <SkeletonPageHeader withDescription withActions />
       <div className="flex flex-wrap gap-2">
         {Array.from({ length: 6 }).map((_, index) => (
-          <Skeleton key={index} className="h-8 w-28 rounded-full" />
+          <Skeleton key={index} className="h-8 w-28 rounded-md" />
         ))}
       </div>
       <Card>
@@ -299,7 +299,7 @@ export function BookingPageSkeleton() {
           <Skeleton className="h-9 w-28" />
           <Skeleton className="h-9 w-36" />
           <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-6 w-10 rounded-full" />
+          <Skeleton className="h-6 w-10 rounded-md" />
         </div>
       </div>
       <div className="flex min-h-0 flex-1 gap-2">
@@ -380,8 +380,8 @@ export function GuidesPageSkeleton() {
 export function SkeletonRecordingPlayer() {
   return (
     <div className="flex items-center gap-3 rounded-lg border bg-muted/40 px-3 py-3">
-      <Skeleton className="size-8 shrink-0 rounded-full" />
-      <Skeleton className="h-2 flex-1 rounded-full" />
+      <Skeleton className="size-8 shrink-0 rounded-md" />
+      <Skeleton className="h-2 flex-1 rounded-md" />
       <Skeleton className="h-4 w-12" />
     </div>
   )

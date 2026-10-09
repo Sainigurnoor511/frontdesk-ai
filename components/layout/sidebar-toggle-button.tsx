@@ -28,7 +28,7 @@ export function SidebarToggleButton({ className }: { className?: string }) {
   return (
     <Button
       variant="ghost"
-      size="icon-sm"
+      size="icon"
       aria-label="Toggle Sidebar"
       className={cn('text-muted-foreground', className)}
       onClick={toggleSidebar}
