@@ -18,6 +18,10 @@ import { loadAssistantChat, removeAssistantChat } from './actions'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
 
+const REVEAL_TICK_MS = 16
+const REVEAL_MIN_CHARS = 2
+const REVEAL_EASE = 90
+
 function formatChatTime(iso: string): string {
   const date = new Date(iso)
   const now = new Date()
@@ -55,8 +59,8 @@ export function AssistantClient({
   const canSend = input.trim().length > 0 && !isThinking && !isStreaming && !isLoadingChat
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' })
-  }, [messages, isThinking])
+    bottomRef.current?.scrollIntoView({ block: 'end', behavior: isStreaming ? 'auto' : 'smooth' })
+  }, [messages, isThinking, isStreaming])
 
   function startNewChat() {
     setActiveChatId(null)
@@ -166,20 +170,42 @@ export function AssistantClient({
     const reader = apiResponse.body.getReader()
     const decoder = new TextDecoder()
 
+    const instant = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    let received = ''
+    let shown = 0
+    let finished = false
+
+    // The model answers in one burst, so the text is revealed at a steady pace instead.
+    const revealed = new Promise<void>((resolve) => {
+      function tick() {
+        const backlog = received.length - shown
+        if (backlog > 0) {
+          const step = Math.max(REVEAL_MIN_CHARS, Math.ceil(backlog / REVEAL_EASE))
+          shown += instant || document.hidden ? backlog : Math.min(backlog, step)
+          const visible = received.slice(0, shown)
+          setMessages((prev) => {
+            const next = [...prev]
+            next[next.length - 1] = { ...next[next.length - 1], content: visible }
+            return next
+          })
+        }
+        if (finished && shown >= received.length) resolve()
+        else setTimeout(tick, REVEAL_TICK_MS)
+      }
+      tick()
+    })
+
     try {
       for (;;) {
         const { done, value } = await reader.read()
         if (done) break
-
-        const chunk = decoder.decode(value, { stream: true })
-        setMessages((prev) => {
-          const next = [...prev]
-          const last = next[next.length - 1]
-          next[next.length - 1] = { ...last, content: last.content + chunk }
-          return next
-        })
+        received += decoder.decode(value, { stream: true })
       }
+    } catch {
+      setErrorMessage('The connection dropped before the answer finished.')
     } finally {
+      finished = true
+      await revealed
       setIsStreaming(false)
     }
   }
@@ -233,7 +259,7 @@ export function AssistantClient({
 
       <aside
         className={cn(
-          'flex shrink-0 flex-col border-r border-border/80 bg-muted/20 transition-[width] duration-200 ease-in-out',
+          'flex shrink-0 flex-col border-r bg-sidebar transition-[width] duration-200 ease-in-out',
           sidebarOpen ? 'w-64' : 'w-0 overflow-hidden border-r-0'
         )}
       >
@@ -241,7 +267,7 @@ export function AssistantClient({
           <Button
             type="button"
             variant="outline"
-            className="h-10 justify-start gap-2 rounded-lg border-border/80 bg-background shadow-none"
+            className="h-10 justify-start gap-2 bg-background shadow-none"
             onClick={startNewChat}
           >
             <MessageSquarePlus className="size-4" />
@@ -260,10 +286,10 @@ export function AssistantClient({
                   <li key={chat.id}>
                     <div
                       className={cn(
-                        'group flex items-center gap-1 rounded-lg px-2 py-2 transition-colors',
+                        'group relative flex items-center gap-1 px-2 py-2 transition-colors',
                         isActive
-                          ? 'bg-background shadow-sm'
-                          : 'hover:bg-background/70'
+                          ? 'bg-sidebar-accent before:absolute before:inset-y-0 before:left-0 before:w-2 before:border-y-[3px] before:border-l-[3px] before:border-brand after:absolute after:inset-y-0 after:right-0 after:w-2 after:border-y-[3px] after:border-r-[3px] after:border-brand'
+                          : 'hover:bg-sidebar-accent'
                       )}
                     >
                       <button
@@ -350,7 +376,9 @@ export function AssistantClient({
                           {message.content ? (
                             <MarkdownResponse>{message.content}</MarkdownResponse>
                           ) : isStreaming && index === messages.length - 1 ? (
-                            <ThinkingOrb state="composing" size={64} />
+                            <span className="block size-10 shrink-0">
+                              <ThinkingOrb state="composing" size={64} style={{ width: '100%', height: '100%' }} />
+                            </span>
                           ) : null}
                         </div>
                       )}
@@ -360,7 +388,9 @@ export function AssistantClient({
 
                 {isThinking && (
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <ThinkingOrb state="composing" size={64} />
+                    <span className="block size-10 shrink-0">
+                              <ThinkingOrb state="composing" size={64} style={{ width: '100%', height: '100%' }} />
+                            </span>
                     Thinking...
                   </div>
                 )}

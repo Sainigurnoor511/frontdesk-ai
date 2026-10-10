@@ -107,7 +107,7 @@ export function SettingsClient({
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="none" className="border-r">
+      <Sidebar collapsible="none" className="sticky top-0 h-svh shrink-0 border-r">
         <SidebarHeader className="gap-2 py-2">
           <SidebarMenu>
             <SidebarMenuItem>
@@ -115,7 +115,7 @@ export function SettingsClient({
                 className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
                 render={<Link href="/" />}
               >
-                <Logo className="h-5! w-auto!" />
+                <Logo typeOnHover className="h-5! w-auto!" />
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

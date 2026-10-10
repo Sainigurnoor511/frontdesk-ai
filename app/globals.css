@@ -86,6 +86,7 @@
   --destructive: #b3362f;
   --border: #e9e9e7;
   --input: #dfdfdc;
+  --switch-track: #cfcfca;
   --ring: #e8490c;
   --brand: #e8490c;
   --brand-foreground: #ffffff;
@@ -130,6 +131,7 @@
   --destructive: #e5746c;
   --border: rgb(255 255 255 / 10%);
   --input: rgb(255 255 255 / 15%);
+  --switch-track: #4a4a46;
   --ring: #ff6a2b;
   --brand: #ff6a2b;
   --brand-foreground: #1a1a19;
@@ -200,6 +202,39 @@
   font-weight: 500;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+@keyframes logo-type {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes logo-cursor {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+.logo-cursor {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(a, button):hover > .logo-type .logo-letter,
+  .logo-type:hover .logo-letter {
+    animation: logo-type 1ms linear both;
+  }
+
+  :is(a, button):hover > .logo-type .logo-cursor,
+  .logo-type:hover .logo-cursor {
+    animation: logo-cursor 0.9s steps(1) infinite;
+  }
 }
 
 @keyframes page-enter {

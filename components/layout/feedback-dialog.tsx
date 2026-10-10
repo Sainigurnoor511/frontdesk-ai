@@ -68,7 +68,7 @@ export function FeedbackDialog({
 
         <DialogFooter className="sm:justify-between">
           <a
-            href="mailto:support@frontdesk.ai"
+            href="mailto:sainigurnoor511@gmail.com"
             className="text-sm text-muted-foreground hover:text-foreground hover:underline"
           >
             Or contact our support team directly

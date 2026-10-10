@@ -195,7 +195,7 @@ export function AppSidebar({
               className="h-10 gap-0 hover:bg-transparent active:bg-transparent focus-visible:ring-0"
               render={<Link href="/" />}
             >
-              <Logo className="h-5! w-auto! group-data-[collapsible=icon]:hidden" />
+              <Logo typeOnHover className="h-5! w-auto! group-data-[collapsible=icon]:hidden" />
               <LogoMark className="hidden group-data-[collapsible=icon]:block" />
             </SidebarMenuButton>
           </SidebarMenuItem>

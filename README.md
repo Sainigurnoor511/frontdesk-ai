@@ -484,6 +484,10 @@ If Frontdesk.ai is useful to you, a ⭐ on GitHub helps others find it.
 
 Frontdesk.ai stands on great open-source work and services, including [Next.js](https://nextjs.org), [Supabase](https://supabase.com), [LiveKit Agents](https://github.com/livekit/agents-js), [BullMQ](https://bullmq.io), [shadcn/ui](https://ui.shadcn.com), [Base UI](https://base-ui.com), [FastEmbed](https://github.com/Anush008/fastembed-js), and [Lucide](https://lucide.dev). Voice and language by [Groq](https://groq.com), [Fish Audio](https://fish.audio), and [AssemblyAI](https://www.assemblyai.com).
 
+Interface pieces: the switch is adapted from [React Bits](https://reactbits.dev)' SquishSwitch, the assistant's thinking indicator is [thinking-orbs](https://github.com/Jakubantalik/thinking-orbs) (MIT), animation runs on [Motion](https://motion.dev), and country flags are served from [circle-flags](https://github.com/HatScripts/circle-flags) (MIT).
+
+The idea for the product came from [ElevenLabs](https://elevenlabs.io)' Reception.ai. Frontdesk.ai is an independent project written from scratch. It is not affiliated with, endorsed by, or sponsored by ElevenLabs, and it contains none of their code. Reception.ai and ElevenLabs are trademarks of their owner, as are the other product names mentioned here.
+
 The logo is drawn in the dot-matrix style of [Bitcount Prop Single](https://fonts.google.com/specimen/Bitcount+Prop+Single) (SIL Open Font License). The mark is a lowercase **f** and **d** sharing one stem.
 
 ---

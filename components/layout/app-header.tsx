@@ -3,8 +3,14 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MessageCircleMore, Bell } from 'lucide-react'
+import { MessageCircleMore, Bell, BookOpen, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
 import { SidebarToggleButton } from './sidebar-toggle-button'
@@ -63,9 +69,19 @@ export function AppHeader({
           <MessageCircleMore />
           Assistant
         </Button>
-        <Button variant="outline" onClick={() => setFeedbackOpen(true)}>
-          Help
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger render={<Button variant="outline" />}>Help</DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem render={<Link href="/guides" />}>
+              <BookOpen />
+              Browse guides
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
+              <MessageSquarePlus />
+              Give feedback
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
         <Popover>
           <PopoverTrigger render={<Button variant="outline" size="icon" aria-label="Notifications" />}>

@@ -48,3 +48,6 @@ creator-credentials.txt
 
 # python
 __pycache__/
+
+# social launch posts, kept local
+/launch-posts/

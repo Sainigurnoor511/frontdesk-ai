@@ -67,3 +67,13 @@ Known baseline (2026-10-08): `pnpm lint` reports 29 pre-existing errors; `pnpm t
 - UI: Geist is the only UI font. Colours come from tokens in `app/globals.css`; use `success` / `warning` / `danger` (and their `-subtle` backgrounds) for status, never raw Tailwind palette classes like `bg-green-100`. Headings and body labels are sentence case. New pages get an entry in `navSections` (`components/layout/app-sidebar.tsx`) so they appear in the sidebar and the Ctrl+K jump menu. Light/dark is driven by `next-themes` (`components/layout/theme-provider.tsx`, mounted in the dashboard and settings layouts only, so the public booking page keeps its own theme); check both modes when adding UI.
 - Env vars: add new ones to `.env.example` and the table in `developer-docs/ARCHITECTURE.md`.
 - Tests sit next to the code (`*.test.ts(x)`). Actions/data helpers should cover validation failure, success, and org scoping.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

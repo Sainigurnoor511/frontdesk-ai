@@ -5,7 +5,27 @@ type LogoProps = Omit<React.ComponentProps<'svg'>, 'children' | 'viewBox'> & {
   title?: string
 }
 
-function dots(shape: LogoShape, key: string, x = 0, y = 0, scale = 1) {
+const TYPE_STEP_MS = 70
+
+function letterIndexes(shape: LogoShape): number[] {
+  const columns = [...new Set(shape.points.filter((_, i) => i % 2 === 0))].sort((a, b) => a - b)
+  const letterOfColumn = new Map<number, number>()
+  let letter = 0
+  columns.forEach((column, i) => {
+    if (i > 0 && column - columns[i - 1] > shape.radius * 2) letter += 1
+    letterOfColumn.set(column, letter)
+  })
+  const indexes: number[] = []
+  for (let i = 0; i < shape.points.length; i += 2) {
+    indexes.push(letterOfColumn.get(shape.points[i]) ?? 0)
+  }
+  return indexes
+}
+
+const WORDMARK_LETTERS = letterIndexes(WORDMARK)
+const WORDMARK_LETTER_COUNT = Math.max(...WORDMARK_LETTERS) + 1
+
+function dots(shape: LogoShape, key: string, x = 0, y = 0, scale = 1, letters?: number[]) {
   const circles = []
   for (let i = 0; i < shape.points.length; i += 2) {
     circles.push(
@@ -14,6 +34,8 @@ function dots(shape: LogoShape, key: string, x = 0, y = 0, scale = 1) {
         cx={x + shape.points[i] * scale}
         cy={y + shape.points[i + 1] * scale}
         r={shape.radius * scale}
+        className={letters ? 'logo-letter' : undefined}
+        style={letters ? { animationDelay: `${letters[i / 2] * TYPE_STEP_MS}ms` } : undefined}
       />
     )
   }
@@ -66,11 +88,26 @@ const wordmarkY = (markHeight - WORDMARK.height) / 2
 
 const LOGO_ASPECT = (wordmarkX + WORDMARK.width) / markHeight
 
-function Logo(props: LogoProps) {
+function Logo({ typeOnHover = false, className, ...props }: LogoProps & { typeOnHover?: boolean }) {
   return (
-    <LogoSvg data-slot="logo" box={[wordmarkX + WORDMARK.width, markHeight]} {...props}>
+    <LogoSvg
+      data-slot="logo"
+      box={[wordmarkX + WORDMARK.width, markHeight]}
+      className={cn(typeOnHover && 'logo-type overflow-visible', className)}
+      {...props}
+    >
       {dots(MARK, 'mark', 0, 0, LOCKUP_MARK_SCALE)}
-      {dots(WORDMARK, 'wordmark', wordmarkX, wordmarkY)}
+      {dots(WORDMARK, 'wordmark', wordmarkX, wordmarkY, 1, typeOnHover ? WORDMARK_LETTERS : undefined)}
+      {typeOnHover && (
+        <rect
+          className="logo-cursor"
+          x={wordmarkX + WORDMARK.width + WORDMARK.radius * 3}
+          y={wordmarkY + WORDMARK.radius * 2}
+          width={WORDMARK.radius * 2}
+          height={WORDMARK.height - WORDMARK.radius * 2}
+          style={{ animationDelay: `${WORDMARK_LETTER_COUNT * TYPE_STEP_MS}ms` }}
+        />
+      )}
     </LogoSvg>
   )
 }

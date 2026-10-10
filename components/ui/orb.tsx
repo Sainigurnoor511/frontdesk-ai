@@ -14,6 +14,15 @@ function gridSizeFor(pixels: number): number {
   return clamped % 2 === 0 ? clamped + 1 : clamped
 }
 
+// Shrinks dots toward the rim so the disc thins out and vanishes instead of ending on a hard edge.
+function edgeTaper(distance: number, grid: number): number {
+  const fadeStart = grid <= 7 ? 0.62 : 0.34
+  if (distance <= fadeStart) return 1
+  const remaining = 1 - (distance - fadeStart) / (1.04 - fadeStart)
+  if (remaining <= 0) return 0
+  return remaining * remaining * (3 - 2 * remaining)
+}
+
 // How full each dot is (0 to 1) for a given state, distance from centre, angle and time.
 function dotLevel(state: AgentState, distance: number, angle: number, time: number): number {
   if (state === 'talking') {
@@ -79,10 +88,12 @@ export function Orb({ size, className, agentState = null, colors }: OrbProps) {
           const dx = (column - centre) / (grid / 2)
           const dy = (row - centre) / (grid / 2)
           const distance = Math.hypot(dx, dy)
-          if (distance > 0.96) continue
+          const taper = edgeTaper(distance, grid)
+          if (taper <= 0) continue
 
           const level = dotLevel(state, distance, Math.atan2(dy, dx), time)
-          const radius = (pitch / 2) * (0.28 + 0.66 * level)
+          const radius = (pitch / 2) * (0.28 + 0.66 * level) * taper
+          if (radius < 0.3 * ratio) continue
           context!.fillStyle = state !== null && level > 0.82 ? accentColor : dotColor
           context!.beginPath()
           context!.arc((column + 0.5) * pitch, (row + 0.5) * pitch, radius, 0, Math.PI * 2)
