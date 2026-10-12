@@ -4,6 +4,7 @@
 // connection policy never rejected at all.
 import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest'
 import net from 'node:net'
+import dns from 'node:dns'
 import { randomUUID } from 'node:crypto'
 import IORedis, { type Redis } from 'ioredis'
 import {
@@ -12,6 +13,7 @@ import {
   clearAttempts,
   resetMfaAttemptClientForTests,
   MFA_REDIS_TIMEOUT_MS,
+  MFA_REDIS_CONNECT_TIMEOUT_MS,
 } from './mfa-attempts'
 
 const ORIGINAL_REDIS_URL = process.env.REDIS_URL
@@ -102,6 +104,106 @@ describe('mfa attempt counter — Redis down', () => {
       expect(reserve.elapsed).toBeLessThan(WITHIN_BOUND_MS)
     }, 10_000)
   })
+})
+
+/**
+ * Just enough of a Redis server for one reservation: refuses HELLO (so ioredis drops to RESP2, as
+ * it does against Redis < 6), answers the ready check's INFO, and answers EVAL with a taken slot.
+ */
+function fakeRedisServer(): net.Server {
+  const reply = (args: string[]): string => {
+    switch (args[0]?.toUpperCase()) {
+      case 'HELLO':
+        return "-ERR unknown command 'HELLO'\r\n"
+      case 'INFO': {
+        const info = 'loading:0\r\n'
+        return `$${Buffer.byteLength(info)}\r\n${info}\r\n`
+      }
+      case 'EVAL':
+        return '*2\r\n:1\r\n:1\r\n'
+      default:
+        return '+OK\r\n'
+    }
+  }
+  return net.createServer((socket) => {
+    socket.on('error', () => {})
+    let buffered = ''
+    socket.on('data', (chunk) => {
+      buffered += chunk.toString('utf8')
+      // Commands arrive as RESP arrays of bulk strings: *<n>\r\n then n × $<len>\r\n<arg>\r\n.
+      for (;;) {
+        const lines = buffered.split('\r\n')
+        if (!lines[0].startsWith('*')) return
+        const count = Number(lines[0].slice(1))
+        if (lines.length < 1 + count * 2 + 1) return
+        const args = Array.from({ length: count }, (_, i) => lines[2 + i * 2])
+        buffered = lines.slice(1 + count * 2).join('\r\n')
+        socket.write(reply(args))
+      }
+    })
+  })
+}
+
+describe('mfa attempt counter — slow connect', () => {
+  // A host name only this test resolves, slowly: the DNS, TCP and TLS cost of a cold start against
+  // a remote Redis, without needing one. `net.createConnection` is what ioredis's connector calls.
+  const SLOW_HOST = 'slow-redis.test'
+  const realCreateConnection = net.createConnection
+  let server: net.Server
+  let consoleError: ReturnType<typeof vi.spyOn>
+
+  function resolveSlowly(delayMs: number | null) {
+    vi.spyOn(net, 'createConnection').mockImplementation(((options: net.NetConnectOpts) => {
+      if ('host' in options && options.host === SLOW_HOST) {
+        const lookup: net.LookupFunction = (_host, lookupOptions, callback) => {
+          if (delayMs === null) return // never resolves: an unroutable host
+          setTimeout(() => dns.lookup('127.0.0.1', lookupOptions, callback), delayMs)
+        }
+        return realCreateConnection({ ...options, lookup })
+      }
+      return realCreateConnection(options)
+    }) as typeof net.createConnection)
+  }
+
+  beforeAll(async () => {
+    consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    server = fakeRedisServer()
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
+  })
+
+  afterEach(async () => {
+    await resetMfaAttemptClientForTests()
+    vi.mocked(net.createConnection).mockRestore()
+  })
+
+  afterAll(async () => {
+    consoleError.mockRestore()
+    await new Promise<void>((resolve) => server.close(() => resolve()))
+  })
+
+  it('succeeds when a healthy connect takes longer than the command bound but fits its own', async () => {
+    const delayMs = MFA_REDIS_TIMEOUT_MS + 500
+    expect(delayMs).toBeLessThan(MFA_REDIS_CONNECT_TIMEOUT_MS)
+    resolveSlowly(delayMs)
+    const { port } = server.address() as net.AddressInfo
+    await useRedisUrl(`redis://${SLOW_HOST}:${port}`)
+
+    const reserve = await timed(() => reserveAttempt('u1'))
+
+    expect(reserve.value).toEqual({ status: 'reserved', attempts: 1 })
+    expect(reserve.elapsed).toBeGreaterThanOrEqual(delayMs)
+  }, 10_000)
+
+  it('still fails closed, within the connect budget, when the connect never completes', async () => {
+    resolveSlowly(null)
+    const { port } = server.address() as net.AddressInfo
+    await useRedisUrl(`redis://${SLOW_HOST}:${port}`)
+
+    const reserve = await timed(() => reserveAttempt('u1'))
+
+    expect(reserve.value).toEqual({ status: 'unavailable' })
+    expect(reserve.elapsed).toBeLessThan(MFA_REDIS_CONNECT_TIMEOUT_MS + 750)
+  }, 10_000)
 })
 
 // The script's guarantees (atomicity, TTL on every write) are properties of the Redis server

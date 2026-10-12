@@ -14,17 +14,24 @@ import { MFA_ATTEMPTS_TTL_SECONDS, MFA_MAX_ATTEMPTS } from './mfa'
  * failure afterwards let parallel requests at count four all reach `mfa.verify()`. What happens to
  * the slot afterwards is the caller's decision, per outcome — see `verifyMfaChallenge`.
  *
- * NO KEY WITHOUT A TTL. Every write is `SET … EX` in one command, so no state exists in which the
- * key is present without an expiry. The old `INCR` then `EXPIRE` pair left a count that never
- * expired whenever the second command failed, and the budget precheck then stopped the only code
- * path that would have repaired it.
+ * NO KEY WITHOUT AN EXPIRY. A reservation creates or updates the counter with `SET … EX` in one
+ * command, so no state exists in which the key is present without an expiry. The old `INCR` then
+ * `EXPIRE` pair left a count that never expired whenever the second command failed, and the budget
+ * precheck then stopped the only code path that would have repaired it. A release writes with
+ * `SET … KEEPTTL` (Redis ≥ 6.0), which keeps the expiry the reservation set and never creates a
+ * missing key; clearing is `DEL`.
  *
  * OWN CLIENT, BOUNDED. This module does not share BullMQ's connection (`lib/queue/connection.ts`):
  * that one uses `maxRetriesPerRequest: null` with the offline queue on, so during an outage a
  * command queues and retries forever and the caller never gets an error to degrade on — sign-in
- * hung on "Verifying…". This client has the offline queue off, one retry, a command timeout, and
- * every call is additionally raced against `MFA_REDIS_TIMEOUT_MS`, so a down, refusing or silent
- * Redis is an error within that bound.
+ * hung on "Verifying…". This client has the offline queue off, one retry and a command timeout,
+ * and every call runs in two bounded phases:
+ * 1. Opening the transport (DNS, TCP, TLS), only on a client that has never connected:
+ *    `MFA_REDIS_CONNECT_TIMEOUT_MS`. Separate so a healthy cold start against a remote or TLS Redis
+ *    is not refused for spending its first second on the handshake. A refused port fails here at
+ *    once; an unroutable host takes this whole budget.
+ * 2. The Redis handshake (AUTH, ready check) and the command itself: `MFA_REDIS_TIMEOUT_MS`. A
+ *    server that accepts the connection but never answers is refused within this bound.
  *
  * DEGRADATION IS FAIL-CLOSED. When Redis cannot be reached, `reserveAttempt()` returns
  * `unavailable` and the action refuses to check the code (the pending session is kept, so the user
@@ -41,8 +48,11 @@ import { MFA_ATTEMPTS_TTL_SECONDS, MFA_MAX_ATTEMPTS } from './mfa'
  * logged and swallowed: the worst case is a leftover count that expires with its TTL.
  */
 
-/** Upper bound on any one counter call, connection setup included. */
+/** Upper bound on the Redis handshake plus the command, once the transport is open. */
 export const MFA_REDIS_TIMEOUT_MS = 1_000
+
+/** Upper bound on opening the transport (DNS, TCP, TLS) on a client that has not connected yet. */
+export const MFA_REDIS_CONNECT_TIMEOUT_MS = 3_000
 
 const KEY_PREFIX = 'mfa:attempts:'
 
@@ -96,7 +106,9 @@ function getClient(): Redis {
       // reservation would also land late, after the caller had already given up on it.
       enableOfflineQueue: false,
       maxRetriesPerRequest: 1,
-      connectTimeout: MFA_REDIS_TIMEOUT_MS,
+      // ioredis clears this timer once the socket connects (`secureConnect` for TLS), so it covers
+      // exactly phase 1; the handshake after it is bounded by `bounded()`'s second phase.
+      connectTimeout: MFA_REDIS_CONNECT_TIMEOUT_MS,
       commandTimeout: MFA_REDIS_TIMEOUT_MS,
     })
     // Without a listener ioredis prints "Unhandled error event" on every reconnect attempt. The
@@ -107,40 +119,70 @@ function getClient(): Redis {
 }
 
 /**
- * The first call after boot finds the client in `wait`; with the offline queue off, a command in
- * that state would be rejected, so the connect is awaited once and shared by concurrent callers.
- * Any other non-ready state (reconnecting after an outage) fails fast by design.
+ * Phase 1. The first call after boot finds the client in `wait`; with the offline queue off, a
+ * command in that state would be rejected, so the connect is started once and shared by concurrent
+ * callers (`connecting` settles when the client is ready). This resolves as soon as the socket is
+ * open — ioredis emits `connect` before it sends AUTH and the ready check — and rejects when the
+ * connect fails. Any other state resolves at once: a ready client needs nothing, and one that is
+ * reconnecting after an outage fails fast on the command by design.
  */
-async function ready(redis: Redis): Promise<void> {
-  if (redis.status === 'wait') {
-    connecting ??= redis.connect().finally(() => {
-      connecting = null
+function transportOpen(redis: Redis): Promise<void> {
+  if (redis.status === 'wait' && !connecting) {
+    // Clears only its own handle: a connect abandoned by the test hook settles late, and must not
+    // wipe out the attempt a fresh client started in the meantime.
+    const attempt: Promise<void> = redis.connect().finally(() => {
+      if (connecting === attempt) connecting = null
     })
+    connecting = attempt
   }
-  if (connecting) await connecting
+  const pending = connecting
+  if (!pending || redis.status !== 'connecting') return Promise.resolve()
+  return new Promise<void>((resolve, reject) => {
+    const onConnect = () => {
+      redis.off('connect', onConnect)
+      resolve()
+    }
+    redis.on('connect', onConnect)
+    pending.then(onConnect, (error: unknown) => {
+      redis.off('connect', onConnect)
+      reject(error)
+    })
+  })
 }
 
-/** Runs one counter operation, rejecting if it has not settled within `MFA_REDIS_TIMEOUT_MS`. */
-async function bounded<T>(run: (redis: Redis) => Promise<T>): Promise<T> {
+/** Rejects with `message` if `work` has not settled within `ms`. */
+async function within<T>(work: Promise<T>, ms: number, message: string): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(
-      () => reject(new Error(`mfa attempt counter timed out after ${MFA_REDIS_TIMEOUT_MS}ms`)),
-      MFA_REDIS_TIMEOUT_MS
-    )
+    timer = setTimeout(() => reject(new Error(message)), ms)
   })
   try {
-    return await Promise.race([
-      (async () => {
-        const redis = getClient()
-        await ready(redis)
-        return run(redis)
-      })(),
-      timeout,
-    ])
+    return await Promise.race([work, timeout])
   } finally {
     clearTimeout(timer)
   }
+}
+
+/**
+ * Runs one counter operation in the two phases described at the top of this file: the transport
+ * within `MFA_REDIS_CONNECT_TIMEOUT_MS`, then the handshake and the command within
+ * `MFA_REDIS_TIMEOUT_MS`.
+ */
+async function bounded<T>(run: (redis: Redis) => Promise<T>): Promise<T> {
+  const redis = getClient()
+  await within(
+    transportOpen(redis),
+    MFA_REDIS_CONNECT_TIMEOUT_MS,
+    `mfa attempt counter could not connect within ${MFA_REDIS_CONNECT_TIMEOUT_MS}ms`
+  )
+  return within(
+    (async () => {
+      if (connecting) await connecting
+      return run(redis)
+    })(),
+    MFA_REDIS_TIMEOUT_MS,
+    `mfa attempt counter timed out after ${MFA_REDIS_TIMEOUT_MS}ms`
+  )
 }
 
 export type AttemptReservation =
