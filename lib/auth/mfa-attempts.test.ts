@@ -11,7 +11,9 @@ import {
   reserveAttempt,
   releaseAttempt,
   clearAttempts,
+  clearAttemptsAfterRecovery,
   resetMfaAttemptClientForTests,
+  MFA_RECOVERY_CLEAR_INTERVAL_SECONDS,
   MFA_REDIS_TIMEOUT_MS,
   MFA_REDIS_CONNECT_TIMEOUT_MS,
 } from './mfa-attempts'
@@ -362,6 +364,26 @@ describe.skipIf(!liveAvailable)('mfa attempt counter — live Redis (MFA_REDIS_T
     expect(await admin.exists(keyFor(id))).toBe(0)
     expect(await admin.get(keyFor(other))).toBe('1')
     await admin.del(keyFor(other))
+  })
+
+  it('refills after a recovery link once per user per hour, with a TTL on the claim', async () => {
+    const id = newUser()
+    const claim = `mfa:recovery-clear:${id}`
+    vi.spyOn(console, 'info').mockImplementation(() => {})
+    try {
+      await admin.set(keyFor(id), '5', 'EX', 600)
+      await expect(clearAttemptsAfterRecovery(id)).resolves.toBe('cleared')
+      expect(await admin.exists(keyFor(id))).toBe(0)
+      const ttl = await admin.ttl(claim)
+      expect(ttl).toBeGreaterThan(MFA_RECOVERY_CLEAR_INTERVAL_SECONDS - 5)
+      expect(ttl).toBeLessThanOrEqual(MFA_RECOVERY_CLEAR_INTERVAL_SECONDS)
+
+      await admin.set(keyFor(id), '5', 'EX', 600)
+      await expect(clearAttemptsAfterRecovery(id)).resolves.toBe('already_claimed')
+      expect(await admin.get(keyFor(id))).toBe('5')
+    } finally {
+      await admin.del(claim)
+    }
   })
 
   it('fails closed on a corrupted counter rather than reading it as zero', async () => {

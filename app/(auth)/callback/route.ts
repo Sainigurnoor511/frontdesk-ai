@@ -4,22 +4,25 @@ import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { resolveMfaGate, MFA_VERIFY_PATH, POST_LOGIN_PATH } from '@/lib/auth/mfa'
 import { recentRecoverySubject } from '@/lib/auth/recovery'
-import { clearAttempts } from '@/lib/auth/mfa-attempts'
+import { clearAttemptsAfterRecovery } from '@/lib/auth/mfa-attempts'
 
 /**
  * Refills the TOTP attempt budget after a verified recovery link, so an owner locked out by
  * someone burning their five codes can get back in without waiting out the window. Mailbox access
- * is required to get here, which the password alone does not give. The trade-off is in
- * ARCHITECTURE.md (Auth Flow).
+ * is required to get here, which the password alone does not give. At most one refill per user per
+ * hour (`clearAttemptsAfterRecovery`), so the guess rate does not follow the email quota. The
+ * trade-off is in ARCHITECTURE.md (Auth Flow).
  *
- * Best effort: `clearAttempts` already logs and swallows a Redis failure, and the catch here keeps
- * that true even if it ever rejects, because the reset flow must not depend on Redis. The worst
- * case is the budget expiring with its window as it would have anyway.
+ * Best effort: `clearAttemptsAfterRecovery` already logs a Redis failure and skips the refill, and
+ * the catch here keeps the reset flow independent of Redis even if it ever rejects. The worst case
+ * is the budget expiring with its window as it would have anyway.
  */
 async function clearBudgetAfterRecovery(userId: string): Promise<void> {
   try {
-    await clearAttempts(userId)
-    console.warn('[auth] mfa attempt budget cleared by a verified recovery link', { userId })
+    const outcome = await clearAttemptsAfterRecovery(userId)
+    if (outcome === 'cleared') {
+      console.warn('[auth] mfa attempt budget cleared by a verified recovery link', { userId })
+    }
   } catch (error) {
     console.error('[auth] mfa attempt budget not cleared after recovery:', error)
   }

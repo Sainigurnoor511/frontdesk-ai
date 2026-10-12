@@ -10,7 +10,9 @@ vi.mock('@/lib/supabase/server', () => ({ createServiceRoleClient: vi.fn() }))
 vi.mock('@/lib/data/organization-slug', () => ({
   generateUniqueSlug: vi.fn(async () => 'acme'),
 }))
-vi.mock('@/lib/auth/mfa-attempts', () => ({ clearAttempts: vi.fn(async () => {}) }))
+vi.mock('@/lib/auth/mfa-attempts', () => ({
+  clearAttemptsAfterRecovery: vi.fn(async () => 'cleared' as const),
+}))
 
 const nowSeconds = () => Math.floor(Date.now() / 1000)
 const recoveryAmr = () => [{ method: 'recovery', timestamp: nowSeconds() }]
@@ -108,13 +110,13 @@ describe('GET /callback', () => {
     // The counter is server-side state keyed by user id, not a cookie. Clearing it on a fresh
     // first factor — which is exactly what an attacker holding the password has — was how the
     // five-attempt limit got reset indefinitely.
-    const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
+    const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
     await mockSupabase({ factors: [totpFactor], currentLevel: 'aal1' })
 
     const response = await GET(callbackRequest('?code=abc'))
 
     expect(response.headers.getSetCookie().join(';')).not.toContain('fd_mfa_attempts')
-    expect(clearAttempts).not.toHaveBeenCalled()
+    expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
   })
 
   it('sends a Google sign-in with no factors to the dashboard, as before', async () => {
@@ -152,7 +154,7 @@ describe('GET /callback', () => {
     })
 
     it('clears the attempt budget, so a locked-out owner gets back in without waiting', async () => {
-      const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
+      const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
       vi.spyOn(console, 'warn').mockImplementation(() => {})
       const client = await mockSupabase({
         factors: [totpFactor],
@@ -162,15 +164,15 @@ describe('GET /callback', () => {
 
       await GET(callbackRequest('?code=abc&flow=recovery'))
 
-      expect(clearAttempts).toHaveBeenCalledWith('u1')
+      expect(clearAttemptsAfterRecovery).toHaveBeenCalledWith('u1')
       // The claim is read from the token the exchange just issued, verified by getClaims().
       expect(client.auth.getClaims).toHaveBeenCalledWith('issued.access.token')
       vi.mocked(console.warn).mockRestore()
     })
 
     it('still completes the reset flow when Redis fails during the clear', async () => {
-      const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
-      vi.mocked(clearAttempts).mockRejectedValueOnce(new Error('ECONNREFUSED'))
+      const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
+      vi.mocked(clearAttemptsAfterRecovery).mockRejectedValueOnce(new Error('ECONNREFUSED'))
       const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
       await mockSupabase({ factors: [totpFactor], currentLevel: 'aal1', amr: recoveryAmr() })
 
@@ -184,17 +186,17 @@ describe('GET /callback', () => {
 
   it('does not clear the budget for ?flow=recovery on a sign-in that was not a recovery link', async () => {
     // `flow=recovery` is a query parameter anyone can append to an OAuth callback.
-    const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
+    const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
     await mockSupabase({ factors: [totpFactor], currentLevel: 'aal1' })
 
     const response = await GET(callbackRequest('?code=abc&flow=recovery'))
 
-    expect(clearAttempts).not.toHaveBeenCalled()
+    expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
     expect(response.headers.get('location')).toBe('https://app.example.com/verify')
   })
 
   it('does not clear the budget for a stale recovery claim or another user', async () => {
-    const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
+    const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
     await mockSupabase({
       factors: [totpFactor],
       amr: [{ method: 'recovery', timestamp: nowSeconds() - 60 * 60 }],
@@ -203,6 +205,6 @@ describe('GET /callback', () => {
     await mockSupabase({ factors: [totpFactor], amr: recoveryAmr(), sub: 'someone-else' })
     await GET(callbackRequest('?code=abc&flow=recovery'))
 
-    expect(clearAttempts).not.toHaveBeenCalled()
+    expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
   })
 })

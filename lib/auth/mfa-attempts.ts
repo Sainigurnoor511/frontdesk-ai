@@ -46,6 +46,7 @@ import { MFA_ATTEMPTS_TTL_SECONDS, MFA_MAX_ATTEMPTS } from './mfa'
  *    of the job workers already, so an outage is already an incident.
  * `releaseAttempt()` and `clearAttempts()` only ever *lower* the count, so their failures are
  * logged and swallowed: the worst case is a leftover count that expires with its TTL.
+ * `clearAttemptsAfterRecovery()` fails closed on the refill: no claim recorded, no clear.
  */
 
 /** Upper bound on the Redis handshake plus the command, once the transport is open. */
@@ -54,10 +55,18 @@ export const MFA_REDIS_TIMEOUT_MS = 1_000
 /** Upper bound on opening the transport (DNS, TCP, TLS) on a client that has not connected yet. */
 export const MFA_REDIS_CONNECT_TIMEOUT_MS = 3_000
 
+/** A verified recovery link may refill one user's budget at most once per this window. */
+export const MFA_RECOVERY_CLEAR_INTERVAL_SECONDS = 60 * 60
+
 const KEY_PREFIX = 'mfa:attempts:'
+const RECOVERY_CLAIM_PREFIX = 'mfa:recovery-clear:'
 
 function key(userId: string): string {
   return `${KEY_PREFIX}${userId}`
+}
+
+function recoveryClaimKey(userId: string): string {
+  return `${RECOVERY_CLAIM_PREFIX}${userId}`
 }
 
 /**
@@ -228,6 +237,49 @@ export async function clearAttempts(userId: string): Promise<void> {
   } catch (error) {
     console.error('[auth] mfa attempt counter not cleared; it expires with its window:', error)
   }
+}
+
+export type RecoveryClearOutcome =
+  /** The claim was taken and the budget cleared. */
+  | 'cleared'
+  /** This user's budget was already refilled by a recovery link within the window; left alone. */
+  | 'already_claimed'
+  /** Redis failed on the claim or the clear. The budget is not refilled. */
+  | 'unavailable'
+
+/**
+ * Clears the budget after a verified recovery link, at most once per user per
+ * `MFA_RECOVERY_CLEAR_INTERVAL_SECONDS`. Each reset link needs only the mailbox, so without this
+ * cap the refill rate, and with it the guess rate, would follow the deployment's email quota.
+ *
+ * The claim is one `SET … NX EX` command: the check and the write cannot race across instances,
+ * and the key cannot exist without its expiry. It fails closed on the refill: if the claim cannot
+ * be recorded, nothing is cleared, because no refill is the safe direction. A claim that was
+ * recorded but whose clear then failed stays spent; that is also no refill. Never rejects.
+ */
+export async function clearAttemptsAfterRecovery(userId: string): Promise<RecoveryClearOutcome> {
+  let claim: string | null
+  try {
+    claim = await bounded((redis) =>
+      redis.set(recoveryClaimKey(userId), '1', 'EX', MFA_RECOVERY_CLEAR_INTERVAL_SECONDS, 'NX')
+    )
+  } catch (error) {
+    console.error('[auth] recovery refill claim not recorded; mfa attempt budget not cleared:', error)
+    return 'unavailable'
+  }
+  if (claim !== 'OK') {
+    console.info('[auth] mfa attempt budget already refilled by a recovery link this hour; not cleared', {
+      userId,
+    })
+    return 'already_claimed'
+  }
+  try {
+    await bounded((redis) => redis.del(key(userId)))
+  } catch (error) {
+    console.error('[auth] mfa attempt counter not cleared after recovery; it expires with its window:', error)
+    return 'unavailable'
+  }
+  return 'cleared'
 }
 
 /** Test hook: drops the client so the next call builds a fresh one from `process.env.REDIS_URL`. */
