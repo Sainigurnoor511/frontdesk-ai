@@ -13,7 +13,7 @@ const CLOCK_SKEW_SECONDS = 60
 export type ClaimsAwareClient = {
   auth: {
     getClaims(jwt?: string): Promise<{
-      data: { claims: { amr?: unknown } } | null
+      data: { claims: { amr?: unknown; sub?: unknown } } | null
       error: AuthError | null
     }>
   }
@@ -48,19 +48,31 @@ export async function hasRecentRecoveryClaim(
   supabase: ClaimsAwareClient,
   options: { jwt?: string; now?: number } = {}
 ): Promise<boolean> {
+  return (await recentRecoverySubject(supabase, options)) !== null
+}
+
+/**
+ * Same check as `hasRecentRecoveryClaim`, returning the verified token's `sub` (the user id) when
+ * it passes and `null` otherwise. For callers that act on the user the proof belongs to, so the
+ * id comes from the same signed token as the proof rather than from anywhere else.
+ */
+export async function recentRecoverySubject(
+  supabase: ClaimsAwareClient,
+  options: { jwt?: string; now?: number } = {}
+): Promise<string | null> {
   let result
   try {
     result = await supabase.auth.getClaims(options.jwt)
   } catch {
-    return false
+    return null
   }
-  if (result.error || !result.data) return false
+  if (result.error || !result.data) return null
 
-  const amr = result.data.claims.amr
-  if (!Array.isArray(amr)) return false
+  const { amr, sub } = result.data.claims
+  if (!Array.isArray(amr) || typeof sub !== 'string' || !sub) return null
 
   const nowSeconds = Math.floor((options.now ?? Date.now()) / 1000)
-  return amr.some((entry: unknown) => {
+  const recent = amr.some((entry: unknown) => {
     if (typeof entry !== 'object' || entry === null) return false
     const { method, timestamp } = entry as { method?: unknown; timestamp?: unknown }
     return (
@@ -70,4 +82,5 @@ export async function hasRecentRecoveryClaim(
       timestamp <= nowSeconds + CLOCK_SKEW_SECONDS
     )
   })
+  return recent ? sub : null
 }

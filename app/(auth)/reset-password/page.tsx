@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { hasRecentRecoveryClaim } from '@/lib/auth/recovery'
+import { resolveMfaGate, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
 import { ResetPasswordForm } from '@/components/auth/reset-password-form'
 
 export default async function ResetPasswordPage() {
@@ -26,6 +28,12 @@ export default async function ResetPasswordPage() {
       </div>
     )
   }
+
+  // This path is gate-exempt so the reset flow works, but a recovery session that still owes its
+  // code cannot change the password (Supabase requires aal2 once MFA is on). The code step sends
+  // it back here when it passes.
+  const mfa = await resolveMfaGate(supabase)
+  if (mfa.state === 'pending' || mfa.state === 'indeterminate') redirect(MFA_VERIFY_PATH)
 
   return (
     <div className="space-y-8">

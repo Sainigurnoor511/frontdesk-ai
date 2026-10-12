@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest'
-import { hasRecentRecoveryClaim, PASSWORD_RECOVERY_MAX_AGE_SECONDS, type ClaimsAwareClient } from './recovery'
+import {
+  hasRecentRecoveryClaim,
+  recentRecoverySubject,
+  PASSWORD_RECOVERY_MAX_AGE_SECONDS,
+  type ClaimsAwareClient,
+} from './recovery'
 
 const NOW = Date.UTC(2026, 9, 13, 12, 0, 0)
 const nowSeconds = NOW / 1000
@@ -8,8 +13,8 @@ function client(result: unknown): ClaimsAwareClient {
   return { auth: { getClaims: vi.fn().mockResolvedValue(result) } } as ClaimsAwareClient
 }
 
-function withAmr(amr: unknown): ClaimsAwareClient {
-  return client({ data: { claims: { amr } }, error: null })
+function withAmr(amr: unknown, sub: unknown = 'u1'): ClaimsAwareClient {
+  return client({ data: { claims: { amr, sub } }, error: null })
 }
 
 describe('hasRecentRecoveryClaim', () => {
@@ -81,9 +86,33 @@ describe('hasRecentRecoveryClaim', () => {
     ).resolves.toBe(false)
   })
 
-  it('verifies the session token itself rather than one the caller supplies', async () => {
+  it('verifies the session token itself unless handed a freshly issued one', async () => {
     const supabase = withAmr([{ method: 'recovery', timestamp: nowSeconds }])
     await hasRecentRecoveryClaim(supabase, { now: NOW })
     expect(supabase.auth.getClaims).toHaveBeenCalledWith(undefined)
+
+    await hasRecentRecoveryClaim(supabase, { now: NOW, jwt: 'issued.access.token' })
+    expect(supabase.auth.getClaims).toHaveBeenLastCalledWith('issued.access.token')
+  })
+})
+
+describe('recentRecoverySubject', () => {
+  it("returns the verified token's user id when the recovery claim passes", async () => {
+    await expect(
+      recentRecoverySubject(withAmr([{ method: 'recovery', timestamp: nowSeconds }], 'u-42'), {
+        now: NOW,
+      })
+    ).resolves.toBe('u-42')
+  })
+
+  it('returns null without a recovery claim, or without a subject', async () => {
+    await expect(
+      recentRecoverySubject(withAmr([{ method: 'password', timestamp: nowSeconds }]), { now: NOW })
+    ).resolves.toBeNull()
+    await expect(
+      recentRecoverySubject(withAmr([{ method: 'recovery', timestamp: nowSeconds }], ''), {
+        now: NOW,
+      })
+    ).resolves.toBeNull()
   })
 })

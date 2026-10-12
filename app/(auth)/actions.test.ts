@@ -101,19 +101,31 @@ describe('updatePassword', () => {
    * A signed-in client whose verified token carries `amr`. `getUser` succeeds for every case, so
    * the only thing separating a refusal from a password change is the recovery proof.
    */
-  async function useRecoveryClient(claims: { amr?: unknown } | { error: string }) {
+  async function useRecoveryClient(
+    claims: { amr?: unknown } | { error: string },
+    session: { factors?: unknown; currentLevel?: string } = {}
+  ) {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
     const updateUser = vi.fn().mockResolvedValue({ error: null })
     const getClaims = vi.fn().mockResolvedValue(
       'error' in claims
         ? { data: null, error: { name: 'AuthInvalidJwtError', message: claims.error } }
-        : { data: { claims, header: {}, signature: new Uint8Array() }, error: null }
+        : { data: { claims: { sub: 'u1', ...claims }, header: {}, signature: new Uint8Array() }, error: null }
     )
     vi.mocked(createSupabaseClient).mockResolvedValue({
       auth: {
-        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } }, error: null }),
+        getUser: vi.fn().mockResolvedValue({
+          data: { user: { id: 'u1', factors: session.factors } },
+          error: null,
+        }),
         getClaims,
         updateUser,
+        mfa: {
+          getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
+            data: { currentLevel: session.currentLevel ?? 'aal1', nextLevel: null },
+            error: null,
+          }),
+        },
       },
     } as never)
     return { updateUser, getClaims }
@@ -182,6 +194,37 @@ describe('updatePassword', () => {
     expect(updateUser).not.toHaveBeenCalled()
   })
 
+  it('sends a recovery session that still owes its code to /verify instead of changing it', async () => {
+    const { redirect } = await import('next/navigation')
+    vi.mocked(redirect).mockClear()
+    const { updateUser } = await useRecoveryClient(
+      { amr: [{ method: 'recovery', timestamp: nowSeconds() - 60 }] },
+      { factors: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }], currentLevel: 'aal1' }
+    )
+
+    await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+
+    expect(updateUser).not.toHaveBeenCalled()
+    expect(redirect).toHaveBeenNthCalledWith(1, '/verify')
+    expect(redirect).toHaveBeenCalledTimes(1)
+  })
+
+  it('updates the password for a TOTP user once the recovery session has passed the code', async () => {
+    const { updateUser } = await useRecoveryClient(
+      {
+        amr: [
+          { method: 'totp', timestamp: nowSeconds() - 10 },
+          { method: 'recovery', timestamp: nowSeconds() - 90 },
+        ],
+      },
+      { factors: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }], currentLevel: 'aal2' }
+    )
+
+    await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+
+    expect(updateUser).toHaveBeenCalledWith({ password: 'longenough1' })
+  })
+
   it('updates the password for a verified, recent recovery sign-in and redirects home', async () => {
     const { redirect } = await import('next/navigation')
     const { updateUser } = await useRecoveryClient({
@@ -209,6 +252,7 @@ type MfaClientOptions = {
   signInError?: { message: string }
   challenge?: ReturnType<typeof vi.fn>
   verify?: ReturnType<typeof vi.fn>
+  getClaims?: ReturnType<typeof vi.fn>
   getUserError?: boolean
 }
 
@@ -237,6 +281,13 @@ function mockAuthClient(options: MfaClientOptions) {
         signInWithPassword,
         getUser,
         signOut,
+        // An ordinary sign-in unless a test says otherwise: no `recovery` entry.
+        getClaims:
+          options.getClaims ??
+          vi.fn().mockResolvedValue({
+            data: { claims: { sub: 'u1', amr: [{ method: 'password', timestamp: 0 }] } },
+            error: null,
+          }),
         mfa: { getAuthenticatorAssuranceLevel, challenge, verify },
       },
     },
@@ -416,6 +467,36 @@ describe('verifyMfaChallenge', () => {
     expect(reserveAttempt).toHaveBeenCalledWith('u1')
     expect(clearAttempts).toHaveBeenCalledWith('u1')
     expect(redirect).toHaveBeenNthCalledWith(1, '/')
+    expect(redirect).toHaveBeenCalledTimes(1)
+  })
+
+  it('sends a session that began at a reset link on to /reset-password once the code passes', async () => {
+    const { redirect } = await import('next/navigation')
+    const now = Math.floor(Date.now() / 1000)
+    const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
+    const verify = vi
+      .fn()
+      .mockResolvedValue({ data: { access_token: 'aal2.access.token' }, error: null })
+    // What GoTrue issues after verify() on a recovery session: the session's claim rows, most
+    // recent first, so `recovery` is still there next to the new `totp`.
+    const getClaims = vi.fn().mockResolvedValue({
+      data: {
+        claims: {
+          sub: 'u1',
+          amr: [
+            { method: 'totp', timestamp: now },
+            { method: 'recovery', timestamp: now - 120 },
+          ],
+        },
+      },
+      error: null,
+    })
+    await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1', challenge, verify, getClaims })
+
+    await verifyMfaChallenge({ code: '123456' })
+
+    expect(getClaims).toHaveBeenCalledWith('aal2.access.token')
+    expect(redirect).toHaveBeenNthCalledWith(1, '/reset-password')
     expect(redirect).toHaveBeenCalledTimes(1)
   })
 

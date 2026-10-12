@@ -17,6 +17,7 @@ import {
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { hasRecentRecoveryClaim } from '@/lib/auth/recovery'
 import {
+  getAssuredUser,
   resolveMfaGate,
   mfaErrorMessage,
   MFA_MAX_ATTEMPTS,
@@ -239,7 +240,13 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
 
   await clearAttempts(mfa.userId)
   logMfaEvent('verified', { userId: mfa.userId })
-  return redirect(POST_LOGIN_PATH)
+  // A session that began at a reset link came here because /callback sent it through the code
+  // step first; now that it is aal2 it can set the new password. Checked on the token `verify()`
+  // just issued, which keeps the session's `recovery` amr entry alongside the new `totp` one.
+  const recovering = await hasRecentRecoveryClaim(supabase, {
+    jwt: verified.data?.access_token,
+  })
+  return redirect(recovering ? '/reset-password' : POST_LOGIN_PATH)
 }
 
 /**
@@ -310,6 +317,9 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
   if (!(await hasRecentRecoveryClaim(supabase))) {
     return { error: 'This reset link has expired. Request a new one.' }
   }
+  // A recovery session that still owes its code: Supabase would refuse the change from aal1, so
+  // send it to the code step, which comes back to /reset-password once it passes.
+  if (!(await getAssuredUser(supabase))) return redirect(MFA_VERIFY_PATH)
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
   if (error) {

@@ -3,6 +3,27 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { resolveMfaGate, MFA_VERIFY_PATH, POST_LOGIN_PATH } from '@/lib/auth/mfa'
+import { recentRecoverySubject } from '@/lib/auth/recovery'
+import { clearAttempts } from '@/lib/auth/mfa-attempts'
+
+/**
+ * Refills the TOTP attempt budget after a verified recovery link, so an owner locked out by
+ * someone burning their five codes can get back in without waiting out the window. Mailbox access
+ * is required to get here, which the password alone does not give. The trade-off is in
+ * ARCHITECTURE.md (Auth Flow).
+ *
+ * Best effort: `clearAttempts` already logs and swallows a Redis failure, and the catch here keeps
+ * that true even if it ever rejects, because the reset flow must not depend on Redis. The worst
+ * case is the budget expiring with its window as it would have anyway.
+ */
+async function clearBudgetAfterRecovery(userId: string): Promise<void> {
+  try {
+    await clearAttempts(userId)
+    console.warn('[auth] mfa attempt budget cleared by a verified recovery link', { userId })
+  } catch (error) {
+    console.error('[auth] mfa attempt budget not cleared after recovery:', error)
+  }
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -73,16 +94,24 @@ export async function GET(request: NextRequest) {
   // A fixed destination chosen by a server-side flag, never a caller-supplied URL. OAuth
   // sign-ins are challenged exactly like password sign-ins: the gate is a property of the
   // session, not of the credential type, so exempting OAuth would be a one-click bypass.
-  let destination: string = POST_LOGIN_PATH
+  const mfa = await resolveMfaGate(supabase)
+  const owesCode = mfa.state === 'pending' || mfa.state === 'indeterminate'
+  let destination: string = owesCode ? MFA_VERIFY_PATH : POST_LOGIN_PATH
   if (isRecovery) {
-    // Recovery wins. Not a bypass: /reset-password is gate-exempt so the flow still works, and
-    // `updatePassword` ends at '/', where the proxy sees a pending session and sends them to
-    // /verify. A reset link gets you a new password, not entry without the code.
-    destination = '/reset-password'
-  } else {
-    const mfa = await resolveMfaGate(supabase)
-    if (mfa.state === 'pending' || mfa.state === 'indeterminate') {
-      destination = MFA_VERIFY_PATH
+    // A reset link gets you a new password, not entry without the code. Supabase refuses a
+    // password change from an aal1 session once MFA is on ("AAL2 session is required to update
+    // email or password"), so a user with a factor goes through /verify first, and
+    // `verifyMfaChallenge` sends a recovery session on to /reset-password. Without a factor the
+    // flow is unchanged: straight to /reset-password.
+    destination = owesCode ? MFA_VERIFY_PATH : '/reset-password'
+
+    // Only a *verified* recovery claim refills the budget; `?flow=recovery` is just a query
+    // parameter. The id comes from the same signed token, and must be the user just signed in.
+    const recoveredUserId = await recentRecoverySubject(supabase, {
+      jwt: data.session?.access_token,
+    })
+    if (recoveredUserId && recoveredUserId === data.user.id) {
+      await clearBudgetAfterRecovery(recoveredUserId)
     }
   }
 
@@ -96,6 +125,7 @@ export async function GET(request: NextRequest) {
 
   // No attempt-counter reset for a pending OAuth sign-in: the counter is server-side state keyed
   // by user id (`lib/auth/mfa-attempts.ts`) and a fresh first factor must not refill the budget.
+  // A verified recovery link is the one exception, above.
 
   // No recovery cookie either. `/reset-password` and `updatePassword` read the proof of a reset
   // link from the session's own signed token (`hasRecentRecoveryClaim`), which `?flow=recovery`
