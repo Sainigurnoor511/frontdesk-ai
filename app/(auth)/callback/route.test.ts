@@ -85,12 +85,15 @@ describe('GET /callback', () => {
     expect(response.headers.get('location')).toBe('https://app.example.com/verify')
   })
 
-  it('gives a pending OAuth login a clean attempt budget', async () => {
+  it('does not refill the attempt budget for a pending OAuth login', async () => {
+    // The counter is server-side state keyed by user id, not a cookie. Clearing it on a fresh
+    // first factor — which is exactly what an attacker holding the password has — was how the
+    // five-attempt limit got reset indefinitely.
     await mockSupabase({ factors: [totpFactor], currentLevel: 'aal1' })
 
     const response = await GET(callbackRequest('?code=abc'))
 
-    expect(response.headers.getSetCookie().join(';')).toContain('fd_mfa_attempts=')
+    expect(response.headers.getSetCookie().join(';')).not.toContain('fd_mfa_attempts')
   })
 
   it('sends a Google sign-in with no factors to the dashboard, as before', async () => {

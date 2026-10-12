@@ -1,251 +1,153 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
-  updateNotificationSettings,
-  updateFeatureSettings,
+  unenrollTotpFactor,
   enrollTotpFactor,
   verifyTotpEnrollment,
-  unenrollTotpFactor,
   getTotpFactorStatus,
+  updateLanguage,
+  sendPasswordResetEmail,
 } from './actions'
 
-vi.mock('next/cache', () => ({
-  revalidatePath: vi.fn(),
-}))
+vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
+vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
-vi.mock('@/lib/supabase/server', () => ({
-  createClient: vi.fn(),
-}))
+const totpFactor = { id: 'factor-1', factor_type: 'totp', status: 'verified' }
 
-function mockSupabase({
-  user = { id: 'user-1' } as { id: string } | null,
-  organizationId = 'org-1',
-  upsertError = null as { message: string } | null,
-} = {}) {
-  const upsertResult = { error: upsertError }
-  const upsert = vi.fn().mockReturnValue(upsertResult)
+async function mockSupabase(options: { factors?: unknown; currentLevel?: string }) {
+  const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
 
-  const memberSingle = vi.fn().mockResolvedValue({
-    data: user ? { organization_id: organizationId } : null,
+  const unenroll = vi.fn().mockResolvedValue({ error: null })
+  const enroll = vi.fn().mockResolvedValue({
+    data: { id: 'factor-new', totp: { qr_code: 'qr', secret: 'secret' } },
+    error: null,
   })
-  const memberEq = vi.fn().mockReturnValue({ single: memberSingle })
-  const memberSelect = vi.fn().mockReturnValue({ eq: memberEq })
-
+  const challengeAndVerify = vi.fn().mockResolvedValue({ error: null })
+  const listFactors = vi.fn().mockResolvedValue({ data: { totp: [totpFactor] }, error: null })
+  const resetPasswordForEmail = vi.fn().mockResolvedValue({ error: null })
+  const upsert = vi.fn().mockResolvedValue({ error: null })
   const from = vi.fn((table: string) => {
     if (table === 'members') {
-      return { select: memberSelect }
+      return {
+        select: () => ({
+          eq: () => ({ single: async () => ({ data: { organization_id: 'org-1' }, error: null }) }),
+        }),
+      }
     }
-    if (table === 'organization_settings') {
-      return { upsert }
-    }
-    throw new Error(`Unexpected table: ${table}`)
+    return { upsert }
   })
 
-  return {
+  vi.mocked(createSupabaseClient).mockResolvedValue({
     auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user } }),
+      getUser: vi.fn().mockResolvedValue({
+        data: { user: { id: 'u1', email: 'owner@example.com', factors: options.factors } },
+        error: null,
+      }),
+      resetPasswordForEmail,
+      mfa: {
+        getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
+          data: { currentLevel: options.currentLevel ?? 'aal1', nextLevel: null },
+          error: null,
+        }),
+        unenroll,
+        enroll,
+        challengeAndVerify,
+        listFactors,
+      },
     },
     from,
-    __mocks: { upsert, memberEq },
-  }
+  } as never)
+
+  return { from, unenroll, enroll, challengeAndVerify, listFactors, resetPasswordForEmail, upsert }
 }
 
-describe('updateNotificationSettings', () => {
-  it('returns a validation error for a non-boolean field', async () => {
-    const result = await updateNotificationSettings({
-      notifyPostCallSummary: 'yes' as unknown as boolean,
+const PENDING = { factors: [totpFactor], currentLevel: 'aal1' }
+const ELEVATED = { factors: [totpFactor], currentLevel: 'aal2' }
+
+describe('two-factor settings actions — pending session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('refuses to unenroll the factor, without calling Supabase', async () => {
+    // The one action that can remove a user's second factor. It used to rely entirely on proxy
+    // interception plus an assumption about what GoTrue would refuse — an assumption nobody had
+    // confirmed against a running instance.
+    const { unenroll } = await mockSupabase(PENDING)
+
+    expect(await unenrollTotpFactor('factor-1')).toEqual({
+      error: 'You must be signed in to do this.',
     })
-    expect(result).toEqual({ error: expect.any(String) })
+    expect(unenroll).not.toHaveBeenCalled()
   })
 
-  it('returns an error when no user is signed in', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockSupabase({ user: null }) as never)
+  it('refuses to start a new enrollment', async () => {
+    const { enroll } = await mockSupabase(PENDING)
 
-    const result = await updateNotificationSettings({ notifyPostCallSummary: false })
-    expect(result).toEqual({ error: 'You must be signed in to do this.' })
+    expect(await enrollTotpFactor()).toEqual({ error: 'You must be signed in to do this.' })
+    expect(enroll).not.toHaveBeenCalled()
   })
 
-  it('scopes the upsert to the correct organization on success', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ organizationId: 'org-42' })
-    vi.mocked(createSupabaseClient).mockResolvedValue(supabase as never)
+  it('refuses to verify an enrollment', async () => {
+    const { challengeAndVerify } = await mockSupabase(PENDING)
 
-    const result = await updateNotificationSettings({
-      notifyPostCallSummary: false,
-      notifyAppointmentReminders: true,
+    expect(await verifyTotpEnrollment('factor-1', '123456')).toEqual({
+      error: 'You must be signed in to do this.',
     })
-
-    expect(result).toEqual({ success: true })
-    expect(supabase.__mocks.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organization_id: 'org-42',
-        notify_post_call_summary: false,
-        notify_appointment_reminders: true,
-      }),
-      expect.objectContaining({ onConflict: 'organization_id' })
-    )
+    expect(challengeAndVerify).not.toHaveBeenCalled()
   })
 
-  it('only includes fields that were provided (partial update)', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ organizationId: 'org-1' })
-    vi.mocked(createSupabaseClient).mockResolvedValue(supabase as never)
+  it('reports no factor rather than listing the real ones', async () => {
+    const { listFactors } = await mockSupabase(PENDING)
 
-    await updateNotificationSettings({ notifyClientBookings: false })
-
-    const callArg = supabase.__mocks.upsert.mock.calls[0][0]
-    expect(callArg).not.toHaveProperty('notify_post_call_summary')
-    expect(callArg).not.toHaveProperty('notify_staff_bookings')
-    expect(callArg.notify_client_bookings).toBe(false)
+    expect(await getTotpFactorStatus()).toEqual({ enabled: false, factorId: null })
+    expect(listFactors).not.toHaveBeenCalled()
   })
 
-  it('returns an error when the upsert fails', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ upsertError: { message: 'db error' } })
-    vi.mocked(createSupabaseClient).mockResolvedValue(supabase as never)
+  it('refuses to send a password reset to the account email', async () => {
+    const { resetPasswordForEmail } = await mockSupabase(PENDING)
 
-    const result = await updateNotificationSettings({ notifyPostCallSummary: true })
-    expect(result).toEqual({ error: 'Could not save notification settings. Please try again.' })
+    expect(await sendPasswordResetEmail()).toEqual({
+      error: 'Could not determine your email address.',
+    })
+    expect(resetPasswordForEmail).not.toHaveBeenCalled()
+  })
+
+  it('refuses a settings write before resolving the organization', async () => {
+    const { from, upsert } = await mockSupabase(PENDING)
+
+    expect(await updateLanguage({ language: 'en' })).toEqual({
+      error: 'You must be signed in to do this.',
+    })
+    expect(from).not.toHaveBeenCalled()
+    expect(upsert).not.toHaveBeenCalled()
   })
 })
 
-describe('updateFeatureSettings', () => {
-  it('returns an error when no user is signed in', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockSupabase({ user: null }) as never)
-
-    const result = await updateFeatureSettings({ featureServices: false })
-    expect(result).toEqual({ error: 'You must be signed in to do this.' })
+describe('two-factor settings actions — elevated session', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  it('scopes the upsert to the correct organization on success', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ organizationId: 'org-42' })
-    vi.mocked(createSupabaseClient).mockResolvedValue(supabase as never)
+  it('unenrolls once the session has passed the challenge', async () => {
+    const { unenroll } = await mockSupabase(ELEVATED)
 
-    const result = await updateFeatureSettings({
-      featureGuides: false,
-      featureCustomTimezones: true,
-    })
-
-    expect(result).toEqual({ success: true })
-    expect(supabase.__mocks.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        organization_id: 'org-42',
-        feature_guides: false,
-        feature_custom_timezones: true,
-      }),
-      expect.objectContaining({ onConflict: 'organization_id' })
-    )
+    expect(await unenrollTotpFactor('factor-1')).toEqual({ success: true })
+    expect(unenroll).toHaveBeenCalledWith({ factorId: 'factor-1' })
   })
-})
 
-function mockMfaSupabase(mfa: {
-  enroll?: ReturnType<typeof vi.fn>
-  challengeAndVerify?: ReturnType<typeof vi.fn>
-  unenroll?: ReturnType<typeof vi.fn>
-  listFactors?: ReturnType<typeof vi.fn>
-}) {
-  return { auth: { mfa } }
-}
+  it('still lets a user with no factor enrol one', async () => {
+    const { enroll } = await mockSupabase({ factors: [] })
 
-describe('enrollTotpFactor', () => {
-  it('returns the QR code, secret, and factor id on success', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const enroll = vi.fn().mockResolvedValue({
-      data: { id: 'factor-1', totp: { qr_code: '<svg/>', secret: 'SECRET123', uri: 'otpauth://x' } },
-      error: null,
-    })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ enroll }) as never)
-
-    const result = await enrollTotpFactor()
-    expect(result).toEqual({
-      enrollment: { factorId: 'factor-1', qrCode: '<svg/>', secret: 'SECRET123' },
+    expect(await enrollTotpFactor()).toEqual({
+      enrollment: { factorId: 'factor-new', qrCode: 'qr', secret: 'secret' },
     })
     expect(enroll).toHaveBeenCalledWith({ factorType: 'totp' })
   })
 
-  it('returns an error when enrollment fails', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const enroll = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ enroll }) as never)
+  it('saves settings for an elevated session', async () => {
+    const { upsert } = await mockSupabase(ELEVATED)
 
-    const result = await enrollTotpFactor()
-    expect(result).toEqual({ error: expect.any(String) })
-  })
-})
-
-describe('verifyTotpEnrollment', () => {
-  it('succeeds when the code is valid', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const challengeAndVerify = vi.fn().mockResolvedValue({ data: {}, error: null })
-    vi.mocked(createSupabaseClient).mockResolvedValue(
-      mockMfaSupabase({ challengeAndVerify }) as never
-    )
-
-    const result = await verifyTotpEnrollment('factor-1', '123456')
-    expect(result).toEqual({ success: true })
-    expect(challengeAndVerify).toHaveBeenCalledWith({ factorId: 'factor-1', code: '123456' })
-  })
-
-  it('returns an error when the code is invalid', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const challengeAndVerify = vi.fn().mockResolvedValue({
-      data: null,
-      error: { message: 'invalid code' },
-    })
-    vi.mocked(createSupabaseClient).mockResolvedValue(
-      mockMfaSupabase({ challengeAndVerify }) as never
-    )
-
-    const result = await verifyTotpEnrollment('factor-1', '000000')
-    expect(result).toEqual({ error: expect.any(String) })
-  })
-})
-
-describe('unenrollTotpFactor', () => {
-  it('succeeds on a valid factor id', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const unenroll = vi.fn().mockResolvedValue({ data: { id: 'factor-1' }, error: null })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ unenroll }) as never)
-
-    const result = await unenrollTotpFactor('factor-1')
-    expect(result).toEqual({ success: true })
-    expect(unenroll).toHaveBeenCalledWith({ factorId: 'factor-1' })
-  })
-})
-
-describe('getTotpFactorStatus', () => {
-  it('reports enabled when a verified totp factor exists', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const listFactors = vi.fn().mockResolvedValue({
-      data: { totp: [{ id: 'factor-1', status: 'verified' }], phone: [] },
-      error: null,
-    })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ listFactors }) as never)
-
-    const result = await getTotpFactorStatus()
-    expect(result).toEqual({ enabled: true, factorId: 'factor-1' })
-  })
-
-  it('reports disabled when no verified totp factor exists', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const listFactors = vi.fn().mockResolvedValue({
-      data: { totp: [{ id: 'factor-1', status: 'unverified' }], phone: [] },
-      error: null,
-    })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ listFactors }) as never)
-
-    const result = await getTotpFactorStatus()
-    expect(result).toEqual({ enabled: false, factorId: null })
-  })
-
-  it('reports disabled when listFactors errors', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const listFactors = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } })
-    vi.mocked(createSupabaseClient).mockResolvedValue(mockMfaSupabase({ listFactors }) as never)
-
-    const result = await getTotpFactorStatus()
-    expect(result).toEqual({ enabled: false, factorId: null })
+    expect(await updateLanguage({ language: 'en' })).toEqual({ success: true })
+    expect(upsert).toHaveBeenCalled()
   })
 })

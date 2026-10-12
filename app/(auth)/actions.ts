@@ -20,12 +20,15 @@ import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/recovery'
 import {
   resolveMfaGate,
   mfaErrorMessage,
-  MFA_ATTEMPTS_COOKIE,
-  MFA_ATTEMPTS_COOKIE_OPTIONS,
   MFA_MAX_ATTEMPTS,
   MFA_VERIFY_PATH,
   POST_LOGIN_PATH,
 } from '@/lib/auth/mfa'
+import {
+  clearFailedAttempts,
+  readFailedAttempts,
+  recordFailedAttempt,
+} from '@/lib/auth/mfa-attempts'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -89,34 +92,37 @@ export async function signUp(input: SignupInput): Promise<{ error: string }> {
 /** Reasons a half-finished MFA login was ended. Shared with `login/page.tsx`'s notice map. */
 export type PendingSessionEndReason = 'mfa_unavailable' | 'mfa_attempts' | 'mfa_cancelled'
 
-/** Signs out, clears the attempt cookie, redirects to /login?error=<reason>. Never returns. */
+/**
+ * One line per security-relevant event on the challenge path, so an operator can tell a user
+ * fumbling their code from an account under a guessing attempt. Deliberately only the user id and
+ * a fixed reason: no code, no token, nothing that would make the log itself worth stealing.
+ */
+function logMfaEvent(event: string, details: Record<string, string | number | boolean>): void {
+  console.warn(`[auth] mfa ${event}`, details)
+}
+
+/** Signs out the current session and redirects to /login?error=<reason>. Never returns. */
 async function endPendingSession(
   supabase: Awaited<ReturnType<typeof createClient>>,
-  reason: PendingSessionEndReason
+  reason: PendingSessionEndReason,
+  userId?: string
 ): Promise<never> {
   try {
-    await supabase.auth.signOut()
+    // `scope: 'local'` explicitly. auth-js 2.112.2 defaults to `scope: 'global'`, which revokes
+    // every refresh token the user holds — so cancelling the challenge would sign them out of
+    // their phone and every other browser, and anyone with only the password could revoke all of
+    // a victim's sessions on demand by failing five codes. `signOutAllDevices()` is the one place
+    // that wants global, and it says so.
+    await supabase.auth.signOut({ scope: 'local' })
   } catch {
     // Best effort, matching `logOut`, which ignores the signOut result too. The redirect below
     // still strips the user from the app, and the gate keeps denying a session that survives,
     // so this cannot fail open.
   }
-  await clearFailedAttempts()
+  // The attempt counter is deliberately NOT cleared here: its TTL is the lockout window, and
+  // clearing it on teardown would let a locked-out requester reset the budget by signing in again.
+  logMfaEvent('pending session ended', { reason, userId: userId ?? 'unknown' })
   return redirect(`/login?error=${reason}`)
-}
-
-/** Reads fd_mfa_attempts, increments, writes back, returns the new count. NaN is treated as 0. */
-async function bumpFailedAttempts(): Promise<number> {
-  const cookieStore = await cookies()
-  const current = Number.parseInt(cookieStore.get(MFA_ATTEMPTS_COOKIE)?.value ?? '', 10)
-  const next = (Number.isNaN(current) ? 0 : current) + 1
-  cookieStore.set(MFA_ATTEMPTS_COOKIE, String(next), MFA_ATTEMPTS_COOKIE_OPTIONS)
-  return next
-}
-
-async function clearFailedAttempts(): Promise<void> {
-  const cookieStore = await cookies()
-  cookieStore.delete(MFA_ATTEMPTS_COOKIE)
 }
 
 export async function logIn(input: LoginInput): Promise<{ error: string }> {
@@ -132,8 +138,9 @@ export async function logIn(input: LoginInput): Promise<{ error: string }> {
     return { error: friendlyAuthError(error.message) }
   }
 
-  // A new pending login starts with a clean attempt budget (the counter is per-pending-login).
-  await clearFailedAttempts()
+  // No attempt-counter reset here. A successful first factor is exactly what an attacker holding
+  // the password already has, so resetting on it handed out an unlimited supply of code guesses.
+  // The counter is cleared only by a code that actually verifies, and otherwise expires on its own.
 
   // Every terminal branch below is `return`ed deliberately: the repo's test mock for
   // `next/navigation` is a non-throwing `vi.fn()`, so a bare `redirect()` would fall through to
@@ -156,47 +163,88 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
   const mfa = await resolveMfaGate(supabase)
 
   if (mfa.state === 'unauthenticated') {
-    await clearFailedAttempts()
     return redirect('/login?error=session_expired')
   }
   if (mfa.state === 'satisfied') return redirect(POST_LOGIN_PATH)
   if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
 
+  // The budget is checked before Supabase is touched, so a locked-out requester cannot spend
+  // further attempts just by posting again.
+  if ((await readFailedAttempts(mfa.userId)) >= MFA_MAX_ATTEMPTS) {
+    return endPendingSession(supabase, 'mfa_attempts', mfa.userId)
+  }
+
   // challenge() + verify() rather than challengeAndVerify(), so a missing factor (enrollment
-  // deleted mid-flow) is distinguishable from a wrong code.
-  const challenge = await supabase.auth.mfa.challenge({ factorId: mfa.factorId })
+  // deleted mid-flow) is distinguishable from a wrong code. Both calls are wrapped: auth-js
+  // rethrows anything that is not an `AuthError` (a transport failure, a malformed response), and
+  // an unhandled rejection here leaves the form with no message and no way forward.
+  let challenge
+  try {
+    challenge = await supabase.auth.mfa.challenge({ factorId: mfa.factorId })
+  } catch (thrown) {
+    console.error('[auth] mfa challenge threw:', thrown)
+    return { error: 'Could not reach two-factor sign-in. Please try again.' }
+  }
+
   if (challenge.error) {
     const mapped = mfaErrorMessage(challenge.error)
     if (mapped.fatal) {
-      console.error('[auth] mfa challenge unavailable:', challenge.error.code)
-      return endPendingSession(supabase, 'mfa_unavailable')
+      logMfaEvent('challenge unavailable', { userId: mfa.userId, code: challenge.error.code ?? '' })
+      return endPendingSession(supabase, 'mfa_unavailable', mfa.userId)
     }
-    return { error: mapped.message }
+    // A non-fatal, non-throttled challenge failure counts against the budget as well, otherwise
+    // the challenge call is an unbounded loop that never advances the counter.
+    return countFailure(supabase, mfa.userId, mapped)
   }
 
-  const verified = await supabase.auth.mfa.verify({
-    factorId: mfa.factorId,
-    challengeId: challenge.data.id,
-    code: parsed.data.code,
-  })
+  let verified
+  try {
+    verified = await supabase.auth.mfa.verify({
+      factorId: mfa.factorId,
+      challengeId: challenge.data.id,
+      code: parsed.data.code,
+    })
+  } catch (thrown) {
+    console.error('[auth] mfa verify threw:', thrown)
+    return { error: 'Could not reach two-factor sign-in. Please try again.' }
+  }
 
   if (verified.error) {
     const mapped = mfaErrorMessage(verified.error)
     if (mapped.fatal) {
-      console.error('[auth] mfa challenge unavailable:', verified.error.code)
-      return endPendingSession(supabase, 'mfa_unavailable')
+      logMfaEvent('challenge unavailable', { userId: mfa.userId, code: verified.error.code ?? '' })
+      return endPendingSession(supabase, 'mfa_unavailable', mfa.userId)
     }
-    // Supabase's own throttling is not the user failing, so it must not advance the counter:
-    // "wait a few minutes" followed immediately by a forced sign-out reads as contradictory.
-    if (mapped.throttled) return { error: mapped.message }
-    if ((await bumpFailedAttempts()) >= MFA_MAX_ATTEMPTS) {
-      return endPendingSession(supabase, 'mfa_attempts')
-    }
+    return countFailure(supabase, mfa.userId, mapped)
+  }
+
+  await clearFailedAttempts(mfa.userId)
+  logMfaEvent('verified', { userId: mfa.userId })
+  return redirect(POST_LOGIN_PATH)
+}
+
+/**
+ * Records one failed code against the user's budget and either returns the retry message or ends
+ * the session on the last attempt. Never returns normally once the budget is spent.
+ */
+async function countFailure(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  mapped: ReturnType<typeof mfaErrorMessage>
+): Promise<{ error: string }> {
+  // Supabase's own throttling is not the user failing, so it must not advance the counter:
+  // "wait a few minutes" followed immediately by a forced sign-out reads as contradictory.
+  if (mapped.throttled) {
+    logMfaEvent('throttled by supabase', { userId })
     return { error: mapped.message }
   }
 
-  await clearFailedAttempts()
-  return redirect(POST_LOGIN_PATH)
+  const attempts = await recordFailedAttempt(userId)
+  logMfaEvent('failed attempt', { userId, attempts })
+  if (attempts >= MFA_MAX_ATTEMPTS) {
+    return endPendingSession(supabase, 'mfa_attempts', userId)
+  }
+  return { error: mapped.message }
 }
 
 /** The escape hatch from `/verify`: ends the pending session and returns to /login. */

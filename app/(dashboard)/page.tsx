@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getCurrentOrgAndUser, loginPathForDeniedSession } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 import { getOverviewMetrics, getCallStats, getDateRange, getPriorDateRange } from '@/lib/data/analytics'
 import { getConversationsForOrg } from '@/lib/data/conversations'
@@ -8,7 +8,7 @@ import { HomeClient } from './home-client'
 
 export default async function HomePage() {
   const context = await getCurrentOrgAndUser()
-  if (!context) redirect('/login')
+  if (!context) redirect(await loginPathForDeniedSession())
 
   const agents = await getAgentsForOrg(context.org.id)
   const { startDate, endDate } = getDateRange('7d')

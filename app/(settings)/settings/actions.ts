@@ -10,15 +10,14 @@ import {
   type UpdateFeatureSettingsInput,
   type UpdateLanguageInput,
 } from '@/lib/validations/settings'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 type ActionResult = { error: string } | { success: true }
 
 async function getOrgId(
   supabase: Awaited<ReturnType<typeof createSupabaseClient>>
 ): Promise<{ error: string } | { organizationId: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to do this.' }
@@ -167,6 +166,10 @@ export async function enrollTotpFactor(): Promise<
   { error: string } | { enrollment: TotpEnrollment }
 > {
   const supabase = await createSupabaseClient()
+  if (!(await getAssuredUser(supabase))) {
+    return { error: 'You must be signed in to do this.' }
+  }
+
   const { data, error } = await supabase.auth.mfa.enroll({ factorType: 'totp' })
 
   if (error) {
@@ -187,6 +190,12 @@ export async function verifyTotpEnrollment(
   code: string
 ): Promise<ActionResult> {
   const supabase = await createSupabaseClient()
+  // Reachable by a session with no verified factor yet — that is what enrollment is — so the gate
+  // reads `satisfied` here and this guard is about the un-authenticated case.
+  if (!(await getAssuredUser(supabase))) {
+    return { error: 'You must be signed in to do this.' }
+  }
+
   const { error } = await supabase.auth.mfa.challengeAndVerify({ factorId, code })
 
   if (error) {
@@ -198,6 +207,15 @@ export async function verifyTotpEnrollment(
 
 export async function unenrollTotpFactor(factorId: string): Promise<ActionResult> {
   const supabase = await createSupabaseClient()
+  // The one action that can remove a user's second factor, so it does not inherit its security
+  // from the proxy. GoTrue very likely refuses an `aal1` unenroll of a verified factor, but
+  // "very likely" is not a control: a password-only session must be refused here, in code we own.
+  // Consequence worth knowing: a user who has lost their authenticator cannot reach this either,
+  // which is the recovery-path gap tracked separately — it is not solved by loosening this guard.
+  if (!(await getAssuredUser(supabase))) {
+    return { error: 'You must be signed in to do this.' }
+  }
+
   const { error } = await supabase.auth.mfa.unenroll({ factorId })
 
   if (error) {
@@ -212,6 +230,10 @@ export async function getTotpFactorStatus(): Promise<{
   factorId: string | null
 }> {
   const supabase = await createSupabaseClient()
+  if (!(await getAssuredUser(supabase))) {
+    return { enabled: false, factorId: null }
+  }
+
   const { data, error } = await supabase.auth.mfa.listFactors()
 
   if (error || !data) {
@@ -224,9 +246,7 @@ export async function getTotpFactorStatus(): Promise<{
 
 export async function sendPasswordResetEmail(): Promise<ActionResult> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user?.email) {
     return { error: 'Could not determine your email address.' }

@@ -8,6 +8,7 @@ import {
   getAssistantChatMessages,
   titleFromFirstMessage,
 } from '@/lib/data/assistant-chats'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 const legacyMessagesSchema = z
   .array(
@@ -28,9 +29,7 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return Response.json({ error: 'You must be signed in to use the assistant.' }, { status: 401 })

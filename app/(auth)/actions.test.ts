@@ -23,6 +23,14 @@ vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => cookieStore),
 }))
 
+// The attempt counter is Redis-backed server state, so the unit tests drive it directly rather
+// than through a cookie the requester could have forged.
+vi.mock('@/lib/auth/mfa-attempts', () => ({
+  readFailedAttempts: vi.fn(async () => 0),
+  recordFailedAttempt: vi.fn(async () => 1),
+  clearFailedAttempts: vi.fn(async () => {}),
+}))
+
 describe('signUp', () => {
   it('returns validation error for invalid email', async () => {
     const result = await signUp({
@@ -190,6 +198,17 @@ async function useAuthClient(options: MfaClientOptions) {
   return mocks
 }
 
+async function attemptMocks() {
+  return await import('@/lib/auth/mfa-attempts')
+}
+
+async function resetAttemptMocks() {
+  const { readFailedAttempts, recordFailedAttempt, clearFailedAttempts } = await attemptMocks()
+  vi.mocked(readFailedAttempts).mockReset().mockResolvedValue(0)
+  vi.mocked(recordFailedAttempt).mockReset().mockResolvedValue(1)
+  vi.mocked(clearFailedAttempts).mockReset().mockResolvedValue(undefined)
+}
+
 describe('logIn', () => {
   beforeEach(async () => {
     const { redirect } = await import('next/navigation')
@@ -197,6 +216,7 @@ describe('logIn', () => {
     cookieStore.delete.mockClear()
     cookieStore.set.mockClear()
     cookieStore.get.mockReset()
+    await resetAttemptMocks()
   })
 
   it('returns friendly copy for bad credentials and does not redirect', async () => {
@@ -230,16 +250,22 @@ describe('logIn', () => {
     expect(redirect).toHaveBeenCalledTimes(1)
   })
 
-  it('clears the attempt counter when a new pending login begins', async () => {
+  it('does not refill the attempt budget on a fresh password sign-in', async () => {
+    // The whole point of the server-side counter: an attacker holding the password could
+    // previously clear their own failure count just by signing in again.
+    const { clearFailedAttempts } = await attemptMocks()
     await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1' })
 
     await logIn({ email: 'owner@example.com', password: 'password123' })
 
-    expect(cookieStore.delete).toHaveBeenCalledWith('fd_mfa_attempts')
+    expect(clearFailedAttempts).not.toHaveBeenCalled()
+    expect(cookieStore.set).not.toHaveBeenCalled()
+    expect(cookieStore.delete).not.toHaveBeenCalled()
   })
 
   it('signs out and reports unavailability when the assurance level cannot be read', async () => {
     const { redirect } = await import('next/navigation')
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { signOut } = await useAuthClient({
       factors: [totpFactor],
       aalError: true,
@@ -250,6 +276,29 @@ describe('logIn', () => {
     expect(signOut).toHaveBeenCalled()
     expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_unavailable')
     expect(redirect).toHaveBeenCalledTimes(1)
+    consoleWarn.mockRestore()
+  })
+})
+
+describe('endPendingSession scope', () => {
+  beforeEach(async () => {
+    const { redirect } = await import('next/navigation')
+    vi.mocked(redirect).mockClear()
+    await resetAttemptMocks()
+  })
+
+  it('signs out of this session only, never every device', async () => {
+    // auth-js 2.112.2 defaults to `scope: 'global'`, which revokes every refresh token the user
+    // holds. A bare signOut() here meant cancelling the challenge logged the user out of their
+    // phone, and that anyone with only the password could revoke all of a victim's sessions by
+    // deliberately failing five codes.
+    const consoleWarn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { signOut } = await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1' })
+
+    await cancelMfaChallenge()
+
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+    consoleWarn.mockRestore()
   })
 })
 
@@ -260,6 +309,8 @@ describe('verifyMfaChallenge', () => {
     cookieStore.delete.mockClear()
     cookieStore.set.mockClear()
     cookieStore.get.mockReset()
+    await resetAttemptMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
   it('rejects a malformed code without calling Supabase', async () => {
@@ -286,13 +337,15 @@ describe('verifyMfaChallenge', () => {
       challengeId: 'challenge-9',
       code: '123456',
     })
-    expect(cookieStore.delete).toHaveBeenCalledWith('fd_mfa_attempts')
+    const { clearFailedAttempts } = await attemptMocks()
+    expect(clearFailedAttempts).toHaveBeenCalledWith('u1')
     expect(redirect).toHaveBeenNthCalledWith(1, '/')
     expect(redirect).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects a wrong code, stays put, and bumps the counter', async () => {
+  it('rejects a wrong code, stays put, and counts it against the server-side budget', async () => {
     const { redirect } = await import('next/navigation')
+    const { recordFailedAttempt } = await attemptMocks()
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
     const verify = vi
       .fn()
@@ -305,12 +358,76 @@ describe('verifyMfaChallenge', () => {
       error: 'That code is not right. Check your authenticator app and try again.',
     })
     expect(redirect).not.toHaveBeenCalled()
-    expect(cookieStore.set).toHaveBeenCalledWith(
-      'fd_mfa_attempts',
-      '1',
-      expect.objectContaining({ httpOnly: true })
-    )
+    // Keyed by the user id the server resolved, and never written to a cookie the client controls.
+    expect(recordFailedAttempt).toHaveBeenCalledWith('u1')
+    expect(cookieStore.set).not.toHaveBeenCalled()
   })
+
+  it('refuses to challenge at all once the budget is spent, whatever the request carries', async () => {
+    // The hole this replaces: the count lived in `fd_mfa_attempts`, so omitting the cookie made
+    // `Number.parseInt` yield NaN and restarted the count at 1 on every request.
+    const { redirect } = await import('next/navigation')
+    const { readFailedAttempts } = await attemptMocks()
+    vi.mocked(readFailedAttempts).mockResolvedValue(5)
+    const challenge = vi.fn()
+    const verify = vi.fn()
+    const { signOut } = await useAuthClient({
+      factors: [totpFactor],
+      currentLevel: 'aal1',
+      challenge,
+      verify,
+    })
+
+    await verifyMfaChallenge({ code: '000000' })
+
+    expect(challenge).not.toHaveBeenCalled()
+    expect(verify).not.toHaveBeenCalled()
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+    expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_attempts')
+  })
+
+  it('counts a non-fatal challenge failure too, so that call is not an unbounded loop', async () => {
+    const { recordFailedAttempt } = await attemptMocks()
+    const challenge = vi
+      .fn()
+      .mockResolvedValue({
+        data: null,
+        error: { code: 'something_new', status: 400, message: 'nope' },
+      })
+    const verify = vi.fn()
+    await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1', challenge, verify })
+
+    const result = await verifyMfaChallenge({ code: '123456' })
+
+    expect(result).toEqual({ error: 'Could not verify that code. Please try again.' })
+    expect(verify).not.toHaveBeenCalled()
+    expect(recordFailedAttempt).toHaveBeenCalledWith('u1')
+  })
+
+  it.each(['challenge', 'verify'] as const)(
+    'returns a message instead of rejecting when %s throws',
+    async (which) => {
+      // Supabase rethrows anything that is not an AuthError. An unhandled rejection here left the
+      // form disabled with no message and no way forward but a reload.
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      const challenge =
+        which === 'challenge'
+          ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+          : vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
+      const verify =
+        which === 'verify'
+          ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+          : vi.fn().mockResolvedValue({ data: {}, error: null })
+      await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1', challenge, verify })
+
+      const result = await verifyMfaChallenge({ code: '123456' })
+
+      expect(result).toEqual({
+        error: 'Could not reach two-factor sign-in. Please try again.',
+      })
+      consoleError.mockRestore()
+    }
+  )
 
   it('reports an expired challenge with copy distinct from the wrong-code copy', async () => {
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
@@ -336,12 +453,14 @@ describe('verifyMfaChallenge', () => {
     expect(result).toEqual({
       error: 'Too many attempts. Please wait a few minutes and try again.',
     })
-    expect(cookieStore.set).not.toHaveBeenCalled()
+    const { recordFailedAttempt } = await attemptMocks()
+    expect(recordFailedAttempt).not.toHaveBeenCalled()
   })
 
   it('ends the pending session on the fifth counted failure', async () => {
     const { redirect } = await import('next/navigation')
-    cookieStore.get.mockReturnValue({ value: '4' })
+    const { recordFailedAttempt, clearFailedAttempts } = await attemptMocks()
+    vi.mocked(recordFailedAttempt).mockResolvedValue(5)
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
     const verify = vi
       .fn()
@@ -355,8 +474,10 @@ describe('verifyMfaChallenge', () => {
 
     await verifyMfaChallenge({ code: '000000' })
 
-    expect(signOut).toHaveBeenCalled()
-    expect(cookieStore.delete).toHaveBeenCalledWith('fd_mfa_attempts')
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
+    // The counter survives the teardown on purpose: its TTL is the lockout window, so clearing it
+    // here would let the requester reset the budget by signing in again.
+    expect(clearFailedAttempts).not.toHaveBeenCalled()
     expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_attempts')
     expect(redirect).toHaveBeenCalledTimes(1)
   })
@@ -424,16 +545,17 @@ describe('cancelMfaChallenge', () => {
     const { redirect } = await import('next/navigation')
     vi.mocked(redirect).mockClear()
     cookieStore.delete.mockClear()
+    await resetAttemptMocks()
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
 
-  it('signs the pending session out, clears the counter, and returns to login', async () => {
+  it('signs the pending session out locally and returns to login', async () => {
     const { redirect } = await import('next/navigation')
     const { signOut } = await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1' })
 
     await cancelMfaChallenge()
 
-    expect(signOut).toHaveBeenCalled()
-    expect(cookieStore.delete).toHaveBeenCalledWith('fd_mfa_attempts')
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
     expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_cancelled')
     expect(redirect).toHaveBeenCalledTimes(1)
   })

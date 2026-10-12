@@ -2,6 +2,7 @@
 
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { submitFeedbackSchema, type SubmitFeedbackInput } from '@/lib/validations/feedback'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function submitFeedback(
   input: SubmitFeedbackInput
@@ -12,9 +13,7 @@ export async function submitFeedback(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to send feedback.' }

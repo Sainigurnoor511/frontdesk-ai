@@ -33,6 +33,7 @@ import {
   type ApplyBookingPageTemplateInput,
 } from '@/lib/validations/booking-page-config'
 import { z } from 'zod'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 type ActionResult = { error: string } | { success: true }
 
@@ -42,9 +43,7 @@ const BOOKING_PAGE_CONFIG_COLUMNS =
 async function getOrgId(
   supabase: Awaited<ReturnType<typeof createSupabaseClient>>
 ): Promise<{ error: string } | { organizationId: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to do this.' }
@@ -153,9 +152,7 @@ async function saveBookingPageConfigSection(
     .maybeSingle()
 
   if (fullRow) {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
+    const user = await getAssuredUser(supabase)
 
     // Version history is best-effort — a failed snapshot insert never fails
     // the actual settings save that already succeeded above.

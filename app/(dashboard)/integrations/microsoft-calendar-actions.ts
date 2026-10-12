@@ -8,6 +8,7 @@ import {
   MICROSOFT_CALENDAR_SLUG,
   saveMicrosoftCalendarConnection,
 } from '@/lib/integrations/microsoft-calendar'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 function encodeOAuthState(input: { organizationId: string; userId: string }): string {
   return Buffer.from(JSON.stringify(input)).toString('base64url')
@@ -32,9 +33,7 @@ function decodeOAuthState(state: string): { organizationId: string; userId: stri
 
 export async function initiateMicrosoftCalendarOAuth(): Promise<{ error: string } | { url: string }> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to connect Microsoft Calendar.' }
@@ -66,9 +65,7 @@ export async function handleMicrosoftCalendarCallback(
   if (!parsedState) return { error: 'Invalid OAuth state.' }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user || user.id !== parsedState.userId) {
     return { error: 'Authentication mismatch.' }
@@ -101,9 +98,7 @@ export async function handleMicrosoftCalendarCallback(
 
 export async function disconnectMicrosoftCalendar(): Promise<{ error: string } | { success: true }> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to disconnect Microsoft Calendar.' }

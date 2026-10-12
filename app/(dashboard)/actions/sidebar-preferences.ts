@@ -2,15 +2,14 @@
 
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function setSidebarItemHidden(
   url: string,
   hidden: boolean
 ): Promise<{ error: string } | { success: true }> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update sidebar preferences.' }

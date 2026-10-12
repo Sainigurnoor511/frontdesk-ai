@@ -3,12 +3,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS } from '@/lib/auth/recovery'
-import {
-  resolveMfaGate,
-  MFA_ATTEMPTS_COOKIE,
-  MFA_VERIFY_PATH,
-  POST_LOGIN_PATH,
-} from '@/lib/auth/mfa'
+import { resolveMfaGate, MFA_VERIFY_PATH, POST_LOGIN_PATH } from '@/lib/auth/mfa'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -80,7 +75,6 @@ export async function GET(request: NextRequest) {
   // sign-ins are challenged exactly like password sign-ins: the gate is a property of the
   // session, not of the credential type, so exempting OAuth would be a one-click bypass.
   let destination: string = POST_LOGIN_PATH
-  let isPendingMfa = false
   if (isRecovery) {
     // Recovery wins. Not a bypass: /reset-password is gate-exempt so the flow still works, and
     // `updatePassword` ends at '/', where the proxy sees a pending session and sends them to
@@ -90,7 +84,6 @@ export async function GET(request: NextRequest) {
     const mfa = await resolveMfaGate(supabase)
     if (mfa.state === 'pending' || mfa.state === 'indeterminate') {
       destination = MFA_VERIFY_PATH
-      isPendingMfa = true
     }
   }
 
@@ -102,10 +95,8 @@ export async function GET(request: NextRequest) {
     response.headers.set(key, value)
   }
 
-  if (isPendingMfa) {
-    // A fresh pending login starts with a clean attempt budget.
-    response.cookies.delete(MFA_ATTEMPTS_COOKIE)
-  }
+  // No attempt-counter reset for a pending OAuth sign-in: the counter is server-side state keyed
+  // by user id (`lib/auth/mfa-attempts.ts`) and a fresh first factor must not refill the budget.
 
   if (isRecovery) {
     response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', {

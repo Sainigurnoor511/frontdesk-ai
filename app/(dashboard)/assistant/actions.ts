@@ -7,12 +7,11 @@ import {
   getAssistantChatMessages,
   getAssistantChatsForUser,
 } from '@/lib/data/assistant-chats'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function listAssistantChats() {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return { error: 'You must be signed in.' as const }
 
@@ -31,9 +30,7 @@ export async function loadAssistantChat(chatId: string) {
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return { error: 'You must be signed in.' as const }
 
@@ -71,9 +68,7 @@ export async function removeAssistantChat(chatId: string) {
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return { error: 'You must be signed in.' as const }
 

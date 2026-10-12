@@ -1,15 +1,11 @@
 import { createClient } from '@/lib/supabase/server'
-import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function getHiddenSidebarItems(organizationId: string): Promise<string[]> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return []
-  // A pending-MFA session is not signed in.
-  if (!(await isMfaSatisfiedForUser(supabase, user))) return []
 
   const { data } = await supabase
     .from('member_sidebar_preferences')

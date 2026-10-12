@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
+import { getAssuredUser, resolveMfaGate } from '@/lib/auth/mfa'
 
 export type CurrentOrgAndUser = {
   user: { id: string; email: string; avatarUrl: string | null }
@@ -9,15 +9,9 @@ export type CurrentOrgAndUser = {
 
 export async function getCurrentOrgAndUser(): Promise<CurrentOrgAndUser | null> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return null
-
-  // A session that still owes a TOTP code is not an authenticated session. Returning null routes
-  // it into the same path every caller already has for "not signed in".
-  if (!(await isMfaSatisfiedForUser(supabase, user))) return null
 
   const { data: member } = await supabase
     .from('members')
@@ -39,4 +33,20 @@ export async function getCurrentOrgAndUser(): Promise<CurrentOrgAndUser | null> 
     org: { id: org.id, name: org.name },
     role: member.role,
   }
+}
+
+/**
+ * Where to send a caller that `getCurrentOrgAndUser()` just refused.
+ *
+ * `null` from that function means one of three things, and a bare `/login` reads as "your password
+ * failed" for all of them. Resolving the gate once — only on the deny path, so it costs nothing in
+ * the normal case — distinguishes a session that still owes its code from one that is simply
+ * signed out, and `/login` has copy for both.
+ */
+export async function loginPathForDeniedSession(): Promise<string> {
+  const supabase = await createClient()
+  const gate = await resolveMfaGate(supabase)
+  return gate.state === 'pending' || gate.state === 'indeterminate'
+    ? '/login?error=mfa_required'
+    : '/login'
 }

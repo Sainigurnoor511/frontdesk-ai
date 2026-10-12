@@ -26,7 +26,12 @@ async function mockUpdateSession(mfa: MfaGate) {
   return response
 }
 
-const PENDING: MfaGate = { state: 'pending', factorId: 'factor-1', email: 'owner@example.com' }
+const PENDING: MfaGate = {
+  state: 'pending',
+  userId: 'u1',
+  factorId: 'factor-1',
+  email: 'owner@example.com',
+}
 
 function get(pathname: string) {
   return new NextRequest(new URL(pathname, 'https://app.example.com'))
@@ -51,7 +56,8 @@ describe('proxy — pending MFA gate', () => {
 
       const response = await proxy(get(pathname))
 
-      expect(response.status).toBe(307)
+      // 303, not 307: a POST document navigation must follow up with a GET.
+      expect(response.status).toBe(303)
       expect(response.headers.get('location')).toBe('https://app.example.com/verify')
     }
   )
@@ -61,7 +67,7 @@ describe('proxy — pending MFA gate', () => {
 
     const response = await proxy(get('/'))
 
-    expect(response.status).toBe(307)
+    expect(response.status).toBe(303)
     expect(response.headers.get('location')).toBe('https://app.example.com/verify')
   })
 
@@ -72,10 +78,36 @@ describe('proxy — pending MFA gate', () => {
 
       const response = await proxy(serverAction(pathname))
 
-      expect(response.status).toBe(307)
-      expect(response.headers.get('location')).toBe('https://app.example.com/verify')
+      // Not a redirect status: a 307 made the browser re-POST the Next-Action header to /verify,
+      // where the action does not exist, and the tab showed an action-resolution error. This is
+      // the shape Next's own action client follows into a navigation.
+      expect(response.headers.get('x-action-redirect')).toBe('/verify;replace')
+      expect(response.headers.get('location')).toBeNull()
+      expect(response.headers.get('Content-Type')).toBe('text/plain')
     }
   )
+
+  it('answers a gated API fetch with 401 JSON rather than an HTML redirect', async () => {
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(get('/api/assistant'))
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('location')).toBeNull()
+    await expect(response.json()).resolves.toEqual({
+      error: 'Two-factor verification required.',
+      verifyPath: '/verify',
+    })
+  })
+
+  it('keeps the no-store headers on the API denial, so no proxy caches it', async () => {
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(get('/api/conversations/abc/recording'))
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('Cache-Control')).toContain('no-store')
+  })
 
   it('carries refreshed auth cookies and no-store headers onto the redirect', async () => {
     await mockUpdateSession(PENDING)
@@ -95,7 +127,7 @@ describe('proxy — pending MFA gate', () => {
       const response = await proxy(get(pathname))
 
       expect(response).toBe(passthrough)
-      expect(response.status).not.toBe(307)
+      expect(response.status).not.toBe(303)
     }
   )
 
@@ -120,6 +152,14 @@ describe('proxy — pending MFA gate', () => {
 
     expect(first.headers.get('location')).toBe('https://app.example.com/verify')
     expect(second.headers.get('location')).toBe('https://app.example.com/verify')
+  })
+
+  it('carries refreshed cookies onto an action denial too', async () => {
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(serverAction('/conversations'))
+
+    expect(response.cookies.get('sb-access-token')?.value).toBe('refreshed-token')
   })
 })
 

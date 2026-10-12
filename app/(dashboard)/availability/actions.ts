@@ -8,12 +8,11 @@ import {
   type BusinessHoursInput,
   type CreateExceptionInput,
 } from '@/lib/validations/availability'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 async function getOrgIdForCurrentUser(): Promise<{ orgId: string } | { error: string }> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to do this.' }

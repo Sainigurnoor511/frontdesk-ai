@@ -8,6 +8,7 @@ import {
   type CreateClientInput,
   type UpdateClientInput,
 } from '@/lib/validations/client'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function createClient(
   input: CreateClientInput
@@ -18,9 +19,7 @@ export async function createClient(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to create a client.' }
@@ -61,9 +60,7 @@ export async function updateClient(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update a client.' }
@@ -103,9 +100,7 @@ export async function deleteClient(
   id: string
 ): Promise<{ error: string } | { success: true }> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to delete a client.' }

@@ -31,6 +31,7 @@ import {
   type CreateTimeOffInput,
   type UpdateAppointmentInput,
 } from '@/lib/validations/calendar'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function createAppointment(
   input: CreateAppointmentInput
@@ -41,9 +42,7 @@ export async function createAppointment(
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to create an appointment.' }
@@ -102,9 +101,7 @@ export async function cancelAppointment(
   id: string
 ): Promise<{ error: string } | { success: true }> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to cancel an appointment.' }
@@ -153,9 +150,7 @@ export async function updateAppointment(
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update an appointment.' }
@@ -207,9 +202,7 @@ export async function createTimeOff(
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to add time off.' }
@@ -247,9 +240,7 @@ export async function deleteTimeOff(
   id: string
 ): Promise<{ error: string } | { success: true }> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to delete time off.' }

@@ -11,6 +11,7 @@ import type { PendingSessionEndReason } from '@/app/(auth)/actions'
 type LoginNoticeCode =
   | PendingSessionEndReason
   | 'session_expired'
+  | 'mfa_required'
   | 'missing_code'
   | 'oauth_failed'
   | 'org_setup_failed'
@@ -26,11 +27,19 @@ const LOGIN_NOTICES = {
     tone: 'danger',
     text: 'Two-factor sign-in is unavailable right now. Please try again later.',
   },
+  // The lockout is a server-side window keyed by user id, so signing in again does not refill the
+  // budget — the copy has to say "wait", not "try again now".
   mfa_attempts: {
     tone: 'danger',
-    text: 'Too many incorrect codes. Sign in again to get a new code prompt.',
+    text: 'Too many incorrect codes. Please wait a few minutes before trying again.',
   },
   session_expired: { tone: 'danger', text: 'Your sign-in session expired. Please sign in again.' },
+  // The second enforcement layer (a data helper, not the proxy) refused a session that still owes
+  // its code. Without this the user landed on a bare form and assumed the password was wrong.
+  mfa_required: {
+    tone: 'neutral',
+    text: 'Sign in again and enter your authentication code to continue.',
+  },
   // Cancelling is a deliberate user action, not an error, so it gets the neutral tone.
   mfa_cancelled: { tone: 'neutral', text: "You're signed out. Sign in to continue." },
 } as const satisfies Record<LoginNoticeCode, { tone: 'danger' | 'neutral'; text: string }>

@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getCurrentOrgAndUser, loginPathForDeniedSession } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 
 export const metadata = { title: 'Set up your receptionist' }
@@ -8,7 +8,7 @@ export default async function OnboardingLayout({ children }: { children: React.R
   const context = await getCurrentOrgAndUser()
 
   if (!context) {
-    redirect('/login')
+    redirect(await loginPathForDeniedSession())
   }
 
   const agents = await getAgentsForOrg(context.org.id)

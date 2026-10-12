@@ -28,6 +28,7 @@ import {
   type ExecuteVoiceToolInput,
   type LinkAssemblyAiSessionInput,
 } from '@/lib/validations/voice'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 /** Seconds before an empty room is auto-deleted by LiveKit (safety net). */
 const ROOM_EMPTY_TIMEOUT_SECONDS = 30
@@ -42,9 +43,7 @@ async function resolveCallerOrganization(): Promise<
   { error: string } | { userId: string; organizationId: string }
 > {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to start a call.' }

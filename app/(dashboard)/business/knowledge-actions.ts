@@ -14,15 +14,14 @@ import {
 } from '@/lib/validations/knowledge'
 import { knowledgeIndexingQueue } from '@/lib/queue/queues/knowledge-indexing'
 import { isSupportedKnowledgeFileName } from '@/lib/knowledge/supported-files'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 type ActionResult = { error: string } | { success: true }
 
 async function getOrgId(
   supabase: Awaited<ReturnType<typeof createSupabaseClient>>
 ): Promise<{ error: string } | { organizationId: string }> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to do this.' }

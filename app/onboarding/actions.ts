@@ -6,6 +6,7 @@ import { scanWebsiteQueue } from '@/lib/queue/queues/scan-website'
 import type { ExtractedBusinessInfo } from '@/lib/providers/llm/types'
 import { defaultVoiceIdForLanguage } from '@/lib/data/voice-catalog'
 import { redirect } from 'next/navigation'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function startWebsiteScan(
   input: ScanRequestInput
@@ -13,6 +14,13 @@ export async function startWebsiteScan(
   const parsed = scanRequestSchema.safeParse(input)
   if (!parsed.success) {
     return { error: parsed.error.issues[0].message }
+  }
+
+  // Before the service-role insert and the queue job. This action had no caller check, and
+  // service-role writes bypass RLS entirely, so the proxy was the only thing standing between a
+  // password-only session and an unbounded supply of crawler jobs.
+  if (!(await getAssuredUser(await createClient()))) {
+    return { error: 'You must be signed in to scan a website.' }
   }
 
   const serviceClient = createServiceRoleClient()
@@ -40,6 +48,10 @@ export async function getScanJobStatus(scanJobId: string): Promise<
   | { error: string }
 > {
   const supabase = await createClient()
+  if (!(await getAssuredUser(supabase))) {
+    return { error: 'Scan job not found.' }
+  }
+
   const { data: job, error } = await supabase
     .from('agent_scan_jobs')
     .select('status, extracted_data, error_message')
@@ -64,9 +76,7 @@ export async function createAgent(input: CreateAgentInput): Promise<{ error: str
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to create an agent.' }

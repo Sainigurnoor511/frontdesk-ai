@@ -41,6 +41,7 @@ import { normalizeLanguageCode, type VoiceCatalogEntry } from '@/lib/data/voice-
 import { provisionTwilioNumber } from '@/lib/integrations/twilio'
 import type { BlockedPhoneNumber, PhoneNumber } from '@/lib/data/phone-numbers'
 import type { AgentRule } from '@/lib/data/agent-rules'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 const MAX_INSTRUCTIONS_LENGTH = 8000
 
@@ -54,9 +55,7 @@ export async function updateAgentGeneral(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update this receptionist.' }
@@ -104,9 +103,7 @@ export async function updateAgentAdvancedSettings(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update this receptionist.' }
@@ -173,6 +170,10 @@ export async function generateAdditionalInstructions(
 ): Promise<{ error: string } | { text: string }> {
   if (!prompt.trim()) {
     return { error: 'Describe the type of agent you would like to configure.' }
+  }
+
+  if (!(await getAssuredUser(await createSupabaseClient()))) {
+    return { error: 'You must be signed in to generate instructions.' }
   }
 
   const client = new Groq({ apiKey: process.env.GROQ_API_KEY! })
@@ -279,6 +280,8 @@ export async function searchVoices(
   query: string,
   language?: string
 ): Promise<VoiceSearchResult[]> {
+  if (!(await getAssuredUser(await createSupabaseClient()))) return []
+
   const params = new URLSearchParams({ title: query, page_size: '20' })
   const response = await fetch(`https://api.fish.audio/model?${params}`, {
     headers: { Authorization: `Bearer ${process.env.FISH_AUDIO_API_KEY}` },
@@ -318,9 +321,7 @@ export async function updateAgentCallSettings(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update this receptionist.' }
@@ -366,9 +367,7 @@ export async function renameAgent(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) {
     return { error: 'You must be signed in to update this receptionist.' }
   }
@@ -403,9 +402,7 @@ export async function setDefaultAgent(agentId: string): Promise<{ error: string 
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) {
     return { error: 'You must be signed in to switch receptionists.' }
   }
@@ -453,9 +450,7 @@ export async function duplicateAgent(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) {
     return { error: 'You must be signed in to create a receptionist.' }
   }
@@ -539,9 +534,7 @@ export async function deleteAgent(agentId: string): Promise<{ error: string } | 
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) {
     return { error: 'You must be signed in to delete this receptionist.' }
   }
@@ -598,9 +591,7 @@ export async function deleteAgent(agentId: string): Promise<{ error: string } | 
 
 export async function getFavoriteVoiceIds(): Promise<string[]> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return []
 
   const { data: member } = await supabase
@@ -622,9 +613,7 @@ export async function toggleFavoriteVoice(
   voiceId: string
 ): Promise<{ error: string } | { favorited: boolean }> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) {
     return { error: 'You must be signed in to do this.' }
   }
@@ -670,6 +659,12 @@ export async function designVoiceCandidates(
     return { error: 'Describe the voice you want to create.' }
   }
 
+  // Before the provider call, not after it: this action had no caller check at all, so anyone who
+  // could reach the endpoint could bill the operator's Fish Audio account.
+  if (!(await getAssuredUser(await createSupabaseClient()))) {
+    return { error: 'You must be signed in to design a voice.' }
+  }
+
   const response = await fetch('https://api.fish.audio/v1/voice-design', {
     method: 'POST',
     headers: {
@@ -712,6 +707,14 @@ export async function saveVoiceModel(
   title: string,
   language: string
 ): Promise<{ error: string } | { id: string }> {
+  // The caller check used to sit after the upload, so an unauthorized request still trained a
+  // model on Fish Audio and only failed at the database write.
+  const supabase = await createSupabaseClient()
+  const user = await getAssuredUser(supabase)
+  if (!user) {
+    return { error: 'You must be signed in to save a voice.' }
+  }
+
   const audioBuffer = Buffer.from(audioBase64, 'base64')
   const form = new FormData()
   form.append('voices', new Blob([new Uint8Array(audioBuffer)], { type: 'audio/mpeg' }), 'voice.mp3')
@@ -746,14 +749,6 @@ export async function saveVoiceModel(
     return { error: 'Could not save the new voice. Please try again.' }
   }
 
-  const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) {
-    return { error: 'You must be signed in to save a voice.' }
-  }
-
   const { data: member } = await supabase
     .from('members')
     .select('organization_id')
@@ -783,6 +778,10 @@ export async function previewVoice(
 ): Promise<{ error: string } | { audioBase64: string }> {
   if (!voiceId.trim()) {
     return { error: 'No voice selected.' }
+  }
+
+  if (!(await getAssuredUser(await createSupabaseClient()))) {
+    return { error: 'You must be signed in to preview a voice.' }
   }
 
   const response = await fetch('https://api.fish.audio/v1/tts', {
@@ -829,9 +828,7 @@ export async function previewVoice(
 
 export async function getCustomVoices(): Promise<VoiceSearchResult[]> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return []
 
   const { data: member } = await supabase
@@ -856,9 +853,7 @@ export async function getCustomVoices(): Promise<VoiceSearchResult[]> {
 }
 
 async function getMemberOrganization(supabase: Awaited<ReturnType<typeof createSupabaseClient>>) {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return { user: null, organizationId: null }
 
   const { data: member } = await supabase

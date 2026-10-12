@@ -95,9 +95,11 @@ frontdesk-ai/
 ### Auth Flow
 
 - Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings and enforced at login: a session holding a verified factor but no `aal2` claim is redirected to `/verify`)
-- The `/verify` challenge screen runs `mfa.challenge()` + `mfa.verify()` in `verifyMfaChallenge` (`app/(auth)/actions.ts`), bounded at 5 failed codes per pending login via the `fd_mfa_attempts` cookie, with `cancelMfaChallenge` as the escape hatch so a stuck session can always sign out
-- "Pending MFA" means: a verified factor in the `getUser()` response (never the session cookie, whose `user` object is unsigned, so `nextLevel` is never read) plus an `aal` claim that is not `aal2`. Resolved in `lib/auth/mfa.ts`, which fails closed and never rejects
-- Enforced in three places: `proxy.ts` for every non-exempt path (covering navigations, RSC payload requests and server-action POSTs), `getCurrentOrgAndUser()` for Server Components and the actions built on it, and the shared `lib/data` read helpers that resolve the caller themselves
+- The `/verify` challenge screen runs `mfa.challenge()` + `mfa.verify()` in `verifyMfaChallenge` (`app/(auth)/actions.ts`), bounded at `MFA_MAX_ATTEMPTS` (5) failed codes, with `cancelMfaChallenge` as the escape hatch so a stuck session can always sign out. Teardown signs out with `{ scope: 'local' }` — auth-js defaults to `global`, which would revoke every session the user holds and make a forced logout a password-only attack
+- The attempt counter is Redis state keyed by user id (`lib/auth/mfa-attempts.ts`), not a cookie: a request-supplied count resets by simply being omitted. Its 10-minute TTL is the lockout window, and neither a fresh password sign-in nor a sign-out clears it, because both are things an attacker holding the password can do. If Redis is unreachable the counter degrades open and Supabase's own MFA throttling is the remaining bound — logged, not silent
+- "Pending MFA" means: a verified factor in the `getUser()` response (never the session cookie, whose `user` object is unsigned, so `nextLevel` is never read) plus an `aal` claim that is not `aal2`. Resolved in `lib/auth/mfa.ts`, which fails closed and never rejects. `resolveMfaGateForUser` is intentionally not exported: it trusts the token's unsigned-decoded `aal` claim, which is only sound for a user that the same call just validated, so the only entry points are `resolveMfaGate()` and `getAssuredUser()`, which fetch the user themselves
+- Enforced in two layers. **`proxy.ts`** gates every non-exempt path and answers in the shape the caller can handle: an `x-action-redirect` header for server-action POSTs (what Next's action client follows into a navigation — a 307 made the browser re-POST `Next-Action` to `/verify` and the tab showed an action-resolution error), 401 JSON for `/api/*`, and a 303 to `/verify` for document navigations. **`getAssuredUser(supabase)`** from `lib/auth/mfa.ts` is then the authorization entry point inside every privileged server action, route handler and `lib/data` read helper. Use it instead of `supabase.auth.getUser()` anywhere a database write, queue job, service-role client or paid provider call follows: a bare `getUser()` is satisfied by a pending `aal1` session, and per Next's own proxy reference (`proxy.md:251`) the proxy is not a substitute for a check inside each server function
+- Known gaps, tracked separately: the pending `aal1` access token still passes Postgres RLS (policies authorize on membership alone, so direct PostgREST access from the browser is not gated), and there is no recovery path for a lost authenticator — `unenrollTotpFactor` requires a satisfied gate, so a user without their authenticator cannot remove the factor themselves
 - `(auth)/callback/route.ts` handles OAuth callbacks; OAuth sign-ins are challenged exactly like password sign-ins (the gate is a property of the session, not the credential type)
 - Password reset: `/forgot-password` emails a link through `requestPasswordReset`; the link returns to `/callback?flow=recovery`, which signs the user in and sends them to `/reset-password` to choose a new password (`updatePassword`). The callback also sets a 15-minute `fd_password_recovery` cookie; without it `/reset-password` and `updatePassword` refuse, so an ordinary signed-in session cannot change the password without a reset link
 - Next 16 uses `proxy.ts` (not `middleware.ts`): its `proxy()` calls `updateSession()` from `lib/supabase/middleware.ts`, which returns `{ response, mfa, authHeaders }` — the `getUser()` that refreshes session cookies on every non-static request is now the one the MFA gate makes, so the request count is unchanged
@@ -108,7 +110,10 @@ Every org-scoped query resolves the caller's org server-side:
 
 ```typescript
 // lib/data/organization.ts — canonical pattern
-const { data: { user } } = await supabase.auth.getUser()
+// getAssuredUser(), never supabase.auth.getUser(): the bare call accepts a session that still
+// owes its TOTP code.
+const user = await getAssuredUser(supabase)
+if (!user) return null
 const { data: member } = await supabase
   .from('members')
   .select('role, organization_id, organizations(id, name)')

@@ -6,6 +6,7 @@ import {
   reassignPhoneNumberSchema,
   type ReassignPhoneNumberInput,
 } from '@/lib/validations/agent'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function reassignPhoneNumber(
   input: ReassignPhoneNumberInput
@@ -16,9 +17,7 @@ export async function reassignPhoneNumber(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return { error: 'You must be signed in to reassign a phone number.' }
 
   const { data: member } = await supabase

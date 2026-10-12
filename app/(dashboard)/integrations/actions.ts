@@ -21,6 +21,7 @@ import {
   configureWebhookSchema,
   type ConfigureWebhookInput,
 } from '@/lib/validations/integration'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function enableIntegration(
   integrationSlug: string
@@ -31,9 +32,7 @@ export async function enableIntegration(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to enable an integration.' }
@@ -75,9 +74,7 @@ export async function disableIntegration(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to disable an integration.' }
@@ -121,9 +118,7 @@ export async function configureWebhook(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to configure an integration.' }
@@ -167,9 +162,7 @@ export async function configureCalCom(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to configure an integration.' }
@@ -213,9 +206,7 @@ export async function configureCalendly(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to configure an integration.' }
@@ -259,9 +250,7 @@ export async function configureTwilio(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return { error: 'You must be signed in to configure an integration.' }
 
   const { data: member } = await supabase
@@ -296,9 +285,7 @@ export async function configurePlivo(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return { error: 'You must be signed in to configure an integration.' }
 
   const { data: member } = await supabase
@@ -333,9 +320,7 @@ export async function configureSipTrunk(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return { error: 'You must be signed in to configure an integration.' }
 
   const { data: member } = await supabase

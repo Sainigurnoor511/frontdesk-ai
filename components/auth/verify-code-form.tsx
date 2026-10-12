@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { unstable_rethrow } from 'next/navigation'
 import { REGEXP_ONLY_DIGITS } from 'input-otp'
 import { totpCodeSchema } from '@/lib/validations/auth'
 import { verifyMfaChallenge } from '@/app/(auth)/actions'
@@ -26,10 +27,24 @@ export function VerifyCodeForm() {
     }
     setError(null)
     setIsSubmitting(true)
-    const result = await verifyMfaChallenge(parsed.data) // redirects on success
-    if (result?.error) {
-      setError(result.error)
-      setCode('') // never leave a stale code in the boxes
+    try {
+      const result = await verifyMfaChallenge(parsed.data) // redirects on success
+      if (result?.error) {
+        setError(result.error)
+        setCode('') // never leave a stale code in the boxes
+      }
+    } catch (thrown) {
+      // A redirect or any other Next control-flow signal must keep propagating, otherwise a
+      // successful verification would be reported to the user as a failure.
+      unstable_rethrow(thrown)
+      // Anything else is the action request itself failing — a dropped connection, an aborted
+      // POST, the proxy answering the action with a challenge. Without this the form stayed
+      // disabled with no message and only a manual reload recovered.
+      setError('Could not reach the server. Check your connection and try again.')
+      setCode('')
+    } finally {
+      // Always re-enable. On the success path the redirect unmounts this form first, so there is
+      // nothing to re-enable; on every other path the user needs the input back.
       setIsSubmitting(false)
     }
   }

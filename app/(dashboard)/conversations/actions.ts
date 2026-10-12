@@ -7,14 +7,13 @@ import {
   messageIdSchema,
   createContactFromMessageSchema,
 } from '@/lib/validations/conversation'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function markAllConversationsAsRead(): Promise<
   { error: string } | { success: true }
 > {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update conversations.' }
@@ -58,9 +57,7 @@ export async function markMessageAsRead(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update this message.' }
@@ -95,9 +92,7 @@ export async function markAllMessagesAsRead(): Promise<
   { error: string } | { success: true }
 > {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update messages.' }
@@ -137,9 +132,7 @@ export async function deleteMessage(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to delete this message.' }
@@ -178,9 +171,7 @@ export async function createContactFromMessage(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to create a contact.' }
@@ -245,9 +236,7 @@ export async function createContactFromMessage(
 
 export async function getRecordingUrl(conversationId: string): Promise<string | null> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
   if (!user) return null
 
   const { data: member } = await supabase

@@ -9,22 +9,60 @@ import { isMfaExemptPath, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
 // Function calls on that path." The matcher below excludes only static assets, so page
 // navigations, RSC payload requests and server-action POSTs all reach here and a pending session
 // is redirected before the action runs. The same page warns at :251 not to rely on the proxy
-// alone, which is why `getCurrentOrgAndUser()` and the shared `lib/data` read helpers gate too.
+// alone, which is why every privileged action, route handler and data helper resolves its caller
+// through `getAssuredUser()` as well.
+
+/**
+ * A pending session gets one of three answers, because one response shape cannot serve all three
+ * request shapes:
+ *
+ * - **Server Action POST** (`Next-Action` header): an `x-action-redirect` header with an empty
+ *   `text/plain` body. That is the shape Next's own action client understands
+ *   (`next/dist/client/components/router-reducer/reducers/server-action-reducer.js` reads the
+ *   header and completes the navigation), so an already-open tab lands on the challenge screen.
+ *   A plain 307 made the browser re-POST the `Next-Action` header to `/verify`, where the action
+ *   does not exist, and the user saw an action-resolution error instead of a code prompt.
+ * - **`/api/*`**: 401 with a JSON body. These callers are `fetch`, not navigation; handing them a
+ *   redirect to an HTML page makes client error handling misreport the cause.
+ * - **Everything else** (document navigations and RSC payload requests): 303 to `/verify`. 303
+ *   rather than 307 so a POST navigation — a no-JS form submit — follows up with a GET.
+ */
+function challengeResponse(request: NextRequest): NextResponse {
+  if (request.headers.has('Next-Action')) {
+    return new NextResponse(null, {
+      status: 200,
+      headers: {
+        'x-action-redirect': `${MFA_VERIFY_PATH};replace`,
+        'Content-Type': 'text/plain',
+      },
+    })
+  }
+
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    return NextResponse.json(
+      { error: 'Two-factor verification required.', verifyPath: MFA_VERIFY_PATH },
+      { status: 401 }
+    )
+  }
+
+  return NextResponse.redirect(new URL(MFA_VERIFY_PATH, request.url), 303)
+}
+
 export async function proxy(request: NextRequest) {
   const { response, mfa, authHeaders } = await updateSession(request)
 
   const needsChallenge = mfa.state === 'pending' || mfa.state === 'indeterminate'
   if (needsChallenge && !isMfaExemptPath(request.nextUrl.pathname)) {
-    const redirectResponse = NextResponse.redirect(new URL(MFA_VERIFY_PATH, request.url))
+    const challenge = challengeResponse(request)
     // Carrying the refreshed cookies over is required, not cosmetic: dropping them discards a
     // token Supabase just refreshed and signs the user out mid-flow.
     for (const cookie of response.cookies.getAll()) {
-      redirectResponse.cookies.set(cookie)
+      challenge.cookies.set(cookie)
     }
     for (const [key, value] of Object.entries(authHeaders)) {
-      redirectResponse.headers.set(key, value)
+      challenge.headers.set(key, value)
     }
-    return redirectResponse
+    return challenge
   }
 
   return response

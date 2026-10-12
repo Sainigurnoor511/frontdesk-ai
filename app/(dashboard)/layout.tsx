@@ -4,7 +4,7 @@ import { AppSidebar } from '@/components/layout/app-sidebar'
 import { AppHeader } from '@/components/layout/app-header'
 import { DashboardMain } from '@/components/layout/dashboard-main'
 import { ThemeProvider } from '@/components/layout/theme-provider'
-import { getCurrentOrgAndUser } from '@/lib/data/organization'
+import { getCurrentOrgAndUser, loginPathForDeniedSession } from '@/lib/data/organization'
 import { getAgentsForOrg } from '@/lib/data/agents'
 import { getBusinessProfile } from '@/lib/data/business'
 import { getHiddenSidebarItems } from '@/lib/data/sidebar-preferences'
@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const context = await getCurrentOrgAndUser()
 
   if (!context) {
-    redirect('/login')
+    redirect(await loginPathForDeniedSession())
   }
 
   const agents = await getAgentsForOrg(context.org.id)

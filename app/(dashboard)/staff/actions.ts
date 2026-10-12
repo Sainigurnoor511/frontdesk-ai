@@ -8,6 +8,7 @@ import {
   type CreateStaffInput,
   type UpdateStaffInput,
 } from '@/lib/validations/staff'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export async function createStaffMember(
   input: CreateStaffInput
@@ -18,9 +19,7 @@ export async function createStaffMember(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to create a staff member.' }
@@ -64,9 +63,7 @@ export async function updateStaffMember(
   }
 
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to update a staff member.' }
@@ -109,9 +106,7 @@ export async function deleteStaffMember(
   id: string
 ): Promise<{ error: string } | { success: true }> {
   const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) {
     return { error: 'You must be signed in to delete a staff member.' }

@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
+import { getAssuredUser } from '@/lib/auth/mfa'
 
 export type Client = {
   id: string
@@ -12,13 +12,9 @@ export type Client = {
 
 export async function getClientsForOrg(): Promise<Client[]> {
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  const user = await getAssuredUser(supabase)
 
   if (!user) return []
-  // A pending-MFA session is not signed in.
-  if (!(await isMfaSatisfiedForUser(supabase, user))) return []
 
   const { data: member } = await supabase
     .from('members')
