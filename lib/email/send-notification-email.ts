@@ -52,6 +52,23 @@ export function assertResendConfigured(): void {
 }
 
 /**
+ * Everything a notification email needs from the environment.
+ *
+ * `NEXT_PUBLIC_SITE_URL` is included because this is the first sender that runs
+ * in the standalone BullMQ worker. Every earlier caller of `absoluteUrl()`
+ * (`robots.ts`, `sitemap.ts`, the booking page) runs inside Next, where the
+ * value is inlined at build time; here it is an ordinary runtime env var, and
+ * `absoluteUrl()` silently falls back to `http://localhost:3000`. Failing the
+ * job is better than mailing staff an unusable call to action.
+ */
+export function assertNotificationEmailConfigured(): void {
+  assertResendConfigured()
+  if (!process.env.NEXT_PUBLIC_SITE_URL) {
+    throw new Error('Notification email is not configured (NEXT_PUBLIC_SITE_URL)')
+  }
+}
+
+/**
  * Fans a notification out to every recipient in one `resend.batch.send`
  * request.
  *

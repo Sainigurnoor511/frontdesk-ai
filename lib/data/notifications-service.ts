@@ -88,13 +88,49 @@ export async function claimNotification(input: {
   return { id: existing.id, emailSentAt: existing.email_sent_at }
 }
 
-/** Conditional UPDATE: true only for the caller that flips `email_sent_at` from null. */
-export async function claimNotificationEmail(id: string): Promise<boolean> {
+/**
+ * How long a delivery lease held by a *different* worker blocks this one.
+ *
+ * Long enough that two workers cannot plausibly be inside the same Resend
+ * request, short enough that a worker killed mid-send does not park the row for
+ * hours. A retry of the same BullMQ job does not wait for it at all — it
+ * presents the same token and re-takes its own lease.
+ */
+export const EMAIL_LEASE_MS = 2 * 60 * 1000
+
+/**
+ * Takes (or re-takes) the delivery lease. True means "send now".
+ *
+ * This is deliberately *not* the durable sent timestamp. `email_sent_at` used to
+ * be stamped here, before the Resend call, so a worker that exited in that
+ * window left a row that looked delivered: the retry saw `email_sent_at !== null`
+ * at step 9 and completed without ever contacting the provider. The email was
+ * lost with nothing in the system able to detect it.
+ *
+ * Now the pre-send write is an expiring lease and the send is confirmed by
+ * `markNotificationEmailSent()` afterwards, so an interrupted attempt is
+ * re-attempted. Re-submitting is safe: the Resend idempotency key is the
+ * notification id, so a request that did land is not duplicated.
+ */
+export async function claimNotificationEmailLease(
+  id: string,
+  /** Opaque holder id; the processor passes its BullMQ job id. */
+  token: string,
+  nowMs: number = Date.now()
+): Promise<boolean> {
+  const expired = new Date(nowMs - EMAIL_LEASE_MS).toISOString()
   const { data, error } = await createServiceRoleClient()
     .from('notifications')
-    .update({ email_sent_at: new Date().toISOString() })
+    .update({
+      email_claimed_at: new Date(nowMs).toISOString(),
+      email_claim_token: token,
+    })
     .eq('id', id)
     .is('email_sent_at', null)
+    // Free, ours already, or abandoned long enough to steal.
+    .or(
+      `email_claim_token.is.null,email_claim_token.eq."${token}",email_claimed_at.lt."${expired}"`
+    )
     .select('id')
     .maybeSingle()
 
@@ -102,16 +138,37 @@ export async function claimNotificationEmail(id: string): Promise<boolean> {
   return Boolean(data)
 }
 
-/** Undoes the claim so a retry can re-send. Only correct when the send request failed. */
+/**
+ * Records that the provider accepted the submission. This is the write that
+ * makes the send durable and stops every future attempt.
+ */
+export async function markNotificationEmailSent(id: string): Promise<void> {
+  const { error } = await createServiceRoleClient()
+    .from('notifications')
+    .update({ email_sent_at: new Date().toISOString() })
+    .eq('id', id)
+
+  if (error) {
+    // The email is out. Failing the job here would re-send it on the retry,
+    // which is worse than a row whose lease simply expires — the retry then
+    // re-submits under the same idempotency key and Resend dedupes it.
+    throw new Error(`Failed to record notification email send: ${error.message}`)
+  }
+}
+
+/**
+ * Drops the lease so a retry can re-send immediately. Only correct when the
+ * send request itself failed.
+ */
 export async function releaseNotificationEmailClaim(id: string): Promise<void> {
   const { error } = await createServiceRoleClient()
     .from('notifications')
-    .update({ email_sent_at: null })
+    .update({ email_claimed_at: null, email_claim_token: null })
     .eq('id', id)
 
   if (error) {
     // The job is already failing for the send error, which is the more useful
-    // signal — log and move on.
+    // signal — log and move on. The lease expires on its own regardless.
     console.error(`[notifications] failed to release email claim for ${id}:`, error.message)
   }
 }
@@ -123,7 +180,13 @@ export async function releaseNotificationEmailClaim(id: string): Promise<void> {
  *
  * An errored `members` read throws — that is not "an org with no members", and
  * the job must retry rather than complete and strand the row looking
- * deliverable. Per-user failures stay skip-and-warn, by uuid, never by address.
+ * deliverable. A per-user lookup gets the same treatment unless the failure
+ * really is "this user has no email": a 404 or a `user_not_found` is data, and
+ * is skipped with a warning by uuid (never by address); a 500, a 429 or a
+ * network error is transport, and throws so BullMQ retries the whole
+ * notification. Turning the second into "no email" is how a brief Auth outage
+ * used to drop recipients permanently — with the row marked sent, those staff
+ * would never get it.
  */
 export async function getOrgRecipients(organizationId: string): Promise<NotificationRecipient[]> {
   const supabase = createServiceRoleClient()
@@ -149,19 +212,20 @@ export async function getOrgRecipients(organizationId: string): Promise<Notifica
     const chunk = userIds.slice(index, index + RECIPIENT_LOOKUP_CHUNK)
     const resolved = await Promise.all(
       chunk.map(async (userId) => {
-        try {
-          const { data: result, error: lookupError } =
-            await supabase.auth.admin.getUserById(userId)
-          const email = result?.user?.email
-          if (lookupError || !email) {
-            console.warn(`[notifications] no email for member ${userId}`)
-            return null
-          }
-          return { userId, email }
-        } catch {
+        const { data: result, error: lookupError } = await supabase.auth.admin.getUserById(userId)
+
+        if (lookupError && !isMissingUserError(lookupError)) {
+          throw new Error(
+            `Failed to resolve recipient ${userId}: ${lookupError.message ?? 'unknown error'}`
+          )
+        }
+
+        const email = result?.user?.email
+        if (!email) {
           console.warn(`[notifications] no email for member ${userId}`)
           return null
         }
+        return { userId, email }
       })
     )
 
@@ -171,6 +235,19 @@ export async function getOrgRecipients(organizationId: string): Promise<Notifica
   }
 
   return [...byEmail.values()]
+}
+
+/**
+ * "This user is not there" versus "the lookup did not work". Only the first is
+ * safe to skip. Supabase's `AuthError` carries an HTTP `status` and, on newer
+ * clients, a stable `code`; a thrown network error carries neither and so is
+ * never treated as missing.
+ */
+function isMissingUserError(error: { status?: number; code?: string; message?: string }): boolean {
+  if (error.code === 'user_not_found') return true
+  if (error.status === 404) return true
+  // Older clients only give a message.
+  return !error.status && !error.code && /user not found/i.test(error.message ?? '')
 }
 
 /** `organizations.name`, with a neutral fallback. Not `business_profile.business_name`, which is nullable. */

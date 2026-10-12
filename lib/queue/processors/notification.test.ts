@@ -22,6 +22,16 @@ vi.mock('@/lib/supabase/service-role', () => ({
 // Step 10 otherwise opens a socket to localhost:6379 — REDIS_URL is unset here.
 vi.mock('@/lib/voice/rate-limit', () => ({
   checkAndConsumeRateLimit: vi.fn(),
+  claimRateLimitCharge: vi.fn(),
+  releaseRateLimitCharge: vi.fn(),
+  rateLimitWindowSecondsRemaining: vi.fn(),
+}))
+
+// The cap-deferral re-enqueue (issue 6) is the only queue write the processor
+// makes; mocking at `lazy-queue` keeps the real queue module in the graph.
+const { queueAddMock } = vi.hoisted(() => ({ queueAddMock: vi.fn() }))
+vi.mock('@/lib/queue/lazy-queue', () => ({
+  lazyQueue: () => ({ add: queueAddMock, remove: vi.fn(), getJob: vi.fn() }),
 }))
 
 const ORG = '11111111-1111-1111-1111-111111111111'
@@ -60,7 +70,7 @@ const APPOINTMENT_ROW = {
 /** Minimal PostgREST-shaped chain: thenable, and terminal through single/maybeSingle. */
 function chain(result: unknown) {
   const node: Record<string, unknown> = {}
-  for (const key of ['select', 'eq', 'order', 'limit', 'is', 'in']) {
+  for (const key of ['select', 'eq', 'order', 'limit', 'is', 'in', 'or', 'gt', 'neq']) {
     node[key] = vi.fn(() => node)
   }
   node.maybeSingle = vi.fn(() => Promise.resolve(result))
@@ -79,9 +89,13 @@ type ClientOptions = {
   claimInsert?: unknown
   /** Result of the conflict follow-up read. */
   claimRead?: unknown
-  /** Result of the conditional `email_sent_at` update (the send claim). */
+  /** Result of the conditional lease update (the send claim). */
   emailClaim?: unknown
   userEmails?: Record<string, string | null>
+  /** Per-user Auth lookup failure, for the transient-vs-missing split. */
+  userErrors?: Record<string, { status?: number; code?: string; message: string }>
+  /** Thrown by `getUserById` instead of returned, i.e. a network failure. */
+  userThrows?: string[]
 }
 
 async function mockClient(options: ClientOptions = {}) {
@@ -94,12 +108,17 @@ async function mockClient(options: ClientOptions = {}) {
     claimRead = { data: { id: 'notif-1', email_sent_at: null }, error: null },
     emailClaim = { data: { id: 'notif-1' }, error: null },
     userEmails = { 'user-1': 'owner@example.com' },
+    userErrors = {},
+    userThrows = [],
   } = options
 
   const notificationsInsert = vi.fn(() => chain(claimInsert))
   const notificationsSelect = vi.fn(() => chain(claimRead))
+  // Three distinct writes now share this table: taking the lease
+  // (`email_claim_token`), releasing it (both lease columns null), and the
+  // durable `email_sent_at` stamp. Only the lease claim is conditional.
   const notificationsUpdate = vi.fn((patch: Record<string, unknown>) =>
-    chain(patch.email_sent_at === null ? { data: null, error: null } : emailClaim)
+    chain('email_claim_token' in patch && patch.email_claim_token ? emailClaim : { data: null, error: null })
   )
   const membersChain = chain(members)
 
@@ -128,12 +147,21 @@ async function mockClient(options: ClientOptions = {}) {
     }
   })
 
-  const getUserById = vi.fn((userId: string) =>
-    Promise.resolve({
+  const getUserById = vi.fn((userId: string) => {
+    if (userThrows.includes(userId)) {
+      return Promise.reject(new Error('fetch failed'))
+    }
+    if (userErrors[userId]) {
+      return Promise.resolve({ data: { user: null }, error: userErrors[userId] })
+    }
+    return Promise.resolve({
       data: { user: userEmails[userId] ? { id: userId, email: userEmails[userId] } : null },
-      error: userEmails[userId] ? null : { message: 'not found' },
+      // What Supabase actually returns for an id that is not there.
+      error: userEmails[userId]
+        ? null
+        : { status: 404, code: 'user_not_found', message: 'User not found' },
     })
-  )
+  })
 
   const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
   vi.mocked(createServiceRoleClient).mockReturnValue({
@@ -144,8 +172,9 @@ async function mockClient(options: ClientOptions = {}) {
   return { from, notificationsInsert, notificationsSelect, notificationsUpdate, membersChain, getUserById }
 }
 
-function job(data: Partial<NotificationJobData> = {}): Job<NotificationJobData> {
+function job(data: Partial<NotificationJobData> = {}, id = 'job-1'): Job<NotificationJobData> {
   return {
+    id,
     data: {
       organizationId: ORG,
       type: 'post_call_summary',
@@ -163,8 +192,12 @@ beforeEach(async () => {
   process.env.RESEND_FROM_EMAIL = 'Frontdesk <notifications@example.com>'
   process.env.NEXT_PUBLIC_SITE_URL = 'https://app.example.com'
   batchSendMock.mockResolvedValue({ data: { data: [{ id: 'email-1' }] }, error: null })
-  const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+  const { checkAndConsumeRateLimit, claimRateLimitCharge, rateLimitWindowSecondsRemaining } =
+    await import('@/lib/voice/rate-limit')
   vi.mocked(checkAndConsumeRateLimit).mockResolvedValue({ allowed: true, remaining: 19 })
+  // Default: this notification has not been charged against the cap before.
+  vi.mocked(claimRateLimitCharge).mockResolvedValue(true)
+  vi.mocked(rateLimitWindowSecondsRemaining).mockResolvedValue(1_200)
 })
 
 afterEach(() => {
@@ -363,7 +396,7 @@ describe('processNotification', () => {
     expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
   })
 
-  it('releases the claim and rethrows on a transient send failure', async () => {
+  it('releases the lease and rethrows on a transient send failure', async () => {
     const mocks = await mockClient()
     batchSendMock.mockResolvedValue({
       data: null,
@@ -371,10 +404,17 @@ describe('processNotification', () => {
     })
 
     await expect(processNotification(job())).rejects.toThrow('Failed to send notification email')
-    expect(mocks.notificationsUpdate).toHaveBeenCalledWith({ email_sent_at: null })
+    expect(mocks.notificationsUpdate).toHaveBeenCalledWith({
+      email_claimed_at: null,
+      email_claim_token: null,
+    })
+    // Never marked sent: the retry must re-send.
+    expect(mocks.notificationsUpdate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ email_sent_at: expect.any(String) })
+    )
   })
 
-  it('keeps the claim and completes when Resend reports the key was already used', async () => {
+  it('marks the row sent and completes when Resend reports the key was already used', async () => {
     const mocks = await mockClient()
     batchSendMock.mockResolvedValue({
       data: null,
@@ -383,7 +423,14 @@ describe('processNotification', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await expect(processNotification(job())).resolves.toBeUndefined()
-    expect(mocks.notificationsUpdate).not.toHaveBeenCalledWith({ email_sent_at: null })
+    // The first request landed, so this is a delivered email, not a retry.
+    expect(mocks.notificationsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ email_sent_at: expect.any(String) })
+    )
+    expect(mocks.notificationsUpdate).not.toHaveBeenCalledWith({
+      email_claimed_at: null,
+      email_claim_token: null,
+    })
     error.mockRestore()
   })
 
@@ -444,6 +491,174 @@ describe('processNotification', () => {
 
     expect(checkAndConsumeRateLimit).not.toHaveBeenCalled()
     expect(batchSendMock).toHaveBeenCalledTimes(1)
+  })
+
+  // ── Issue 2: a crash between the claim and the Resend call ──────────────
+  //
+  // The claim is a lease now, and `email_sent_at` is written only after the
+  // provider has the message. With the old ordering the first attempt below
+  // stamped `email_sent_at`, and the retry returned at step 9 without ever
+  // calling Resend — the assertion that matters here is that the provider *is*
+  // contacted on the retry.
+  describe('a worker that dies between the claim and the send', () => {
+    it('does not mark the row sent, and the retry reaches the provider', async () => {
+      const mocks = await mockClient()
+      // Attempt 1: the process dies inside the send.
+      batchSendMock.mockRejectedValueOnce(new Error('ECONNRESET'))
+
+      await expect(processNotification(job())).rejects.toThrow()
+      expect(mocks.notificationsUpdate).not.toHaveBeenCalledWith(
+        expect.objectContaining({ email_sent_at: expect.any(String) })
+      )
+
+      // Attempt 2 sees `email_sent_at` still null, so step 9 does not short out.
+      batchSendMock.mockClear()
+      batchSendMock.mockResolvedValue({ data: { data: [{ id: 'email-1' }] }, error: null })
+      await expect(processNotification(job())).resolves.toBeUndefined()
+
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+      expect(mocks.notificationsUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ email_sent_at: expect.any(String) })
+      )
+    })
+
+    it('presents the job id as the lease token so its own retry is not locked out', async () => {
+      const mocks = await mockClient()
+
+      await processNotification(job({}, 'job-77'))
+
+      expect(mocks.notificationsUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ email_claim_token: 'job:job-77' })
+      )
+    })
+  })
+
+  // ── Issue 4: transient Auth lookup failures ─────────────────────────────
+  describe('recipient resolution failures', () => {
+    it('throws without contacting the provider when an Auth lookup 500s', async () => {
+      await mockClient({
+        members: { data: [{ user_id: 'user-1' }, { user_id: 'user-2' }], error: null },
+        userEmails: { 'user-1': 'owner@example.com' },
+        userErrors: { 'user-2': { status: 500, message: 'internal error' } },
+      })
+
+      await expect(processNotification(job())).rejects.toThrow('Failed to resolve recipient')
+      // Not a partial send: nobody gets it on this attempt, and BullMQ retries.
+      expect(batchSendMock).not.toHaveBeenCalled()
+    })
+
+    it('throws without contacting the provider when an Auth lookup rejects', async () => {
+      await mockClient({
+        members: { data: [{ user_id: 'user-1' }], error: null },
+        userThrows: ['user-1'],
+      })
+
+      await expect(processNotification(job())).rejects.toThrow('fetch failed')
+      expect(batchSendMock).not.toHaveBeenCalled()
+    })
+
+    it('leaves the row unsent when recipients cannot be resolved', async () => {
+      const mocks = await mockClient({
+        members: { data: [{ user_id: 'user-1' }], error: null },
+        userErrors: { 'user-1': { status: 503, message: 'unavailable' } },
+      })
+
+      await expect(processNotification(job())).rejects.toThrow()
+      expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
+    })
+
+    it('still skips a user that genuinely does not exist', async () => {
+      await mockClient({
+        members: { data: [{ user_id: 'user-1' }, { user_id: 'user-2' }], error: null },
+        userEmails: { 'user-1': 'owner@example.com' },
+        userErrors: { 'user-2': { status: 404, code: 'user_not_found', message: 'User not found' } },
+      })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await processNotification(job())
+
+      expect(batchSendMock.mock.calls[0][0]).toHaveLength(1)
+      expect(warn).toHaveBeenCalledWith('[notifications] no email for member user-2')
+      warn.mockRestore()
+    })
+  })
+
+  // ── Issues 5 and 6: the client_booking cap ──────────────────────────────
+  describe('the client_booking hourly cap', () => {
+    it('charges the window once per notification, not once per attempt', async () => {
+      await mockClient({ appointment: { data: APPOINTMENT_ROW, error: null } })
+      const { checkAndConsumeRateLimit, claimRateLimitCharge } = await import(
+        '@/lib/voice/rate-limit'
+      )
+      // Attempt 1 takes the marker; the retry finds it already taken.
+      vi.mocked(claimRateLimitCharge).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+      batchSendMock.mockResolvedValueOnce({
+        data: null,
+        error: { name: 'rate_limit_exceeded', message: 'slow down', statusCode: 429 },
+      })
+
+      const bookingJob = job({ type: 'client_booking', subjectId: APPOINTMENT })
+      await expect(processNotification(bookingJob)).rejects.toThrow()
+      await processNotification(bookingJob)
+
+      expect(checkAndConsumeRateLimit).toHaveBeenCalledTimes(1)
+      expect(batchSendMock).toHaveBeenCalledTimes(2)
+    })
+
+    it('re-enqueues past the window boundary instead of dropping the email', async () => {
+      await mockClient({ appointment: { data: APPOINTMENT_ROW, error: null } })
+      const {
+        checkAndConsumeRateLimit,
+        releaseRateLimitCharge,
+        rateLimitWindowSecondsRemaining,
+      } = await import('@/lib/voice/rate-limit')
+      vi.mocked(checkAndConsumeRateLimit).mockResolvedValue({ allowed: false, remaining: 0 })
+      vi.mocked(rateLimitWindowSecondsRemaining).mockResolvedValue(600)
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await processNotification(job({ type: 'client_booking', subjectId: APPOINTMENT }))
+
+      expect(batchSendMock).not.toHaveBeenCalled()
+      // The token was not really spent, so the next window starts clean.
+      expect(releaseRateLimitCharge).toHaveBeenCalled()
+      expect(queueAddMock).toHaveBeenCalledWith(
+        'client_booking',
+        expect.objectContaining({ subjectId: APPOINTMENT, capDeferrals: 1 }),
+        // A job id that the still-active original cannot shadow.
+        expect.objectContaining({
+          jobId: `notify:client_booking:${APPOINTMENT}:defer1`,
+          delay: 605_000,
+        })
+      )
+      warn.mockRestore()
+    })
+
+    it('gives up after the deferral budget rather than re-enqueueing forever', async () => {
+      await mockClient({ appointment: { data: APPOINTMENT_ROW, error: null } })
+      const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+      vi.mocked(checkAndConsumeRateLimit).mockResolvedValue({ allowed: false, remaining: 0 })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await processNotification(
+        job({ type: 'client_booking', subjectId: APPOINTMENT, capDeferrals: 3 })
+      )
+
+      expect(queueAddMock).not.toHaveBeenCalled()
+      expect(error).toHaveBeenCalledWith(expect.stringContaining('capped windows'))
+      warn.mockRestore()
+      error.mockRestore()
+    })
+  })
+
+  // ── Issue 9: a worker with no NEXT_PUBLIC_SITE_URL ──────────────────────
+  it('fails loudly rather than mailing a localhost call-to-action link', async () => {
+    delete process.env.NEXT_PUBLIC_SITE_URL
+    const mocks = await mockClient()
+
+    await expect(processNotification(job())).rejects.toThrow('NEXT_PUBLIC_SITE_URL')
+    expect(batchSendMock).not.toHaveBeenCalled()
+    expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
   })
 })
 
