@@ -155,12 +155,15 @@ export async function createAppointmentServiceRole(
   return data as AppointmentRow
 }
 
+/** Past rows read back per lookup. See the two-query note on the function below. */
+const LOOKBACK_ROW_LIMIT = 25
+
 /**
  * Every appointment belonging to the client(s) with this email in this org,
  * from `sinceIso` (default: now) onwards, in every status.
  *
  * Shared by the public manage-booking lookup and the voice manage-booking
- * tools. Two properties the voice path depends on:
+ * tools. Three properties the voice path depends on:
  *
  *  - **Cancelled and past rows are returned.** That is what lets a caller be
  *    told "that one was already cancelled" or "that one already happened"
@@ -169,6 +172,14 @@ export async function createAppointmentServiceRole(
  *    resolves with `{ data: null, error }` rather than rejecting, so without
  *    this a dead database would be indistinguishable from "this caller has
  *    nothing booked" — and the caller would be told they have no appointment.
+ *  - **Future rows can never be crowded out by history.** When `sinceIso` is in
+ *    the past this issues *two* queries — the forward one bounded by `limit`,
+ *    and a separate descending lookback bounded by `LOOKBACK_ROW_LIMIT` — then
+ *    merges them. A single `order('starts_at').limit(n)` over a window that
+ *    starts in the past keeps the *earliest* n rows, so a shared address
+ *    (`reception@`, a coordinator booking for a family) with heavy recent
+ *    history would spend the whole row budget on rows the tools cannot act on
+ *    and the caller would be told they have nothing booked.
  *
  * No `.maybeSingle()` on the client lookup: two client rows in one org can
  * share an address (`findOrCreateClientServiceRole` dedupes on phone first), so
@@ -204,24 +215,62 @@ export async function findClientAppointmentsByEmailServiceRole(
     .map((row) => row.id)
   if (ids.length === 0) return []
 
-  const { data, error } = await supabase
+  const nowIso = new Date().toISOString()
+  const sinceIso = options?.sinceIso ?? nowIso
+  const limit = options?.limit ?? 50
+  // When the caller asked for a lookback window, the forward query starts at
+  // now and the lookback is a second query; otherwise `sinceIso` is already in
+  // the future and one query is the whole read.
+  const hasLookback = sinceIso < nowIso
+
+  const { data: forwardRows, error: forwardError } = await supabase
     .from('appointments')
     .select('*')
     .eq('organization_id', organizationId)
     .in('client_id', ids)
-    .gte('starts_at', options?.sinceIso ?? new Date().toISOString())
+    .gte('starts_at', hasLookback ? nowIso : sinceIso)
     .order('starts_at', { ascending: true })
-    .limit(options?.limit ?? 50)
+    .limit(limit)
 
-  if (error) throw new Error(`appointment lookup failed: ${error.message}`)
-  return (data ?? []) as AppointmentRow[]
+  if (forwardError) throw new Error(`appointment lookup failed: ${forwardError.message}`)
+
+  if (!hasLookback) return (forwardRows ?? []) as AppointmentRow[]
+
+  const { data: pastRows, error: pastError } = await supabase
+    .from('appointments')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .in('client_id', ids)
+    .gte('starts_at', sinceIso)
+    .lt('starts_at', nowIso)
+    .order('starts_at', { ascending: false })
+    .limit(LOOKBACK_ROW_LIMIT)
+
+  if (pastError) throw new Error(`appointment lookback failed: ${pastError.message}`)
+
+  return [...((pastRows ?? []) as AppointmentRow[]), ...((forwardRows ?? []) as AppointmentRow[])]
+    .sort((a, b) => Date.parse(a.starts_at) - Date.parse(b.starts_at))
 }
 
 /**
  * Public lookup for the reschedule/cancel flow — upcoming, non-cancelled
- * appointments for the client matching this email within the org. No auth:
- * scoped by organizationId + email match only, mirroring the trust model of the
- * rest of the public booking actions (rate-limited by caller).
+ * appointments for the client matching this email within the org.
+ *
+ * **No authentication and no rate limit.** The only scoping is organizationId
+ * plus an exact (case-insensitive) email match, so anyone who can guess a
+ * client's address can list that client's upcoming appointments. The three
+ * public manage-booking actions in `app/smb/actions.ts` that reach this —
+ * `lookupPublicAppointments`, `reschedulePublicAppointment`,
+ * `cancelPublicAppointment` — carry no `checkAndConsumeRateLimit`, and the
+ * Turnstile block in the booking actions is behind `if (false && ...)`. An
+ * earlier version of this comment claimed these were "rate-limited by caller";
+ * they are not. Adding the rate limit and reviving the Turnstile guard are
+ * backlog items in `developer-docs/TODO.md`.
+ *
+ * Throws on a read failure rather than returning `[]`, so the booking page can
+ * tell "something went wrong" apart from "you have nothing booked" — the voice
+ * path already distinguishes the two as `lookup_failed`. `lookupPublicAppointments`
+ * catches it and renders a real error state.
  *
  * The 500-row cap is applied in SQL and the cancelled filter in JS after it, so
  * the effective ceiling is "500 upcoming rows minus however many are
@@ -232,19 +281,10 @@ export async function getUpcomingAppointmentsByEmailServiceRole(
   organizationId: string,
   email: string
 ): Promise<AppointmentRow[]> {
-  try {
-    const rows = await findClientAppointmentsByEmailServiceRole(organizationId, email, {
-      limit: 500,
-    })
-    return rows.filter((row) => row.status !== 'cancelled')
-  } catch (error) {
-    // `lookupPublicAppointments` in app/smb/actions.ts has no try/catch and
-    // returns this array straight to the booking page, which renders [] as "no
-    // appointments". Absorb the throw rather than turn a server action into a
-    // 500. Surfacing read failures on that page properly is backlogged.
-    console.error('[booking-service] getUpcomingAppointmentsByEmailServiceRole failed:', error)
-    return []
-  }
+  const rows = await findClientAppointmentsByEmailServiceRole(organizationId, email, {
+    limit: 500,
+  })
+  return rows.filter((row) => row.status !== 'cancelled')
 }
 
 /**
@@ -271,39 +311,79 @@ async function assertAppointmentOwnedByEmail(
 }
 
 /**
- * `code` lets a caller tell a failed ownership check apart from a database
- * error — the voice tools report the first as "I can't find that appointment"
- * and the second as an apology, where the human `error` string alone would
- * collapse both into one sentence. The string itself is unchanged, so the
- * public booking page's error rendering is untouched.
+ * `code` lets a caller tell the failure modes apart — the voice tools report
+ * `not_found` as "I can't find that appointment", `conflict` as "that booking
+ * changed while we were talking", `slot_taken` as an alternatives offer, and
+ * `update_failed` as an apology, where the human `error` string alone would
+ * collapse them into one sentence. Every string is user-facing, because the
+ * public booking page renders `error` verbatim.
  */
 export type AppointmentMutationResult =
   | { success: true }
-  | { error: string; code: 'not_found' | 'update_failed' }
+  | { error: string; code: 'not_found' | 'update_failed' | 'conflict' | 'slot_taken' }
+
+/**
+ * The start time the caller confirmed, for optimistic concurrency.
+ *
+ * Both mutations used to issue a bare `UPDATE` filtered only by appointment id
+ * and organization, so a caller could confirm one time on the phone and have a
+ * concurrently-changed appointment silently overwritten or cancelled instead.
+ * Passing the `starts_at` the decision was made against makes the write
+ * conditional on the state that was actually checked; a mismatch returns
+ * `conflict` and writes nothing. Optional because the public booking page's
+ * schemas carry only an appointment id, so it has no confirmed start to pin to.
+ */
+export type ExpectedAppointmentState = { startsAt: string }
 
 /**
  * Moves an appointment after re-verifying the email owns it. Named "ByEmail"
  * rather than "Public" because the voice manage-booking tools call it too — the
  * credential, not the entry point, is what this function is specific to.
+ *
+ * The write itself goes through the `reschedule_appointment_atomic` function
+ * (migration `045`), which takes an org-scoped advisory lock, re-checks the
+ * expected start, and re-checks the destination for overlapping appointments
+ * inside one transaction. Doing the overlap check here in JS — as the caller's
+ * availability check does — leaves a window where two callers both pass and
+ * both land on the same slot.
  */
 export async function rescheduleAppointmentByEmailServiceRole(
   organizationId: string,
   appointmentId: string,
   email: string,
   startsAt: string,
-  endsAt: string
+  endsAt: string,
+  expected?: ExpectedAppointmentState
 ): Promise<AppointmentMutationResult> {
   const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
   if (!owned) return { error: 'Appointment not found.', code: 'not_found' }
 
   const supabase = createServiceRoleClient()
-  const { error } = await supabase
-    .from('appointments')
-    .update({ starts_at: startsAt, ends_at: endsAt, updated_at: new Date().toISOString() })
-    .eq('id', appointmentId)
-    .eq('organization_id', organizationId)
+  const { data, error } = await supabase.rpc('reschedule_appointment_atomic', {
+    p_organization_id: organizationId,
+    p_appointment_id: appointmentId,
+    p_starts_at: startsAt,
+    p_ends_at: endsAt,
+    p_expected_starts_at: expected?.startsAt ?? null,
+  })
 
   if (error) return { error: 'Could not reschedule. Please try again.', code: 'update_failed' }
+
+  switch (data as string | null) {
+    case 'ok':
+      break
+    case 'not_found':
+      return { error: 'Appointment not found.', code: 'not_found' }
+    case 'conflict':
+      return {
+        error: 'That appointment changed before we could move it. Please look it up again.',
+        code: 'conflict',
+      }
+    case 'destination_conflict':
+      return { error: 'That time is no longer available.', code: 'slot_taken' }
+    default:
+      return { error: 'Could not reschedule. Please try again.', code: 'update_failed' }
+  }
 
   void handleAppointmentUpdated(organizationId, appointmentId)
   void handleCalComAppointmentUpdated(organizationId, appointmentId)
@@ -313,23 +393,46 @@ export async function rescheduleAppointmentByEmailServiceRole(
   return { success: true }
 }
 
-/** Cancels an appointment after re-verifying the email owns it. See the rename note above. */
+/**
+ * Cancels an appointment after re-verifying the email owns it. See the rename
+ * note above.
+ *
+ * The update is conditional on the appointment still being uncancelled and, when
+ * `expected` is given, still starting when the caller confirmed. `.select('id')`
+ * is what turns that into a check: a conditional `UPDATE` that matches nothing
+ * is not an error in PostgREST, so without reading the affected rows back a
+ * stale cancel would report success.
+ */
 export async function cancelAppointmentByEmailServiceRole(
   organizationId: string,
   appointmentId: string,
-  email: string
+  email: string,
+  expected?: ExpectedAppointmentState
 ): Promise<AppointmentMutationResult> {
   const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
   if (!owned) return { error: 'Appointment not found.', code: 'not_found' }
 
   const supabase = createServiceRoleClient()
-  const { error } = await supabase
+  let query = supabase
     .from('appointments')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('id', appointmentId)
     .eq('organization_id', organizationId)
+    .neq('status', 'cancelled')
+
+  if (expected) {
+    query = query.eq('starts_at', expected.startsAt)
+  }
+
+  const { data: updated, error } = await query.select('id')
 
   if (error) return { error: 'Could not cancel. Please try again.', code: 'update_failed' }
+  if (!updated || updated.length === 0) {
+    return {
+      error: 'That appointment changed before we could cancel it. Please look it up again.',
+      code: 'conflict',
+    }
+  }
 
   void dispatchWebhook(organizationId, 'appointment.cancelled', { appointmentId })
 

@@ -5,6 +5,7 @@ import {
   findClientAppointmentsByEmailServiceRole,
   getUpcomingAppointmentsByEmailServiceRole,
   cancelAppointmentByEmailServiceRole,
+  rescheduleAppointmentByEmailServiceRole,
 } from './booking-service'
 
 vi.mock('@/lib/supabase/service-role', () => ({
@@ -257,10 +258,22 @@ describe('createAppointmentServiceRole', () => {
   })
 })
 
-/** Two-query chain: `clients` narrowed by `ilike`, then `appointments` by `in`. */
+type QueryResult = { data: unknown; error: unknown }
+
+/**
+ * `clients` narrowed by `ilike`, then one or two `appointments` queries.
+ *
+ * The appointments read is split in two when the caller asks for a lookback
+ * window: a forward query from now (`.gte` only) and a descending lookback
+ * (`.gte` then `.lt`). `calls` records the filters each one applied so a test
+ * can tell them apart, because both run through the same chainable node.
+ */
 function mockLookupClient(options: {
-  clients?: { data: unknown; error: unknown }
-  appointments?: { data: unknown; error: unknown }
+  clients?: QueryResult
+  /** The forward (now-onwards, ascending) query. */
+  appointments?: QueryResult
+  /** The descending lookback query, when one is issued. */
+  lookback?: QueryResult
 }) {
   const ilike = vi
     .fn()
@@ -268,18 +281,60 @@ function mockLookupClient(options: {
   const clientOrgEq = vi.fn().mockReturnValue({ ilike })
   const clientSelect = vi.fn().mockReturnValue({ eq: clientOrgEq })
 
-  const limit = vi.fn().mockResolvedValue(options.appointments ?? { data: [], error: null })
-  const order = vi.fn().mockReturnValue({ limit })
-  const gte = vi.fn().mockReturnValue({ order })
-  const inClientIds = vi.fn().mockReturnValue({ gte })
-  const apptOrgEq = vi.fn().mockReturnValue({ in: inClientIds })
-  const apptSelect = vi.fn().mockReturnValue({ eq: apptOrgEq })
+  type AppointmentCall = {
+    organizationId?: string
+    clientIds?: string[]
+    gte?: string
+    lt?: string
+    ascending?: boolean
+    limit?: number
+  }
+  const calls: AppointmentCall[] = []
+
+  function node(call: AppointmentCall): Record<string, unknown> {
+    return {
+      eq: (_column: string, value: string) => {
+        call.organizationId = value
+        return node(call)
+      },
+      in: (_column: string, value: string[]) => {
+        call.clientIds = value
+        return node(call)
+      },
+      gte: (_column: string, value: string) => {
+        call.gte = value
+        return node(call)
+      },
+      lt: (_column: string, value: string) => {
+        call.lt = value
+        return node(call)
+      },
+      order: (_column: string, opts: { ascending: boolean }) => {
+        call.ascending = opts.ascending
+        return node(call)
+      },
+      limit: (value: number) => {
+        call.limit = value
+        return Promise.resolve(
+          call.ascending === false
+            ? options.lookback ?? { data: [], error: null }
+            : options.appointments ?? { data: [], error: null }
+        )
+      },
+    }
+  }
+
+  const apptSelect = vi.fn(() => {
+    const call: AppointmentCall = {}
+    calls.push(call)
+    return node(call)
+  })
 
   const from = vi.fn((table: string) =>
     table === 'clients' ? { select: clientSelect } : { select: apptSelect }
   )
 
-  return { from, ilike, clientOrgEq, apptOrgEq, inClientIds, gte, limit, apptSelect }
+  return { from, ilike, clientOrgEq, apptSelect, calls }
 }
 
 async function useMock(mock: { from: unknown }) {
@@ -300,7 +355,7 @@ describe('findClientAppointmentsByEmailServiceRole', () => {
 
     expect(mock.clientOrgEq).toHaveBeenCalledWith('organization_id', 'org-1')
     expect(mock.ilike).toHaveBeenCalledWith('email', 'ada@example.com')
-    expect(mock.apptOrgEq).toHaveBeenCalledWith('organization_id', 'org-1')
+    expect(mock.calls[0].organizationId).toBe('org-1')
   })
 
   it('matches case-insensitively on the stored address', async () => {
@@ -343,7 +398,7 @@ describe('findClientAppointmentsByEmailServiceRole', () => {
 
     await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com')
 
-    expect(mock.inClientIds).toHaveBeenCalledWith('client_id', ['client-1', 'client-2'])
+    expect(mock.calls[0].clientIds).toEqual(['client-1', 'client-2'])
   })
 
   it('short-circuits without an appointments query when no client matches', async () => {
@@ -354,20 +409,99 @@ describe('findClientAppointmentsByEmailServiceRole', () => {
     expect(mock.apptSelect).not.toHaveBeenCalled()
   })
 
-  it('defaults the row limit to 50 and honors an override', async () => {
-    const first = mockLookupClient({})
-    await useMock(first)
-    await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com')
-    expect(first.limit).toHaveBeenCalledWith(50)
+  it('issues one forward query with a default limit of 50 when there is no lookback', async () => {
+    const mock = mockLookupClient({})
+    await useMock(mock)
 
-    const second = mockLookupClient({})
-    await useMock(second)
-    await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com', {
-      sinceIso: '2026-07-04T12:00:00.000Z',
-      limit: 100,
-    })
-    expect(second.gte).toHaveBeenCalledWith('starts_at', '2026-07-04T12:00:00.000Z')
-    expect(second.limit).toHaveBeenCalledWith(100)
+    await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com')
+
+    expect(mock.calls).toHaveLength(1)
+    expect(mock.calls[0].limit).toBe(50)
+    expect(mock.calls[0].ascending).toBe(true)
+    expect(mock.calls[0].lt).toBeUndefined()
+  })
+
+  // The regression this guards: one `.order('starts_at').limit(100)` over a
+  // window starting 30 days in the past keeps the *earliest* 100 rows, so a
+  // shared address with heavy recent history spends the whole budget on past
+  // rows and the caller is told they have nothing booked.
+  it('spends the row budget forward and reads history in a second, bounded query', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-03T12:00:00Z'))
+    try {
+      const mock = mockLookupClient({
+        appointments: { data: [{ id: 'future', starts_at: '2026-08-05T14:00:00+00:00' }], error: null },
+        lookback: { data: [{ id: 'past', starts_at: '2026-07-20T14:00:00+00:00' }], error: null },
+      })
+      await useMock(mock)
+
+      const rows = await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com', {
+        sinceIso: '2026-07-04T12:00:00.000Z',
+        limit: 100,
+      })
+
+      expect(mock.calls).toHaveLength(2)
+
+      const forward = mock.calls.find((call) => call.ascending === true)
+      expect(forward?.gte).toBe('2026-08-03T12:00:00.000Z')
+      expect(forward?.lt).toBeUndefined()
+      expect(forward?.limit).toBe(100)
+
+      const lookback = mock.calls.find((call) => call.ascending === false)
+      expect(lookback?.gte).toBe('2026-07-04T12:00:00.000Z')
+      expect(lookback?.lt).toBe('2026-08-03T12:00:00.000Z')
+      expect(lookback?.limit).toBe(25)
+
+      // Merged back into one ascending list, so callers see the same shape.
+      expect(rows.map((row) => row.id)).toEqual(['past', 'future'])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps every upcoming row even when the lookback query is already saturated', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-03T12:00:00Z'))
+    try {
+      // 25 past rows — the whole lookback budget — plus a real future one. The
+      // single-query version would have returned only past rows here.
+      const past = Array.from({ length: 25 }, (_, index) => ({
+        id: `past-${index}`,
+        starts_at: new Date(Date.parse('2026-08-02T00:00:00Z') - index * 3_600_000).toISOString(),
+      }))
+      const mock = mockLookupClient({
+        appointments: { data: [{ id: 'future', starts_at: '2026-08-05T14:00:00+00:00' }], error: null },
+        lookback: { data: past, error: null },
+      })
+      await useMock(mock)
+
+      const rows = await findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com', {
+        sinceIso: '2026-07-04T12:00:00.000Z',
+        limit: 100,
+      })
+
+      expect(rows).toHaveLength(26)
+      expect(rows[rows.length - 1].id).toBe('future')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('throws when the lookback query errors', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-03T12:00:00Z'))
+    try {
+      const mock = mockLookupClient({ lookback: { data: null, error: { message: 'boom' } } })
+      await useMock(mock)
+
+      await expect(
+        findClientAppointmentsByEmailServiceRole('org-1', 'ada@example.com', {
+          sinceIso: '2026-07-04T12:00:00.000Z',
+        })
+      ).rejects.toThrow('appointment lookback failed: boom')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('throws when the client query errors, so "no appointment" is always a real answer', async () => {
@@ -409,18 +543,19 @@ describe('getUpcomingAppointmentsByEmailServiceRole', () => {
     const rows = await getUpcomingAppointmentsByEmailServiceRole('org-1', 'ada@example.com')
 
     expect(rows).toEqual([{ id: 'appt-1', status: 'confirmed' }])
-    expect(mock.limit).toHaveBeenCalledWith(500)
+    expect(mock.calls[0].limit).toBe(500)
   })
 
-  it('absorbs a read failure into [] so the public booking page keeps working', async () => {
+  // It used to return `[]` here, which the booking page renders as "no upcoming
+  // appointments found for that email" — a read failure shown as a real answer.
+  // `lookupPublicAppointments` now catches this and renders a failure state.
+  it('throws a read failure instead of passing it off as "nothing booked"', async () => {
     const mock = mockLookupClient({ clients: { data: null, error: { message: 'boom' } } })
     await useMock(mock)
-    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await getUpcomingAppointmentsByEmailServiceRole('org-1', 'ada@example.com')).toEqual([])
-    expect(consoleError).toHaveBeenCalled()
-
-    consoleError.mockRestore()
+    await expect(
+      getUpcomingAppointmentsByEmailServiceRole('org-1', 'ada@example.com')
+    ).rejects.toThrow('client lookup failed: boom')
   })
 })
 
@@ -429,9 +564,17 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     vi.clearAllMocks()
   })
 
+  /**
+   * The cancel write is a conditional UPDATE read back with `.select('id')`,
+   * so `updatedRows` is what decides success: a conditional update that matches
+   * nothing is not a PostgREST error, and reporting success off the absent error
+   * alone is exactly the stale-write bug.
+   */
   function mockCancel(options: {
     owner?: unknown
     updateError?: { message: string } | null
+    /** Rows the conditional UPDATE actually matched. Empty means it lost a race. */
+    updatedRows?: unknown[]
   }) {
     const maybeSingle = vi.fn().mockResolvedValue({
       data:
@@ -443,12 +586,28 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     const assertIdEq = vi.fn().mockReturnValue({ eq: assertOrgEq })
     const select = vi.fn().mockReturnValue({ eq: assertIdEq })
 
-    const updateOrgEq = vi.fn().mockResolvedValue({ error: options.updateError ?? null })
-    const updateIdEq = vi.fn().mockReturnValue({ eq: updateOrgEq })
-    const update = vi.fn().mockReturnValue({ eq: updateIdEq })
+    const filters: { column: string; value: unknown }[] = []
+    const updateSelect = vi.fn().mockResolvedValue({
+      data: options.updateError ? null : options.updatedRows ?? [{ id: 'appt-1' }],
+      error: options.updateError ?? null,
+    })
+    function updateNode(): Record<string, unknown> {
+      return {
+        eq: (column: string, value: unknown) => {
+          filters.push({ column, value })
+          return updateNode()
+        },
+        neq: (column: string, value: unknown) => {
+          filters.push({ column: `not:${column}`, value })
+          return updateNode()
+        },
+        select: updateSelect,
+      }
+    }
+    const update = vi.fn(() => updateNode())
 
     const from = vi.fn().mockReturnValue({ select, update })
-    return { from, update, updateOrgEq }
+    return { from, update, filters, updateSelect }
   }
 
   it('cancels and fires the webhook plus all four calendar cancel handlers', async () => {
@@ -461,7 +620,12 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     expect(mock.update).toHaveBeenCalledWith(
       expect.objectContaining({ status: 'cancelled' })
     )
-    expect(mock.updateOrgEq).toHaveBeenCalledWith('organization_id', 'org-1')
+    expect(mock.filters).toEqual(
+      expect.arrayContaining([
+        { column: 'organization_id', value: 'org-1' },
+        { column: 'not:status', value: 'cancelled' },
+      ])
+    )
 
     const { dispatchWebhook } = await import('@/lib/integrations/webhook')
     const { handleAppointmentCancelled } = await import('@/lib/integrations/google-calendar-sync')
@@ -497,5 +661,229 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     const result = await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com')
 
     expect(result).toEqual({ error: 'Could not cancel. Please try again.', code: 'update_failed' })
+  })
+
+  it('pins the write to the start time the caller confirmed when one is given', async () => {
+    const mock = mockCancel({})
+    await useMock(mock)
+
+    await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com', {
+      startsAt: '2026-08-05T14:00:00+00:00',
+    })
+
+    expect(mock.filters).toEqual(
+      expect.arrayContaining([{ column: 'starts_at', value: '2026-08-05T14:00:00+00:00' }])
+    )
+  })
+
+  // The competing-mutation case: the appointment moved (or was cancelled)
+  // between the resolver's read and this write, so the conditional UPDATE
+  // matches nothing. Without checking the affected rows this reported success
+  // and the caller was told a cancellation happened that never did.
+  it('reports a conflict, not success, when a competing change makes the write match no rows', async () => {
+    const mock = mockCancel({ updatedRows: [] })
+    await useMock(mock)
+
+    const result = await cancelAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      { startsAt: '2026-08-05T14:00:00+00:00' }
+    )
+
+    expect(result).toEqual({
+      error: 'That appointment changed before we could cancel it. Please look it up again.',
+      code: 'conflict',
+    })
+
+    // And nothing downstream is told a cancellation happened.
+    const { dispatchWebhook } = await import('@/lib/integrations/webhook')
+    const { handleAppointmentCancelled } = await import('@/lib/integrations/google-calendar-sync')
+    expect(dispatchWebhook).not.toHaveBeenCalled()
+    expect(handleAppointmentCancelled).not.toHaveBeenCalled()
+  })
+})
+
+describe('rescheduleAppointmentByEmailServiceRole', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  /**
+   * The move goes through `reschedule_appointment_atomic` (migration `045`)
+   * rather than a bare UPDATE, so the expected-start check and the destination
+   * overlap check happen under one org-scoped advisory lock. These assert the
+   * mapping from its status codes.
+   */
+  function mockReschedule(options: { owner?: unknown; rpc?: { data: unknown; error: unknown } }) {
+    const maybeSingle = vi.fn().mockResolvedValue({
+      data:
+        'owner' in options
+          ? options.owner
+          : { client_id: 'client-1', clients: { email: 'Ada@Example.com' } },
+    })
+    const assertOrgEq = vi.fn().mockReturnValue({ maybeSingle })
+    const assertIdEq = vi.fn().mockReturnValue({ eq: assertOrgEq })
+    const select = vi.fn().mockReturnValue({ eq: assertIdEq })
+    const update = vi.fn()
+    const from = vi.fn().mockReturnValue({ select, update })
+    const rpc = vi.fn().mockResolvedValue(options.rpc ?? { data: 'ok', error: null })
+    return { from, rpc, update }
+  }
+
+  async function useRescheduleMock(mock: { from: unknown; rpc: unknown }) {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    vi.mocked(createServiceRoleClient).mockReturnValue({
+      from: mock.from,
+      rpc: mock.rpc,
+    } as never)
+  }
+
+  it('moves through the atomic function, passing the confirmed start, and never a bare update', async () => {
+    const mock = mockReschedule({})
+    await useRescheduleMock(mock)
+
+    const result = await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z',
+      { startsAt: '2026-08-05T14:00:00+00:00' }
+    )
+
+    expect(result).toEqual({ success: true })
+    expect(mock.rpc).toHaveBeenCalledWith('reschedule_appointment_atomic', {
+      p_organization_id: 'org-1',
+      p_appointment_id: 'appt-1',
+      p_starts_at: '2026-08-06T09:00:00.000Z',
+      p_ends_at: '2026-08-06T09:30:00.000Z',
+      p_expected_starts_at: '2026-08-05T14:00:00+00:00',
+    })
+    expect(mock.update).not.toHaveBeenCalled()
+
+    const { handleAppointmentUpdated } = await import('@/lib/integrations/google-calendar-sync')
+    expect(handleAppointmentUpdated).toHaveBeenCalledWith('org-1', 'appt-1')
+  })
+
+  it('sends a null expected start for the public path, which has no confirmed time', async () => {
+    const mock = mockReschedule({})
+    await useRescheduleMock(mock)
+
+    await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(mock.rpc).toHaveBeenCalledWith(
+      'reschedule_appointment_atomic',
+      expect.objectContaining({ p_expected_starts_at: null })
+    )
+  })
+
+  // A competing mutation changed the source appointment after the caller
+  // confirmed its time. The old bare UPDATE would have overwritten it.
+  it('maps a stale source appointment to conflict and syncs nothing', async () => {
+    const mock = mockReschedule({ rpc: { data: 'conflict', error: null } })
+    await useRescheduleMock(mock)
+
+    const result = await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z',
+      { startsAt: '2026-08-05T14:00:00+00:00' }
+    )
+
+    expect(result).toEqual({
+      error: 'That appointment changed before we could move it. Please look it up again.',
+      code: 'conflict',
+    })
+
+    const { handleAppointmentUpdated } = await import('@/lib/integrations/google-calendar-sync')
+    expect(handleAppointmentUpdated).not.toHaveBeenCalled()
+  })
+
+  // Two callers both passed the same availability check. The second one loses
+  // inside the transaction instead of double-booking the slot.
+  it('maps destination contention to slot_taken and syncs nothing', async () => {
+    const mock = mockReschedule({ rpc: { data: 'destination_conflict', error: null } })
+    await useRescheduleMock(mock)
+
+    const result = await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(result).toEqual({ error: 'That time is no longer available.', code: 'slot_taken' })
+
+    const { handleAppointmentUpdated } = await import('@/lib/integrations/google-calendar-sync')
+    expect(handleAppointmentUpdated).not.toHaveBeenCalled()
+  })
+
+  it('maps a missing appointment to not_found', async () => {
+    const mock = mockReschedule({ rpc: { data: 'not_found', error: null } })
+    await useRescheduleMock(mock)
+
+    expect(
+      await rescheduleAppointmentByEmailServiceRole(
+        'org-1',
+        'appt-1',
+        'ada@example.com',
+        '2026-08-06T09:00:00.000Z',
+        '2026-08-06T09:30:00.000Z'
+      )
+    ).toEqual({ error: 'Appointment not found.', code: 'not_found' })
+  })
+
+  it('returns update_failed on an rpc error or an unrecognized status', async () => {
+    const failing = mockReschedule({ rpc: { data: null, error: { message: 'boom' } } })
+    await useRescheduleMock(failing)
+    expect(
+      await rescheduleAppointmentByEmailServiceRole(
+        'org-1',
+        'appt-1',
+        'ada@example.com',
+        '2026-08-06T09:00:00.000Z',
+        '2026-08-06T09:30:00.000Z'
+      )
+    ).toEqual({ error: 'Could not reschedule. Please try again.', code: 'update_failed' })
+
+    const odd = mockReschedule({ rpc: { data: 'invalid_window', error: null } })
+    await useRescheduleMock(odd)
+    expect(
+      await rescheduleAppointmentByEmailServiceRole(
+        'org-1',
+        'appt-1',
+        'ada@example.com',
+        '2026-08-06T09:30:00.000Z',
+        '2026-08-06T09:00:00.000Z'
+      )
+    ).toEqual({ error: 'Could not reschedule. Please try again.', code: 'update_failed' })
+  })
+
+  it('never calls the function when the email does not own the appointment', async () => {
+    const mock = mockReschedule({
+      owner: { client_id: 'client-9', clients: { email: 'eve@example.com' } },
+    })
+    await useRescheduleMock(mock)
+
+    expect(
+      await rescheduleAppointmentByEmailServiceRole(
+        'org-1',
+        'appt-1',
+        'ada@example.com',
+        '2026-08-06T09:00:00.000Z',
+        '2026-08-06T09:30:00.000Z'
+      )
+    ).toEqual({ error: 'Appointment not found.', code: 'not_found' })
+    expect(mock.rpc).not.toHaveBeenCalled()
   })
 })
