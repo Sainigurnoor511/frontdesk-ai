@@ -231,15 +231,24 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
         title="Speech recognition"
         description="Control which speech the receptionist responds to."
       >
-        <SettingRow
-          title="Filter background speech"
-          description="Enable background voice detection to filter out far-field human speech."
-        >
-          <Switch
-            checked={filterBackgroundSpeech}
-            onCheckedChange={(checked) => setFilterBackgroundSpeech(Boolean(checked))}
-          />
-        </SettingRow>
+        <div className="space-y-3">
+          <SettingRow
+            title="Filter background speech"
+            description="Enable background voice detection to filter out far-field human speech."
+          >
+            <Switch
+              checked={filterBackgroundSpeech}
+              onCheckedChange={(checked) => setFilterBackgroundSpeech(Boolean(checked))}
+            />
+          </SettingRow>
+
+          {!usingAssemblyAi && (
+            <p className="max-w-xl rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning">
+              Only active on the AssemblyAI engine. Groq + Fish Audio has no voice isolation
+              model available, so your choice is saved but does nothing on this engine.
+            </p>
+          )}
+        </div>
       </SettingsCard>
 
       <SettingsCard
