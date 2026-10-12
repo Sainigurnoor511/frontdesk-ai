@@ -127,6 +127,8 @@ organization_id in (
 
 Public read policies exist only where the booking page needs them (booking config, public agent columns, business-profile timezone), gated on `booking_page_enabled`.
 
+The pattern is about *which rows*, not which columns, so a table the app writes only through the service role should not also carry member-facing insert/update/delete policies. `notifications` (`_047`) is the worked example: members get select plus a column-level `grant update (is_read)`, because the one write the UI makes is marking a row read and anything wider lets a member forge a notification into a teammate's bell or suppress a real email.
+
 ### Storage Buckets
 
 | Bucket | Created In | Holds |
@@ -137,7 +139,7 @@ Public read policies exist only where the booking page needs them (booking confi
 
 ### Migrations
 
-45 numbered SQL files in `supabase/migrations/`. Next number: `046`.
+47 numbered SQL files in `supabase/migrations/`. Next number: `048`.
 
 | Migration | Tables/Features |
 | --- | --- |
@@ -184,6 +186,8 @@ Public read policies exist only where the booking page needs them (booking confi
 | `_043` | `agent_rules` |
 | `_044` | Agent `voice_provider` (`livekit` \| `assemblyai`), conversation `assemblyai_session_id` |
 | `_045` | `reschedule_appointment_atomic()` — locks, re-checks the confirmed start, and re-checks the destination for overlaps in one transaction |
+| `_046` | Caller message `urgency` + `source` (`agent_escalation` \| `call_followup`) |
+| `_047` | `notifications` (dedupe index, delivery lease columns, member-facing select plus a column-level `is_read` update grant — no insert or delete policy), `appointments_conversation_id_idx` |
 
 Apply with `npx supabase db push`. CI applies them on merge to `main` (see [CI](#ci)).
 
@@ -299,10 +303,15 @@ One process hosting every queue, with per-queue concurrency:
 | `knowledge-indexing` | 1 | Chunks and embeds knowledge sources and FAQs |
 | `webhook-deliver` | 5 | Delivers outbound webhooks to an org's endpoint (3 attempts, exponential backoff) |
 | `assemblyai-session-finalize` | 5 | Pulls transcript and recording for a finished AssemblyAI call |
+| `notification-deliver` | 2 | Writes a `notifications` row and emails the org's members, for the four `notify_*` preferences. Also carries the 24h-before appointment reminder as a delayed job |
 
 Handlers live in `lib/queue/processors/*.ts`; producers in `lib/queue/queues/*.ts` are built with `lazyQueue()` (`lib/queue/lazy-queue.ts`), which defers the Redis connection until the first `add()` so importing a queue never opens a socket. `workers/jobs.ts` only wires processors to queues and owns graceful shutdown (SIGINT/SIGTERM close each Worker so in-flight jobs finish). The two queues at concurrency 1 are the CPU-bound ones (crawling, embedding) — raising them would stall the other queues in the shared event loop.
 
 Set `WORKER_QUEUES` to a comma-separated subset to split a queue onto its own container without touching code. Unset runs everything; an unknown name fails startup loudly.
+
+`notification-deliver` is the one queue that uses fixed job ids (`notify:<type>:<subject>`), so a job parked under that id — delayed, failed, or completed — makes a later `add()` a no-op. Install through `addNotificationJob()` (`lib/queue/queues/notification.ts`), never `notificationQueue.add()` directly: it clears the stale job first, which is what makes a rescheduled appointment's reminder move. The booting process also runs `reconcileAppointmentReminders()` once, guarded by a Redis key, to schedule reminders for appointments that predate the feature.
+
+Notification emails are claimed in two steps. `email_claimed_at` / `email_claim_token` are an expiring lease taken before the Resend call; `email_sent_at` is written only after the provider accepts. A worker that dies in between leaves a row that is still deliverable, and the retry re-submits under the same idempotency key (the notification id), so the provider dedupes it. Marking the row sent before the call is what previously lost an email with nothing able to detect it.
 
 - Run: `pnpm start:jobs` (or `pnpm dev:jobs` to watch)
 
@@ -403,7 +412,8 @@ Two gates are enforced in the composition point, not in the system prompt, so a 
 | Calendly | `lib/integrations/calendly.ts` | Scheduling link only; update/cancel are no-ops |
 | Telephony | `lib/integrations/telephony.ts`, `twilio.ts` | Twilio number provisioning; Plivo/SIP slugs reserved. Inbound PSTN → LiveKit SIP not built yet |
 | Outbound webhooks | `lib/integrations/webhook*.ts` | Events dispatched through the `webhook-deliver` queue |
-| Email | `lib/email/send-appointment-confirmation.ts` | Resend |
+| Email | `lib/email/send-appointment-confirmation.ts`, `send-notification-email.ts` | Resend. Confirmations go to the client one at a time; staff notifications go out as one `batch.send` with the notification id as the idempotency key |
+| Staff notifications | `lib/notifications/*`, `lib/queue/processors/notification.ts` | Org preferences in `organization_settings` → `notification-deliver` queue → `notifications` row + email. Header bell in `components/layout/notification-center.tsx` |
 
 The catalog shown in the UI is `lib/data/integration-catalog.ts`.
 
@@ -468,10 +478,10 @@ Never inline validation in actions or components — always import from these mo
 - **Run:** `pnpm test` (once) or `pnpm test:watch`; typecheck with `pnpm exec tsc --noEmit`
 - **Playwright** is a devDependency but no E2E suite exists yet
 
-### Known Baseline (2026-10-08)
+### Known Baseline (2026-10-13)
 
 - `pnpm exec tsc --noEmit`: clean
-- `pnpm test`: 267 passed, 10 failed across 4 files — `app/smb/actions.test.ts`, `lib/data/analytics.test.ts`, `lib/data/availability-engine.test.ts` (date/timezone fixtures), `lib/voice/adapters/fish-audio-tts.test.ts`. All pre-existing.
+- `pnpm test`: 558 passed, 4 failed across 2 files — 2 in `lib/data/analytics.test.ts`, 2 in `lib/voice/adapters/fish-audio-tts.test.ts`. Both pre-existing. The 6 `lib/data/availability-engine.test.ts` failures were a stale test clock and were fixed on 2026-10-12; `app/smb/actions.test.ts` passes.
 - `pnpm lint`: 29 errors, 4 warnings, pre-existing. Lint the files you touch with `pnpm exec eslint <files>`.
 
 ---
@@ -527,7 +537,7 @@ docker compose --env-file .env.local up --build
 | `NEXT_PUBLIC_SUPABASE_URL` | Yes | App, workers | Supabase project URL |
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Yes | App | Supabase anon key (browser + server reads) |
 | `SUPABASE_SECRET_KEY` | Yes | App, workers | Service-role key (bypasses RLS) |
-| `NEXT_PUBLIC_SITE_URL` | Yes | App | Base URL, e.g. `http://localhost:3000` |
+| `NEXT_PUBLIC_SITE_URL` | Yes | App, jobs worker | Base URL, e.g. `http://localhost:3000`. Inlined at build time inside Next, but an ordinary runtime variable in the jobs worker, which asserts it before sending a notification email (an unset value would mail `localhost` call-to-action links) |
 | `ENCRYPTION_KEY` | For calendar sync | App, workers | Key material for `lib/crypto.ts` (AES-256-GCM OAuth token storage) |
 | `REDIS_URL` | Yes | App, workers | Redis connection for BullMQ |
 | `WORKER_QUEUES` | No | Jobs worker | Comma-separated subset of queues to run |
@@ -545,7 +555,7 @@ docker compose --env-file .env.local up --build
 | `ASSEMBLYAI_WEBHOOK_SECRET` | No | App | Verifies `session.completed` webhooks; deliveries rejected when unset |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | No | App | Cloudflare Turnstile (public booking page) |
 | `TURNSTILE_SECRET_KEY` | No | App | Turnstile server-side verification |
-| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | No | App | Appointment confirmation email |
+| `RESEND_API_KEY` / `RESEND_FROM_EMAIL` | No | App, jobs worker | Appointment confirmation email and staff notification email |
 | `GOOGLE_CALENDAR_OAUTH_CLIENT_ID` / `_SECRET` | No | App | Google Calendar OAuth |
 | `MICROSOFT_CALENDAR_CLIENT_ID` / `_SECRET` | No | App | Microsoft Calendar OAuth |
 | `MICROSOFT_CALENDAR_TENANT_ID` | No | App | Defaults to `common` |

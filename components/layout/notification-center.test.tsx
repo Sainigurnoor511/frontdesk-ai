@@ -138,6 +138,34 @@ describe('NotificationCenter', () => {
     await waitFor(() => expect(screen.getByText('2 unread')).toBeTruthy())
   })
 
+  it('shows the rows as read when the panel is reopened after a mark-all', async () => {
+    const { getNotificationPanel, markAllNotificationsAsRead } = await import(
+      './notification-actions'
+    )
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 1 })
+    vi.mocked(markAllNotificationsAsRead).mockResolvedValue({ success: true })
+
+    render(<NotificationCenter initialUnreadCount={1} />)
+    fireEvent.click(notificationBell())
+    await screen.findByText('New booking')
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }))
+    await waitFor(() => expect(screen.getByText('0 unread')).toBeTruthy())
+
+    // Close, then reopen: the reopen refetch is authoritative, so the server
+    // view is what shows — not the stale unread list from the first fetch.
+    fireEvent.click(notificationBell())
+    vi.mocked(getNotificationPanel).mockResolvedValue({
+      items: ITEMS.map((item) => ({ ...item, isRead: true })),
+      unreadCount: 0,
+    })
+    fireEvent.click(notificationBell())
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('[data-unread="true"]')).toHaveLength(0)
+    )
+    expect(screen.getByText('0 unread')).toBeTruthy()
+  })
+
   it('names the unread count in the trigger accessible name', async () => {
     const { getNotificationPanel } = await import('./notification-actions')
     vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 3 })

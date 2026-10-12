@@ -58,7 +58,8 @@ Use this as the completion gate before marking a feature item done.
       Firefox and Safari specifically — the in-worklet resampling exists because those two
       break the forced-24 kHz shortcut, and that code has never run.
 - [ ] Wire feature flags to sidebar visibility and route guards
-- [ ] Implement notification delivery from stored prefs (`organization_settings`)
+- [x] Implement notification delivery from stored prefs (`organization_settings`) —
+      shipped 2026-10-13, see Completed Recently
 
 ## P1 - Knowledge + Conversations
 
@@ -155,13 +156,33 @@ both surfaces.
       `blocked_phone_numbers` (CRUD only; a browser call carries no caller number to match).
       The unblocked half of this story — taking a message for a human — shipped; see
       Completed Recently.
-- [ ] **Notify the org about a new caller message by email** (added: 2026-10-13) —
-      `take_message` dispatches the `caller_message.created` outbound webhook, which is the
-      only org-wide delivery path that exists. An org that has not configured a webhook
-      learns about an escalated caller only by opening the Messages tab. When the
-      notification-delivery item lands, add a `dispatchNotification()` call alongside the
-      webhook in `lib/voice/tools/escalation-handlers.ts` — alongside, not instead of, and
-      not a second email sender of its own.
+- [ ] **Notify the org about a new caller message by email** (added: 2026-10-13, scoped
+      2026-10-13) — `take_message` dispatches the `caller_message.created` outbound webhook,
+      which was the only org-wide delivery path when it shipped. An org that has not
+      configured a webhook learns about an escalated caller only by opening the Messages
+      tab. Notification delivery has now landed, so the call site in
+      `lib/voice/tools/escalation-handlers.ts` should gain a `dispatchNotification()`
+      alongside the webhook — alongside, not instead of, and not a second email sender of
+      its own.
+      **Why it is still open:** reuse is not a wiring change. `dispatchNotification()`
+      takes a `NotificationEvent`, and every one of the four types resolves to a
+      `notify_*` column in `organization_settings`, a branch in
+      `buildNotificationContent()`, and a subject loader that reads either a conversation
+      or an appointment. A `caller_message` type needs a fifth preference column (migration
+      + the organization settings form), a fifth content branch, a `caller_messages` subject
+      loader, and a `link_path` added to the notification allow-list
+      (`lib/notifications/link-path.ts`). That is a feature, not the small addition this
+      item assumed, so it was deliberately left out of the notification-delivery review
+      fixes rather than half-wired.
+- [ ] **Each notification costs one Auth admin round trip per member** (added: 2026-10-13,
+      from the notification-delivery semantic review, issue 11) — `members` carries no email
+      column, so `getOrgRecipients()` resolves every `user_id` through
+      `auth.admin.getUserById`, ten at a time, capped at 50, with no caching between jobs. A
+      50-member org pays 50 Auth round trips per notification, and a burst of bookings can
+      hit Auth rate limits. Not fixed with a process-local cache on purpose: the worker runs
+      multiple containers and a stale cache mails a former address, so the right fix is
+      denormalizing the email onto `members` and keeping it in sync (a migration plus a sync
+      path on signup and email change), which is bigger than the review that found it.
 - [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13, found
       during the `answering_mode` investigation) — honoured on the AssemblyAI path
       (`session-config.ts` sends `voice_focus` + `voice_focus_threshold`), but
@@ -177,7 +198,8 @@ both surfaces.
       files, so the harness has to be set up from scratch. Scope TBD; the obvious first
       targets are the signup → onboarding → agent-create path and the public booking page.
 - [ ] Calendar per-slot buffer time support
-- [ ] Notification center UI (header popover currently shell)
+- [x] Notification center UI (header popover currently shell) — shipped 2026-10-13, see
+      Completed Recently
 - [ ] Billing/upgrade flow behind sidebar upgrade card
 - [ ] Enforce TOTP at login: after password sign-in, check
       `getAuthenticatorAssuranceLevel()` and require the code before the session counts
@@ -219,6 +241,33 @@ both surfaces.
 
 ## Completed Recently
 
+- [x] **Notification delivery from stored preferences, plus the header notification
+      center** (2026-10-13) — the four `notify_*` toggles in `organization_settings` now
+      actually deliver. `dispatchNotification()` / `scheduleAppointmentReminder()`
+      (`lib/notifications/dispatch.ts`) enqueue onto the new `notification-deliver` queue;
+      `lib/queue/processors/notification.ts` re-reads the preference and the subject at
+      delivery time, claims a row in the new `notifications` table (migration `047`,
+      deduplicated on `(organization_id, type, dedupe_key)`), and fans one
+      `resend.batch.send` out to the org's members. Four types: post-call summary, client
+      booking, staff booking, and a 24h-before appointment reminder enqueued as a delayed
+      job. The header bell reads through a server action on open and on window focus.
+      Semantic review (two models, 20 issues) found four High ones, all fixed here: a
+      reschedule left the reminder at the old time because a fixed BullMQ job id makes a
+      re-add a no-op — installs go through `addNotificationJob()`, which clears the stale
+      job, and every path that moves or cancels `starts_at` calls it, including the voice
+      cancel/reschedule tools; `email_sent_at` was stamped before the Resend call, so a
+      crash in that window looked delivered and was never retried — the pre-send write is
+      now an expiring lease and the durable stamp lands only once the provider accepts; the
+      migration had copied `caller_messages`' policy set, letting any member forge, rewrite
+      or delete notifications — members now get select plus a column-level `is_read` update
+      grant, and `link_path` is allow-listed at render; and a transient Auth lookup failure
+      silently dropped recipients forever — a 404 is skipped, anything else throws so the
+      job retries. Also: the `client_booking` hourly cap is charged once per notification
+      rather than once per attempt and a capped email is re-enqueued past the window
+      instead of dropped, and the worker asserts `NEXT_PUBLIC_SITE_URL` so it cannot mail
+      `localhost` links. Read state is one flag on an org-scoped row, matching
+      `conversations` and `caller_messages` — a shared inbox, on purpose; per-member read
+      state would need a `notification_reads` join table.
 - [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
       receptionist promised a human handoff it had no tool to perform. The UI advertises
       transfers (the Transfer rules section on the agent detail page, the "Handoff to a

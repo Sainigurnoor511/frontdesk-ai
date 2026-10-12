@@ -31,7 +31,7 @@ vi.mock('@/lib/voice/rate-limit', () => ({
 // makes; mocking at `lazy-queue` keeps the real queue module in the graph.
 const { queueAddMock } = vi.hoisted(() => ({ queueAddMock: vi.fn() }))
 vi.mock('@/lib/queue/lazy-queue', () => ({
-  lazyQueue: () => ({ add: queueAddMock, remove: vi.fn(), getJob: vi.fn() }),
+  lazyQueue: () => ({ add: queueAddMock, remove: vi.fn() }),
 }))
 
 const ORG = '11111111-1111-1111-1111-111111111111'
@@ -268,6 +268,16 @@ describe('processNotification', () => {
     await processNotification(job())
 
     expect(mocks.notificationsSelect).toHaveBeenCalled()
+    expect(batchSendMock).not.toHaveBeenCalled()
+  })
+
+  it('retries when the conflicting row is deleted between the insert and the read', async () => {
+    await mockClient({
+      claimInsert: { data: null, error: { code: '23505', message: 'duplicate key' } },
+      claimRead: { data: null, error: null },
+    })
+
+    await expect(processNotification(job())).rejects.toThrow('Notification claim vanished')
     expect(batchSendMock).not.toHaveBeenCalled()
   })
 

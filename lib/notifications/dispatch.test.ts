@@ -18,7 +18,7 @@ import {
 const { addMock, removeMock } = vi.hoisted(() => ({ addMock: vi.fn(), removeMock: vi.fn() }))
 
 vi.mock('@/lib/queue/lazy-queue', () => ({
-  lazyQueue: () => ({ add: addMock, remove: removeMock, getJob: vi.fn() }),
+  lazyQueue: () => ({ add: addMock, remove: removeMock }),
 }))
 
 vi.mock('@/lib/supabase/service-role', () => ({
