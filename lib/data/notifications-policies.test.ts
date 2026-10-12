@@ -1,6 +1,11 @@
-// Asserts the shape of migration `047`'s policy and grant set.
+// TEXT-SHAPE GUARD ONLY. This suite reads migration `047` as a string and
+// regex-matches its policy and grant statements. It does NOT run them against
+// a live Postgres, so it does not exercise policy semantics: a policy whose text
+// looks right but whose predicate is wrong still passes here. Running the RLS
+// and grant set against a real database in CI is backlogged in
+// `developer-docs/TODO.md`.
 //
-// There is no live Postgres in this suite, so "a direct member write is
+// Within that limit, "a direct member write is
 // rejected" is expressed against the migration that rejects it: a member-facing
 // insert or delete policy, or a table-wide update grant, is exactly what let any
 // authenticated member forge a notification into a teammate's bell, rewrite

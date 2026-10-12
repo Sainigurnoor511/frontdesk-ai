@@ -183,6 +183,23 @@ both surfaces.
       multiple containers and a stale cache mails a former address, so the right fix is
       denormalizing the email onto `members` and keeping it in sync (a migration plus a sync
       path on signup and email change), which is bigger than the review that found it.
+- [ ] **`notifications` rows are never deleted** (added: 2026-10-13, from the round-2
+      notification-delivery review, issue 8) — **explicit decision: no retention job yet.**
+      The growth driver is one row per delivered event per org (every completed call, every
+      booking, every reminder — plus one more per reschedule, since a moved appointment's
+      reminder is a new row and the old one is only marked `superseded_at`). Migration `047`
+      has no delete policy and nothing prunes, while the bell only ever reads the newest ten,
+      so a long-lived org carries an ever-growing table behind its unread count and keeps
+      delivery metadata indefinitely. Obvious fix when it matters: a scheduled job on the
+      jobs worker that deletes read rows (and superseded ones) older than N days, service
+      role only, batched per org.
+- [ ] **Run the RLS and grant tests against a real Postgres in CI** (added: 2026-10-13,
+      round-2 review, issue 9) — `lib/data/notifications-policies.test.ts` regex-matches
+      migration `047`'s SQL text; it cannot tell a correct-looking policy from a correct one.
+      Exercising the policies needs a CI job that boots Postgres (`supabase start` or a
+      service container), applies the migrations, and signs in as two members of different
+      orgs. That would cover every table's policies, not just this one, and there is no
+      build/test workflow at all yet (`.github/workflows/` runs migrations only).
 - [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13,
       investigated 2026-10-13 — see `.agents/tasks/filter-background-speech-livekit.md`) —
       honoured on the AssemblyAI path (`session-config.ts` sends `voice_focus` +
@@ -303,6 +320,17 @@ both surfaces.
       `localhost` links. Read state is one flag on an org-scoped row, matching
       `conversations` and `caller_messages` — a shared inbox, on purpose; per-member read
       state would need a `notification_reads` join table.
+      Round-2 review (16 issues, 2 High) fixed: the toggles now control **email only** —
+      they are labelled "… — Email", so the in-app row is always written and only the
+      Resend send is skipped (a decision, stated at the check in the processor); a
+      rescheduled appointment gets a second reminder because the reminder dedupe key carries
+      the start time, with the old row kept as the record of its email but hidden from the
+      bell (`superseded_at`, added to `047`); AI phone bookings are dispatched where they are
+      written (`createAppointmentServiceRole()`), with the call-end seam as an idempotent
+      backstop; cap deferrals go through `addNotificationJob()`, so a failed `:deferN` job
+      cannot swallow them; the reminder backfill writes its completion marker after the
+      scan and locks with a short TTL; reminders from public-page bookings take the same
+      hourly cap; and the badge caps at `9+`, the panel's page size.
 - [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
       receptionist promised a human handoff it had no tool to perform. The UI advertises
       transfers (the Transfer rules section on the agent detail page, the "Handoff to a

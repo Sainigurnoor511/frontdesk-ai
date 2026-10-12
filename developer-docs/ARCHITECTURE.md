@@ -187,7 +187,7 @@ The pattern is about *which rows*, not which columns, so a table the app writes 
 | `_044` | Agent `voice_provider` (`livekit` \| `assemblyai`), conversation `assemblyai_session_id` |
 | `_045` | `reschedule_appointment_atomic()` — locks, re-checks the confirmed start, and re-checks the destination for overlaps in one transaction |
 | `_046` | Caller message `urgency` + `source` (`agent_escalation` \| `call_followup`) |
-| `_047` | `notifications` (dedupe index, delivery lease columns, member-facing select plus a column-level `is_read` update grant — no insert or delete policy), `appointments_conversation_id_idx` |
+| `_047` | `notifications` (dedupe index, delivery lease columns, `superseded_at` for moved reminders, member-facing select plus a column-level `is_read` update grant — no insert or delete policy), `appointments_conversation_id_idx` |
 
 Apply with `npx supabase db push`. CI applies them on merge to `main` (see [CI](#ci)).
 
@@ -303,15 +303,17 @@ One process hosting every queue, with per-queue concurrency:
 | `knowledge-indexing` | 1 | Chunks and embeds knowledge sources and FAQs |
 | `webhook-deliver` | 5 | Delivers outbound webhooks to an org's endpoint (3 attempts, exponential backoff) |
 | `assemblyai-session-finalize` | 5 | Pulls transcript and recording for a finished AssemblyAI call |
-| `notification-deliver` | 2 | Writes a `notifications` row and emails the org's members, for the four `notify_*` preferences. Also carries the 24h-before appointment reminder as a delayed job |
+| `notification-deliver` | 2 | Writes a `notifications` row (always) and emails the org's members (when the type's `notify_*` email preference is on). Also carries the 24h-before appointment reminder as a delayed job |
 
 Handlers live in `lib/queue/processors/*.ts`; producers in `lib/queue/queues/*.ts` are built with `lazyQueue()` (`lib/queue/lazy-queue.ts`), which defers the Redis connection until the first `add()` so importing a queue never opens a socket. `workers/jobs.ts` only wires processors to queues and owns graceful shutdown (SIGINT/SIGTERM close each Worker so in-flight jobs finish). The two queues at concurrency 1 are the CPU-bound ones (crawling, embedding) — raising them would stall the other queues in the shared event loop.
 
 Set `WORKER_QUEUES` to a comma-separated subset to split a queue onto its own container without touching code. Unset runs everything; an unknown name fails startup loudly.
 
-`notification-deliver` is the one queue that uses fixed job ids (`notify:<type>:<subject>`), so a job parked under that id — delayed, failed, or completed — makes a later `add()` a no-op. Install through `addNotificationJob()` (`lib/queue/queues/notification.ts`), never `notificationQueue.add()` directly: it clears the stale job first, which is what makes a rescheduled appointment's reminder move. The booting process also runs `reconcileAppointmentReminders()` once, guarded by a Redis key, to schedule reminders for appointments that predate the feature.
+`notification-deliver` is the one queue that uses fixed job ids (`notify:<type>:<subject>`), so a job parked under that id — delayed, failed, or completed — makes a later `add()` a no-op. Install through `addNotificationJob()` (`lib/queue/queues/notification.ts`), never `notificationQueue.add()` directly: it clears the stale job first, which is what makes a rescheduled appointment's reminder move. Cap deferrals (`notify:<type>:<subject>:deferN`) go through it too. The booting process also runs `reconcileAppointmentReminders()` once, to schedule reminders for appointments that predate the feature: a short-TTL Redis lock keeps two containers from scanning together, and the completion marker is written only after the scan, so a worker killed mid-scan re-runs it on the next boot.
 
-Notification emails are claimed in two steps. `email_claimed_at` / `email_claim_token` are an expiring lease taken before the Resend call; `email_sent_at` is written only after the provider accepts. A worker that dies in between leaves a row that is still deliverable, and the retry re-submits under the same idempotency key (the notification id), so the provider dedupes it. Marking the row sent before the call is what previously lost an email with nothing able to detect it.
+The four `notify_*` toggles control **email only**; the in-app row is always written. The processor claims the row first and reads the preference after, at delivery time (see the decision comment there). A reminder's dedupe key is `<appointment id>:<start ISO>`, so a moved appointment earns a second reminder; claiming it sets `superseded_at` on the rows for earlier times, which the bell and the unread badge filter out. Booking notifications are dispatched where the appointment is written — the dashboard action, and `createAppointmentServiceRole()` for the public page and the `book_appointment` voice tool — and the call-end seam re-dispatches as an idempotent backstop. The `client_booking` email, and the reminder email for a public-page booking, are capped at 20 per org per hour (separate windows); a capped email is deferred past the window, not dropped.
+
+Notification emails are claimed in two steps. `email_claimed_at` / `email_claim_token` are an expiring lease taken before the Resend call; `email_sent_at` is written only after the provider accepts. A worker that dies in between leaves a row that is still deliverable, and the retry re-submits under the same idempotency key (the notification id), so the provider dedupes it. Marking the row sent before the call is what previously lost an email with nothing able to detect it. Resend keeps idempotency keys for 24 hours, which bounds that guarantee: if the post-send `email_sent_at` write itself keeps failing, a re-install of the same job more than a day later would send once more.
 
 - Run: `pnpm start:jobs` (or `pnpm dev:jobs` to watch)
 
@@ -413,7 +415,7 @@ Two gates are enforced in the composition point, not in the system prompt, so a 
 | Telephony | `lib/integrations/telephony.ts`, `twilio.ts` | Twilio number provisioning; Plivo/SIP slugs reserved. Inbound PSTN → LiveKit SIP not built yet |
 | Outbound webhooks | `lib/integrations/webhook*.ts` | Events dispatched through the `webhook-deliver` queue |
 | Email | `lib/email/send-appointment-confirmation.ts`, `send-notification-email.ts` | Resend. Confirmations go to the client one at a time; staff notifications go out as one `batch.send` with the notification id as the idempotency key |
-| Staff notifications | `lib/notifications/*`, `lib/queue/processors/notification.ts` | Org preferences in `organization_settings` → `notification-deliver` queue → `notifications` row + email. Header bell in `components/layout/notification-center.tsx` |
+| Staff notifications | `lib/notifications/*`, `lib/queue/processors/notification.ts` | `notification-deliver` queue → `notifications` row, plus an email when the org's `organization_settings` email preference for the type is on. Header bell in `components/layout/notification-center.tsx` |
 
 The catalog shown in the UI is `lib/data/integration-catalog.ts`.
 
@@ -478,10 +480,12 @@ Never inline validation in actions or components — always import from these mo
 - **Run:** `pnpm test` (once) or `pnpm test:watch`; typecheck with `pnpm exec tsc --noEmit`
 - **Playwright** is a devDependency but no E2E suite exists yet
 
-### Known Baseline (2026-10-13)
+### Known baseline
+
+Last recorded 2026-10-13, on `feat/notification-delivery` after merging `main` at `03f8aac`. The heading is undated on purpose so links to `#known-baseline` survive updates; change the date here instead.
 
 - `pnpm exec tsc --noEmit`: clean
-- `pnpm test`: 558 passed, 4 failed across 2 files — 2 in `lib/data/analytics.test.ts`, 2 in `lib/voice/adapters/fish-audio-tts.test.ts`. Both pre-existing. The 6 `lib/data/availability-engine.test.ts` failures were a stale test clock and were fixed on 2026-10-12; `app/smb/actions.test.ts` passes.
+- `pnpm test`: 577 passed, 4 failed (581 total) across 2 files — 2 in `lib/data/analytics.test.ts`, 2 in `lib/voice/adapters/fish-audio-tts.test.ts`. Both pre-existing. The 6 `lib/data/availability-engine.test.ts` failures were a stale test clock and were fixed on 2026-10-12; `app/smb/actions.test.ts` passes.
 - `pnpm lint`: 29 errors, 4 warnings, pre-existing. Lint the files you touch with `pnpm exec eslint <files>`.
 
 ---
