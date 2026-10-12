@@ -1,8 +1,8 @@
 # E2E suite (Playwright)
 
 Browser-level tests for the routes that do not need a logged-in session, plus one authenticated
-journey that is skipped unless you supply a test account. Seven tests in four spec files: **four
-run unconditionally** (no Supabase project, no seed data), **three are env-gated** and skip with a
+journey that is skipped unless you supply a test account. Eight tests in five spec files: **four
+run unconditionally** (no Supabase project, no seed data), **four are env-gated** and skip with a
 message naming the variables they need. A bare checkout is green.
 
 The suite is deliberately separate from Vitest — see [Adding a spec](#adding-a-spec).
@@ -59,6 +59,7 @@ stops applying the real value from `.env.local`.
 | `SUPABASE_SECRET_KEY` | optional | `webServer.env`, gates | same |
 | `E2E_BOOKING_SLUG` | optional | booking spec | the live-slug test skips |
 | `E2E_USER_EMAIL` / `E2E_USER_PASSWORD` | optional | auth-live spec | the authenticated journey skips |
+| `E2E_MFA_USER_EMAIL` / `E2E_MFA_USER_PASSWORD` / `E2E_MFA_TOTP_SECRET` | optional | mfa-action-redirect spec | the pending-session Server Action test skips |
 
 `playwright.config.ts` loads `.env.local` from the repo root with dotenv (missing file: silent),
 so copying `.env.local` from the main checkout is all it takes to light up the gated tests.
@@ -77,7 +78,8 @@ No value is ever printed. Skip messages name variables, never contents.
 | --- | --- |
 | `booking-page.e2e.ts` → public booking page loads for a configured slug | `NEXT_PUBLIC_SUPABASE_URL` + `SUPABASE_SECRET_KEY` **and** `E2E_BOOKING_SLUG`. The slug is resolved with the service-role client (`getOrganizationBySlug` → `createServiceRoleClient`), so both Supabase variables are co-preconditions; with only the slug set the lookup returns `null` and the route 404s. The organization must have `organization_settings.booking_page_enabled = true` |
 | `auth-live.e2e.ts` → shows a visible error toast when sign-in is rejected | `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, reachable |
-| `auth-live.e2e.ts` → signs in and reaches the app shell | the same two Supabase variables **plus** `E2E_USER_EMAIL` and `E2E_USER_PASSWORD` for a user that owns an organization. There is no TOTP prerequisite: TOTP in this app is enrolment-only and the dashboard layout performs no assurance-level check |
+| `auth-live.e2e.ts` → signs in and reaches the app shell | the same two Supabase variables **plus** `E2E_USER_EMAIL` and `E2E_USER_PASSWORD` for a user that owns an organization. This account must **not** have a verified TOTP factor, or sign-in stops at `/verify` |
+| `mfa-action-redirect.e2e.ts` → a Server Action submitted with a pending session lands the tab on /verify | the same two Supabase variables **plus** `E2E_MFA_USER_EMAIL`, `E2E_MFA_USER_PASSWORD` and `E2E_MFA_TOTP_SECRET` (the base32 secret shown when the factor was enrolled) for a *separate* user with a verified TOTP factor who owns an organization with at least one receptionist, so `/` renders the dashboard rather than redirecting to `/onboarding`. The dev server also needs a reachable `REDIS_URL`: the attempt budget fails closed without it, so the code step would be refused. The test signs in twice in one browser context (the second, password-only sign-in turns the shared session pending) and then submits `logOut` from the first tab |
 
 The four unconditional tests are `login.e2e.ts` (×2), `auth-redirect.e2e.ts`, and the unknown-slug
 404 in `booking-page.e2e.ts`.
@@ -152,9 +154,9 @@ $env:E2E_NO_WEB_SERVER = '1'; pnpm test:e2e
 
 `.github/workflows/e2e.yml` is `workflow_dispatch`-only and has **never been executed** — GitHub
 Actions cannot run locally. With no `push` or `pull_request` trigger it produces no commit status,
-so no branch-protection rule can require it; that is deliberate while the suite is new. All six
+so no branch-protection rule can require it; that is deliberate while the suite is new. All nine
 secrets it reads are optional: with none set, the four unconditional tests run green and the other
-three skip.
+four skip.
 
 ## Troubleshooting
 

@@ -4,13 +4,16 @@
 #
 # Optional GitHub repository secrets. With none of them set the job still runs
 # the four unconditional tests green (playwright.config.ts injects placeholder
-# Supabase values) and skips the other three:
+# Supabase values) and skips the other four:
 #   - NEXT_PUBLIC_SUPABASE_URL              : app Supabase project URL
 #   - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  : app publishable (anon) key
 #   - SUPABASE_SECRET_KEY                   : app service-role key
 #   - E2E_BOOKING_SLUG                      : org slug with booking_page_enabled = true
 #   - E2E_USER_EMAIL                        : test user that owns an organization
 #   - E2E_USER_PASSWORD                     : that user's password
+#   - E2E_MFA_USER_EMAIL                    : second user, with a verified TOTP factor
+#   - E2E_MFA_USER_PASSWORD                 : that user's password
+#   - E2E_MFA_TOTP_SECRET                   : that factor's base32 secret
 name: E2E
 
 on: workflow_dispatch
@@ -35,6 +38,9 @@ jobs:
       E2E_BOOKING_SLUG: ${{ secrets.E2E_BOOKING_SLUG }}
       E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
       E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+      E2E_MFA_USER_EMAIL: ${{ secrets.E2E_MFA_USER_EMAIL }}
+      E2E_MFA_USER_PASSWORD: ${{ secrets.E2E_MFA_USER_PASSWORD }}
+      E2E_MFA_TOTP_SECRET: ${{ secrets.E2E_MFA_TOTP_SECRET }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

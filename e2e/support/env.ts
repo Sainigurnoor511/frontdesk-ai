@@ -32,6 +32,20 @@ export const e2eEnv = {
     return readEnv('E2E_USER_PASSWORD') ?? null
   },
   /**
+   * A second test account, with a *verified TOTP factor*, for the MFA specs. Separate from
+   * `E2E_USER_*` on purpose: enrolling a factor on that account would send the existing
+   * authenticated journey to /verify. The secret is the base32 string shown at enrolment.
+   */
+  get mfaUserEmail(): string | null {
+    return readEnv('E2E_MFA_USER_EMAIL')?.trim() ?? null
+  },
+  get mfaUserPassword(): string | null {
+    return readEnv('E2E_MFA_USER_PASSWORD') ?? null
+  },
+  get mfaTotpSecret(): string | null {
+    return readEnv('E2E_MFA_TOTP_SECRET')?.trim() ?? null
+  },
+  /**
    * True when the runner's environment supplies a real project for the *auth*
    * path — the browser-side client built by `createBrowserClient` and the
    * server client in `proxy.ts`. This is what the sign-in tests need.
