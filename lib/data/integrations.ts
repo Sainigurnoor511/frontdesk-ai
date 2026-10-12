@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
 
 export type EnabledIntegration = {
   slug: string
@@ -12,6 +13,8 @@ export async function getEnabledIntegrationsForOrg(): Promise<EnabledIntegration
   } = await supabase.auth.getUser()
 
   if (!user) return []
+  // A pending-MFA session is not signed in.
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return []
 
   const { data: member } = await supabase
     .from('members')

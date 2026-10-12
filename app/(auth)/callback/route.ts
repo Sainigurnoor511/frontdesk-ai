@@ -1,8 +1,14 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS } from '@/lib/auth/recovery'
+import {
+  resolveMfaGate,
+  MFA_ATTEMPTS_COOKIE,
+  MFA_VERIFY_PATH,
+  POST_LOGIN_PATH,
+} from '@/lib/auth/mfa'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -15,10 +21,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  // A fixed destination chosen by a flag, never a caller-supplied URL.
   const isRecovery = searchParams.get('flow') === 'recovery'
-  const destination = isRecovery ? '/reset-password' : '/'
-  let response = NextResponse.redirect(`${origin}${destination}`)
+
+  // Cookies and headers are collected here and applied to a response built at the end, because
+  // the destination is not knowable until the session exists and its assurance level is resolved.
+  const pendingCookies: { name: string; value: string; options?: CookieOptions }[] = []
+  const pendingHeaders: Record<string, string> = {}
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -28,12 +36,10 @@ export async function GET(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet, headers) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.redirect(`${origin}${destination}`)
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
+          pendingCookies.push(...cookiesToSet)
+          Object.assign(pendingHeaders, headers)
         },
       },
     }
@@ -68,6 +74,37 @@ export async function GET(request: NextRequest) {
     await serviceClient
       .from('members')
       .insert({ organization_id: org.id, user_id: data.user.id, role: 'owner' })
+  }
+
+  // A fixed destination chosen by a server-side flag, never a caller-supplied URL. OAuth
+  // sign-ins are challenged exactly like password sign-ins: the gate is a property of the
+  // session, not of the credential type, so exempting OAuth would be a one-click bypass.
+  let destination: string = POST_LOGIN_PATH
+  let isPendingMfa = false
+  if (isRecovery) {
+    // Recovery wins. Not a bypass: /reset-password is gate-exempt so the flow still works, and
+    // `updatePassword` ends at '/', where the proxy sees a pending session and sends them to
+    // /verify. A reset link gets you a new password, not entry without the code.
+    destination = '/reset-password'
+  } else {
+    const mfa = await resolveMfaGate(supabase)
+    if (mfa.state === 'pending' || mfa.state === 'indeterminate') {
+      destination = MFA_VERIFY_PATH
+      isPendingMfa = true
+    }
+  }
+
+  const response = NextResponse.redirect(`${origin}${destination}`)
+  for (const cookie of pendingCookies) {
+    response.cookies.set(cookie.name, cookie.value, cookie.options)
+  }
+  for (const [key, value] of Object.entries(pendingHeaders)) {
+    response.headers.set(key, value)
+  }
+
+  if (isPendingMfa) {
+    // A fresh pending login starts with a clean attempt budget.
+    response.cookies.delete(MFA_ATTEMPTS_COOKIE)
   }
 
   if (isRecovery) {

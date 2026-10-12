@@ -94,10 +94,13 @@ frontdesk-ai/
 
 ### Auth Flow
 
-- Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings; login-time AAL2 challenge not yet enforced — see `TODO.md`)
-- `(auth)/callback/route.ts` handles OAuth callbacks
+- Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings and enforced at login: a session holding a verified factor but no `aal2` claim is redirected to `/verify`)
+- The `/verify` challenge screen runs `mfa.challenge()` + `mfa.verify()` in `verifyMfaChallenge` (`app/(auth)/actions.ts`), bounded at 5 failed codes per pending login via the `fd_mfa_attempts` cookie, with `cancelMfaChallenge` as the escape hatch so a stuck session can always sign out
+- "Pending MFA" means: a verified factor in the `getUser()` response (never the session cookie, whose `user` object is unsigned, so `nextLevel` is never read) plus an `aal` claim that is not `aal2`. Resolved in `lib/auth/mfa.ts`, which fails closed and never rejects
+- Enforced in three places: `proxy.ts` for every non-exempt path (covering navigations, RSC payload requests and server-action POSTs), `getCurrentOrgAndUser()` for Server Components and the actions built on it, and the shared `lib/data` read helpers that resolve the caller themselves
+- `(auth)/callback/route.ts` handles OAuth callbacks; OAuth sign-ins are challenged exactly like password sign-ins (the gate is a property of the session, not the credential type)
 - Password reset: `/forgot-password` emails a link through `requestPasswordReset`; the link returns to `/callback?flow=recovery`, which signs the user in and sends them to `/reset-password` to choose a new password (`updatePassword`). The callback also sets a 15-minute `fd_password_recovery` cookie; without it `/reset-password` and `updatePassword` refuse, so an ordinary signed-in session cannot change the password without a reset link
-- Next 16 uses `proxy.ts` (not `middleware.ts`): its `proxy()` calls `updateSession()` from `lib/supabase/middleware.ts`, which calls `supabase.auth.getUser()` to refresh session cookies on every non-static request
+- Next 16 uses `proxy.ts` (not `middleware.ts`): its `proxy()` calls `updateSession()` from `lib/supabase/middleware.ts`, which returns `{ response, mfa, authHeaders }` — the `getUser()` that refreshes session cookies on every non-static request is now the one the MFA gate makes, so the request count is unchanged
 
 ### Organization Scoping
 

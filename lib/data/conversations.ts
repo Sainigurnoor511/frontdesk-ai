@@ -1,3 +1,4 @@
+import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
 import { normalizeRecordingPath } from '@/lib/conversations/recording-path'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
@@ -129,6 +130,8 @@ export async function getConversationsForOrg(): Promise<Conversation[]> {
   } = await supabase.auth.getUser()
 
   if (!user) return []
+  // A pending-MFA session is not signed in.
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return []
 
   const { data: member } = await supabase
     .from('members')
@@ -162,6 +165,8 @@ export async function getConversationNavCounts(): Promise<{
     } = await supabase.auth.getUser()
 
     if (!user) return empty
+    // A pending-MFA session is not signed in.
+    if (!(await isMfaSatisfiedForUser(supabase, user))) return empty
 
     const { data: member } = await supabase
       .from('members')
@@ -210,6 +215,8 @@ export async function getConversationById(
   } = await supabase.auth.getUser()
 
   if (!user) return null
+  // A pending-MFA session is not signed in.
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return null
 
   const { data: member } = await supabase
     .from('members')
@@ -238,6 +245,8 @@ export async function getCallerMessagesForOrg(): Promise<CallerMessage[]> {
   } = await supabase.auth.getUser()
 
   if (!user) return []
+  // A pending-MFA session is not signed in.
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return []
 
   const { data: member } = await supabase
     .from('members')
@@ -264,6 +273,8 @@ export async function getConversationRecordingUrl(conversationId: string): Promi
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return null
+  // A pending-MFA session is not signed in.
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return null
 
   const { data: member } = await supabase
     .from('members')

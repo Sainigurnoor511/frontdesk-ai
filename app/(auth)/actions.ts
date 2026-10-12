@@ -8,13 +8,24 @@ import {
   loginSchema,
   requestPasswordResetSchema,
   updatePasswordSchema,
+  totpCodeSchema,
   type SignupInput,
   type LoginInput,
   type RequestPasswordResetInput,
   type UpdatePasswordInput,
+  type TotpCodeInput,
 } from '@/lib/validations/auth'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import {
+  resolveMfaGate,
+  mfaErrorMessage,
+  MFA_ATTEMPTS_COOKIE,
+  MFA_ATTEMPTS_COOKIE_OPTIONS,
+  MFA_MAX_ATTEMPTS,
+  MFA_VERIFY_PATH,
+  POST_LOGIN_PATH,
+} from '@/lib/auth/mfa'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -75,6 +86,39 @@ export async function signUp(input: SignupInput): Promise<{ error: string }> {
   redirect('/')
 }
 
+/** Reasons a half-finished MFA login was ended. Shared with `login/page.tsx`'s notice map. */
+export type PendingSessionEndReason = 'mfa_unavailable' | 'mfa_attempts' | 'mfa_cancelled'
+
+/** Signs out, clears the attempt cookie, redirects to /login?error=<reason>. Never returns. */
+async function endPendingSession(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  reason: PendingSessionEndReason
+): Promise<never> {
+  try {
+    await supabase.auth.signOut()
+  } catch {
+    // Best effort, matching `logOut`, which ignores the signOut result too. The redirect below
+    // still strips the user from the app, and the gate keeps denying a session that survives,
+    // so this cannot fail open.
+  }
+  await clearFailedAttempts()
+  return redirect(`/login?error=${reason}`)
+}
+
+/** Reads fd_mfa_attempts, increments, writes back, returns the new count. NaN is treated as 0. */
+async function bumpFailedAttempts(): Promise<number> {
+  const cookieStore = await cookies()
+  const current = Number.parseInt(cookieStore.get(MFA_ATTEMPTS_COOKIE)?.value ?? '', 10)
+  const next = (Number.isNaN(current) ? 0 : current) + 1
+  cookieStore.set(MFA_ATTEMPTS_COOKIE, String(next), MFA_ATTEMPTS_COOKIE_OPTIONS)
+  return next
+}
+
+async function clearFailedAttempts(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.delete(MFA_ATTEMPTS_COOKIE)
+}
+
 export async function logIn(input: LoginInput): Promise<{ error: string }> {
   const parsed = loginSchema.safeParse(input)
   if (!parsed.success) {
@@ -88,7 +132,77 @@ export async function logIn(input: LoginInput): Promise<{ error: string }> {
     return { error: friendlyAuthError(error.message) }
   }
 
-  redirect('/')
+  // A new pending login starts with a clean attempt budget (the counter is per-pending-login).
+  await clearFailedAttempts()
+
+  // Every terminal branch below is `return`ed deliberately: the repo's test mock for
+  // `next/navigation` is a non-throwing `vi.fn()`, so a bare `redirect()` would fall through to
+  // the one after it and a pending user could be redirected home under test.
+  const mfa = await resolveMfaGate(supabase)
+  if (mfa.state === 'pending') return redirect(MFA_VERIFY_PATH)
+  if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
+
+  return redirect(POST_LOGIN_PATH)
+}
+
+/** Completes a pending-MFA login by verifying a 6-digit TOTP code. */
+export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error: string }> {
+  const parsed = totpCodeSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createClient()
+  const mfa = await resolveMfaGate(supabase)
+
+  if (mfa.state === 'unauthenticated') {
+    await clearFailedAttempts()
+    return redirect('/login?error=session_expired')
+  }
+  if (mfa.state === 'satisfied') return redirect(POST_LOGIN_PATH)
+  if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
+
+  // challenge() + verify() rather than challengeAndVerify(), so a missing factor (enrollment
+  // deleted mid-flow) is distinguishable from a wrong code.
+  const challenge = await supabase.auth.mfa.challenge({ factorId: mfa.factorId })
+  if (challenge.error) {
+    const mapped = mfaErrorMessage(challenge.error)
+    if (mapped.fatal) {
+      console.error('[auth] mfa challenge unavailable:', challenge.error.code)
+      return endPendingSession(supabase, 'mfa_unavailable')
+    }
+    return { error: mapped.message }
+  }
+
+  const verified = await supabase.auth.mfa.verify({
+    factorId: mfa.factorId,
+    challengeId: challenge.data.id,
+    code: parsed.data.code,
+  })
+
+  if (verified.error) {
+    const mapped = mfaErrorMessage(verified.error)
+    if (mapped.fatal) {
+      console.error('[auth] mfa challenge unavailable:', verified.error.code)
+      return endPendingSession(supabase, 'mfa_unavailable')
+    }
+    // Supabase's own throttling is not the user failing, so it must not advance the counter:
+    // "wait a few minutes" followed immediately by a forced sign-out reads as contradictory.
+    if (mapped.throttled) return { error: mapped.message }
+    if ((await bumpFailedAttempts()) >= MFA_MAX_ATTEMPTS) {
+      return endPendingSession(supabase, 'mfa_attempts')
+    }
+    return { error: mapped.message }
+  }
+
+  await clearFailedAttempts()
+  return redirect(POST_LOGIN_PATH)
+}
+
+/** The escape hatch from `/verify`: ends the pending session and returns to /login. */
+export async function cancelMfaChallenge(): Promise<never> {
+  const supabase = await createClient()
+  return endPendingSession(supabase, 'mfa_cancelled')
 }
 
 export async function requestPasswordReset(

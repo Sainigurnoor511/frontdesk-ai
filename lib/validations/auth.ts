@@ -31,3 +31,14 @@ export const updatePasswordSchema = z
   })
 
 export type UpdatePasswordInput = z.infer<typeof updatePasswordSchema>
+
+// One message for every shape of bad input — too short, too long, non-numeric, empty.
+// Differentiating them tells an attacker nothing useful and reads worse for a user who mistyped.
+export const totpCodeSchema = z.object({
+  code: z
+    .string({ required_error: 'Enter the 6-digit code from your authenticator app' })
+    .trim()
+    .regex(/^\d{6}$/, 'Enter the 6-digit code from your authenticator app'),
+})
+
+export type TotpCodeInput = z.infer<typeof totpCodeSchema>

@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { isMfaSatisfiedForUser } from '@/lib/auth/mfa'
 
 export type CurrentOrgAndUser = {
   user: { id: string; email: string; avatarUrl: string | null }
@@ -13,6 +14,10 @@ export async function getCurrentOrgAndUser(): Promise<CurrentOrgAndUser | null> 
   } = await supabase.auth.getUser()
 
   if (!user) return null
+
+  // A session that still owes a TOTP code is not an authenticated session. Returning null routes
+  // it into the same path every caller already has for "not signed in".
+  if (!(await isMfaSatisfiedForUser(supabase, user))) return null
 
   const { data: member } = await supabase
     .from('members')
