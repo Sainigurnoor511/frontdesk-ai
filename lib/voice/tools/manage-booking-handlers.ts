@@ -21,10 +21,19 @@ import { defineVoiceTool, type VoiceToolContext, type VoiceToolHandler } from '.
  * mouth:** (1) the organization, taken from `VoiceToolContext` and never from an
  * argument; (2) the caller's email address, matched case-insensitively against
  * `clients.email` within that org. **This pair is the whole of the
- * authorization check, and it is the same strength the public manage-booking
- * page already offers the same person for the same appointments.** A stronger
- * rule needs caller ID on `conversations` or an OTP flow; both are out of scope
- * here (see `developer-docs/TODO.md`).
+ * authorization check.** It is the same strength the public manage-booking page
+ * offers the same person for the same appointments — note that page has no rate
+ * limit and no live Turnstile check either, so "parity" is a statement about
+ * exposure, not about it being well protected. A stronger rule needs caller ID
+ * on `conversations` or an OTP flow; both are out of scope here (see
+ * `developer-docs/TODO.md`).
+ *
+ * Because a single caller-spoken factor is all there is, these three tools are
+ * **withheld entirely** from an agent with `secure_mode` or
+ * `identity_verification_enabled` on. That gate lives in
+ * `manageBookingToolsAllowed()` in `lib/voice/tool-handlers.ts`, so a withheld
+ * tool is absent from the model's tool list *and* answers `unknown_tool` if it
+ * is called anyway. It is not a sentence in the system prompt.
  *
  * **Conversational precondition — not a credential:** (3) the appointment's
  * current start time, which the caller stated on the call. The model can copy
@@ -204,7 +213,15 @@ export function rankAlternatives(
   days: DaySlots[],
   requestedStartMs: number,
   durationMs: number,
-  limit = ALTERNATIVE_LIMIT
+  limit = ALTERNATIVE_LIMIT,
+  /**
+   * The appointment's own current start. `excludeAppointmentId` stops the
+   * appointment from blocking itself, which also makes the instant it already
+   * occupies look free — so without this the agent offers the caller the time
+   * they are already booked at, and accepting it comes back as
+   * `already_at_requested_time`. Every offered option has to be a real move.
+   */
+  excludeStartMs?: number
 ): { startsAt: string; endsAt: string }[] {
   const requestedDate = utcDateOf(new Date(requestedStartMs).toISOString())
   const seen = new Set<number>()
@@ -214,6 +231,7 @@ export function rankAlternatives(
     for (const slot of day.slots) {
       const startMs = Date.parse(slot.startsAt)
       if (seen.has(startMs)) continue
+      if (excludeStartMs !== undefined && startMs === excludeStartMs) continue
       const endsAt = new Date(startMs + durationMs).toISOString()
       if (!isWindowFree(day.slots, slot.startsAt, endsAt)) continue
       seen.add(startMs)
@@ -280,8 +298,18 @@ async function resolveAppointment(
   // "…:00+00:00".
   const statedMs = Date.parse(args.startsAt)
   const instantMatches = rows.filter((row) => Date.parse(row.starts_at) === statedMs)
+  // Narrowed to rows a mutation could actually land on, using the same filter
+  // `find_appointment` applies. An exact instant match is deliberately *not*
+  // filtered — that is what produces `appointment_already_cancelled` and
+  // `appointment_in_past` for an appointment the caller named precisely. But a
+  // day-wide candidate list is read back to the caller as live choices, and
+  // picking a cancelled or past one dead-ends on a final error the agent walked
+  // them into.
   const dayCandidates = rows.filter(
-    (row) => utcDateOf(row.starts_at) === utcDateOf(args.startsAt)
+    (row) =>
+      utcDateOf(row.starts_at) === utcDateOf(args.startsAt) &&
+      row.status !== 'cancelled' &&
+      Date.parse(row.starts_at) > now.getTime()
   )
 
   let candidates: AppointmentRow[]
@@ -341,7 +369,7 @@ async function resolveAppointment(
 
 /** Shared tail of every mutating tool's description: what to do with each non-success branch. */
 const SHARED_FAILURE_GUIDANCE =
-  'If the result is `confirm_appointment`, the time you passed is not when any of the caller\'s appointments on that date starts — read the times in `appointments` back to the caller and retry with the one they confirm. If the result is `multiple_matches`, read the candidates back and retry with both the chosen appointment\'s `startsAt` and its `appointmentId`. If the result is `appointment_not_found`, re-confirm the caller\'s email address letter-by-letter and the appointment time; do not guess an `appointmentId`. `appointment_already_cancelled` and `appointment_in_past` are final — tell the caller and do not retry.'
+  'If the result is `confirm_appointment`, the time you passed is not when any of the caller\'s appointments on that date starts — read the times in `appointments` back to the caller and retry with the one they confirm. If the result is `multiple_matches`, read the candidates back and retry with both the chosen appointment\'s `startsAt` and its `appointmentId`. If the result is `appointment_not_found`, re-confirm the caller\'s email address letter-by-letter and the appointment time; do not guess an `appointmentId`. If the result is `appointment_changed`, the appointment was moved or cancelled by someone else while you were talking and nothing was written — tell the caller it just changed, look it up again, and confirm the new time with them before retrying. `appointment_already_cancelled` and `appointment_in_past` are final — tell the caller and do not retry.'
 
 function buildFindAppointment(context: VoiceToolContext): VoiceToolHandler {
   return defineVoiceTool({
@@ -395,10 +423,17 @@ function buildCancelAppointment(context: VoiceToolContext): VoiceToolHandler {
         const result = await cancelAppointmentByEmailServiceRole(
           context.organizationId,
           row.id,
-          args.clientEmail
+          args.clientEmail,
+          // Pins the write to the start time the caller confirmed, so an
+          // appointment that moved or was cancelled in between is not clobbered
+          // on the strength of a stale read.
+          { startsAt: row.starts_at }
         )
         if ('error' in result) {
           if (result.code === 'not_found') return { error: 'appointment_not_found' }
+          if (result.code === 'conflict') {
+            return { error: 'appointment_changed', summary: describeAppointment(row) }
+          }
           console.error(
             `[manage-booking-tools] cancel failed for appointment ${row.id}: ${result.error}`
           )
@@ -462,7 +497,15 @@ function buildRescheduleAppointment(context: VoiceToolContext): VoiceToolHandler
           // Forward-only on purpose: the agent asks for a different date rather
           // than offering the caller a date earlier than the one they asked for.
           days = await getAvailableSlots(context.organizationId, {
-            serviceId: '',
+            // The appointment's stored assignments, not blanks. These drive
+            // generated slot duration, the staff-hours override, staff-scoped
+            // time off, and whether conflicts are evaluated per staff member or
+            // across the whole org — so passing nothing moves assigned
+            // appointments into their own staff member's time off, lets other
+            // staff's appointments block valid times, and rejects
+            // longer-than-30-minute services at windows that are free.
+            serviceId: row.service_id ?? '',
+            staffId: row.staff_id,
             rangeStart: requestedDate,
             rangeEnd: utcDatePlus(requestedDate, RESCHEDULE_WINDOW_DAYS),
             excludeAppointmentId: row.id,
@@ -472,19 +515,28 @@ function buildRescheduleAppointment(context: VoiceToolContext): VoiceToolHandler
           return { error: 'availability_check_failed' }
         }
 
+        const unavailable = (alternatives: { startsAt: string; endsAt: string }[]) => ({
+          error: 'slot_unavailable',
+          requestedStartsAt: newStartsAt,
+          alternatives: alternatives.map((alt) => ({
+            ...alt,
+            summary: describeTime(alt.startsAt),
+          })),
+          alternativesFound: alternatives.length > 0,
+          reason: alternatives.length > 0 ? 'time_taken' : 'no_availability_in_window',
+        })
+
         const requestedDaySlots = days.find((day) => day.date === requestedDate)?.slots ?? []
         if (!isWindowFree(requestedDaySlots, newStartsAt, newEndsAt)) {
-          const alternatives = rankAlternatives(days, newStartsAtMs, durationMs)
-          return {
-            error: 'slot_unavailable',
-            requestedStartsAt: newStartsAt,
-            alternatives: alternatives.map((alt) => ({
-              ...alt,
-              summary: describeTime(alt.startsAt),
-            })),
-            alternativesFound: alternatives.length > 0,
-            reason: alternatives.length > 0 ? 'time_taken' : 'no_availability_in_window',
-          }
+          return unavailable(
+            rankAlternatives(
+              days,
+              newStartsAtMs,
+              durationMs,
+              ALTERNATIVE_LIMIT,
+              Date.parse(row.starts_at)
+            )
+          )
         }
 
         const result = await rescheduleAppointmentByEmailServiceRole(
@@ -492,10 +544,31 @@ function buildRescheduleAppointment(context: VoiceToolContext): VoiceToolHandler
           row.id,
           args.clientEmail,
           newStartsAt,
-          newEndsAt
+          newEndsAt,
+          // Pins the write to the start time the caller confirmed, so a
+          // concurrent change loses instead of being silently overwritten.
+          { startsAt: row.starts_at }
         )
         if ('error' in result) {
           if (result.code === 'not_found') return { error: 'appointment_not_found' }
+          if (result.code === 'conflict') {
+            return { error: 'appointment_changed', summary: describeAppointment(row) }
+          }
+          if (result.code === 'slot_taken') {
+            // The destination filled between the availability read and the
+            // atomic write. Re-offering the alternatives from the same read is
+            // the useful answer, even though one of them may have gone too —
+            // the write would reject it again rather than double-book.
+            return unavailable(
+              rankAlternatives(
+                days,
+                newStartsAtMs,
+                durationMs,
+                ALTERNATIVE_LIMIT,
+                Date.parse(row.starts_at)
+              ).filter((alt) => Date.parse(alt.startsAt) !== newStartsAtMs)
+            )
+          }
           console.error(
             `[manage-booking-tools] reschedule failed for appointment ${row.id}: ${result.error}`
           )

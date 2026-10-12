@@ -153,7 +153,9 @@ describe('cancel_appointment', () => {
 
     const result = await tool('cancel_appointment').execute(args)
 
-    expect(cancelAppointmentByEmailServiceRole).toHaveBeenCalledWith('org-1', 'appt-1', EMAIL)
+    expect(cancelAppointmentByEmailServiceRole).toHaveBeenCalledWith('org-1', 'appt-1', EMAIL, {
+      startsAt: '2026-08-05T14:00:00+00:00',
+    })
     expect(result).toEqual({
       success: true,
       appointmentId: 'appt-1',
@@ -227,6 +229,69 @@ describe('cancel_appointment', () => {
     expect(cancelAppointmentByEmailServiceRole).not.toHaveBeenCalled()
   })
 
+  // Issue 6 of the review: day-wide candidates were unfiltered, so the agent
+  // read cancelled and past rows back as live choices and the caller could pick
+  // one that dead-ends on a final error.
+  it('keeps a cancelled row out of a date-only candidate list and cancels the live one', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({ id: 'dead', status: 'cancelled', starts_at: '2026-08-05T10:00:00+00:00', ends_at: '2026-08-05T10:30:00+00:00' }),
+      row({ id: 'live' }),
+    ])
+    vi.mocked(cancelAppointmentByEmailServiceRole).mockResolvedValue({ success: true })
+
+    const result = (await tool('cancel_appointment').execute({
+      ...args,
+      startsAt: '2026-08-05T00:00:00Z',
+    })) as { success?: true; appointmentId?: string; appointments?: { appointmentId: string }[] }
+
+    expect(result.appointmentId).toBe('live')
+    expect(result.appointments).toBeUndefined()
+  })
+
+  it('keeps a cancelled row out of a confirm_appointment list', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({ id: 'dead', status: 'cancelled' }),
+    ])
+
+    // Caller stated a time nothing is booked at; the only row that day is dead,
+    // so there is nothing honest to read back.
+    const result = await tool('cancel_appointment').execute({
+      ...args,
+      startsAt: '2026-08-05T15:00:00Z',
+    })
+
+    expect(result).toEqual({ error: 'appointment_not_found' })
+    expect(cancelAppointmentByEmailServiceRole).not.toHaveBeenCalled()
+  })
+
+  it('keeps an already-past row out of a date-only candidate list', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({ id: 'gone', starts_at: '2026-08-03T09:00:00+00:00', ends_at: '2026-08-03T09:30:00+00:00' }),
+      row({ id: 'later', starts_at: '2026-08-03T18:00:00+00:00', ends_at: '2026-08-03T18:30:00+00:00' }),
+    ])
+    vi.mocked(cancelAppointmentByEmailServiceRole).mockResolvedValue({ success: true })
+
+    const result = (await tool('cancel_appointment').execute({
+      ...args,
+      startsAt: '2026-08-03T00:00:00Z',
+    })) as { appointmentId?: string }
+
+    expect(result.appointmentId).toBe('later')
+  })
+
+  it('reports appointment_changed when a competing mutation makes the cancel match no rows', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([row({ id: 'appt-1' })])
+    vi.mocked(cancelAppointmentByEmailServiceRole).mockResolvedValue({
+      error: 'That appointment changed before we could cancel it. Please look it up again.',
+      code: 'conflict',
+    })
+
+    expect(await tool('cancel_appointment').execute(args)).toEqual({
+      error: 'appointment_changed',
+      summary: 'Haircut on Wednesday, August 5 at 2:00 PM UTC',
+    })
+  })
+
   it('returns the candidates when two appointments share the same start instant', async () => {
     vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
       row({ id: 'appt-1' }),
@@ -256,7 +321,9 @@ describe('cancel_appointment', () => {
     })) as { success: true; appointmentId: string }
 
     expect(result.appointmentId).toBe('midnight')
-    expect(cancelAppointmentByEmailServiceRole).toHaveBeenCalledWith('org-1', 'midnight', EMAIL)
+    expect(cancelAppointmentByEmailServiceRole).toHaveBeenCalledWith('org-1', 'midnight', EMAIL, {
+      startsAt: '2026-08-05T00:00:00+00:00',
+    })
   })
 
   it('reports an already-cancelled appointment without writing', async () => {
@@ -352,6 +419,7 @@ describe('reschedule_appointment', () => {
 
     expect(getAvailableSlots).toHaveBeenCalledWith('org-1', {
       serviceId: '',
+      staffId: null,
       rangeStart: '2026-08-06',
       rangeEnd: '2026-08-08',
       excludeAppointmentId: 'appt-1',
@@ -362,7 +430,8 @@ describe('reschedule_appointment', () => {
       EMAIL,
       '2026-08-06T09:00:00.000Z',
       // 60 minutes in, 60 minutes out — the stored duration, not a model argument.
-      '2026-08-06T10:00:00.000Z'
+      '2026-08-06T10:00:00.000Z',
+      { startsAt: '2026-08-05T14:00:00+00:00' }
     )
     expect(result).toEqual({
       success: true,
@@ -374,6 +443,140 @@ describe('reschedule_appointment', () => {
       endsAt: '2026-08-06T10:00:00.000Z',
       summary: 'Haircut on Thursday, August 6 at 9:00 AM UTC',
     })
+  })
+
+  // Issue 2 of the review: `serviceId: ''` / no `staffId` threw away the
+  // assignments that drive slot duration, the staff-hours override,
+  // staff-scoped time off, and whether conflicts are per-staff or org-wide.
+  it('asks the engine with the appointment\'s stored service and staff', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({
+        id: 'appt-1',
+        service_id: 'svc-1',
+        staff_id: 'staff-1',
+        starts_at: '2026-08-05T14:00:00+00:00',
+        // 45 minutes: a non-default length that service-less 30-minute slot
+        // geometry would reject at a window that is actually free.
+        ends_at: '2026-08-05T14:45:00+00:00',
+      }),
+    ])
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      {
+        date: '2026-08-06',
+        slots: [
+          { startsAt: '2026-08-06T09:00:00.000Z', endsAt: '2026-08-06T09:45:00.000Z' },
+          { startsAt: '2026-08-06T09:15:00.000Z', endsAt: '2026-08-06T10:00:00.000Z' },
+        ],
+      },
+    ])
+    vi.mocked(rescheduleAppointmentByEmailServiceRole).mockResolvedValue({ success: true })
+
+    const result = (await tool('reschedule_appointment').execute(args)) as { success?: true }
+
+    expect(getAvailableSlots).toHaveBeenCalledWith('org-1', {
+      serviceId: 'svc-1',
+      staffId: 'staff-1',
+      rangeStart: '2026-08-06',
+      rangeEnd: '2026-08-08',
+      excludeAppointmentId: 'appt-1',
+    })
+    expect(result.success).toBe(true)
+    expect(rescheduleAppointmentByEmailServiceRole).toHaveBeenCalledWith(
+      'org-1',
+      'appt-1',
+      EMAIL,
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:45:00.000Z',
+      { startsAt: '2026-08-05T14:00:00+00:00' }
+    )
+  })
+
+  it('passes a stored service through even when no staff is assigned', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({ id: 'appt-1', service_id: 'svc-2', staff_id: null }),
+    ])
+    vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-06', slots: [] }])
+
+    await tool('reschedule_appointment').execute(args)
+
+    expect(getAvailableSlots).toHaveBeenCalledWith(
+      'org-1',
+      expect.objectContaining({ serviceId: 'svc-2', staffId: null })
+    )
+  })
+
+  // Issue 4 of the review, voice side: the write is pinned to the start time the
+  // caller confirmed, so a competing change loses instead of being overwritten.
+  it('reports appointment_changed when the source appointment moved under it', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([row({ id: 'appt-1' })])
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      {
+        date: '2026-08-06',
+        slots: [{ startsAt: '2026-08-06T09:00:00.000Z', endsAt: '2026-08-06T09:30:00.000Z' }],
+      },
+    ])
+    vi.mocked(rescheduleAppointmentByEmailServiceRole).mockResolvedValue({
+      error: 'That appointment changed before we could move it. Please look it up again.',
+      code: 'conflict',
+    })
+
+    expect(await tool('reschedule_appointment').execute(args)).toEqual({
+      error: 'appointment_changed',
+      summary: 'Haircut on Wednesday, August 5 at 2:00 PM UTC',
+    })
+  })
+
+  it('re-offers alternatives, excluding the lost time, when the destination filled during the write', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([row({ id: 'appt-1' })])
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      {
+        date: '2026-08-06',
+        slots: [
+          { startsAt: '2026-08-06T09:00:00.000Z', endsAt: '2026-08-06T09:30:00.000Z' },
+          { startsAt: '2026-08-06T10:00:00.000Z', endsAt: '2026-08-06T10:30:00.000Z' },
+        ],
+      },
+    ])
+    vi.mocked(rescheduleAppointmentByEmailServiceRole).mockResolvedValue({
+      error: 'That time is no longer available.',
+      code: 'slot_taken',
+    })
+
+    const result = (await tool('reschedule_appointment').execute(args)) as {
+      error: string
+      alternatives: { startsAt: string }[]
+    }
+
+    expect(result.error).toBe('slot_unavailable')
+    expect(result.alternatives.map((alt) => alt.startsAt)).toEqual(['2026-08-06T10:00:00.000Z'])
+  })
+
+  // Issue 7 of the review: `excludeAppointmentId` makes the appointment's own
+  // start look free, so it could be ranked and offered as a "new" time — and
+  // accepting it came back as `already_at_requested_time`.
+  it('never offers the appointment\'s own current time as an alternative', async () => {
+    vi.mocked(findClientAppointmentsByEmailServiceRole).mockResolvedValue([
+      row({ id: 'appt-1', starts_at: '2026-08-06T10:00:00+00:00', ends_at: '2026-08-06T10:30:00+00:00' }),
+    ])
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      {
+        date: '2026-08-06',
+        slots: [
+          // The appointment's own vacated slot, nearest to the requested time.
+          { startsAt: '2026-08-06T10:00:00.000Z', endsAt: '2026-08-06T10:30:00.000Z' },
+          { startsAt: '2026-08-06T11:00:00.000Z', endsAt: '2026-08-06T11:30:00.000Z' },
+        ],
+      },
+    ])
+
+    const result = (await tool('reschedule_appointment').execute({
+      ...args,
+      startsAt: '2026-08-06T10:00:00Z',
+      newStartsAt: '2026-08-06T09:30:00Z',
+    })) as { error: string; alternatives: { startsAt: string }[] }
+
+    expect(result.error).toBe('slot_unavailable')
+    expect(result.alternatives.map((alt) => alt.startsAt)).toEqual(['2026-08-06T11:00:00.000Z'])
   })
 
   it('offers alternatives and writes nothing when the requested window is taken', async () => {
@@ -624,6 +827,18 @@ describe('rankAlternatives', () => {
 
   it('returns nothing when the duration does not fit any free range', () => {
     expect(rankAlternatives(days, requestedMs, 120 * 60_000)).toEqual([])
+  })
+
+  it('drops the excluded instant, so an offered option is always a real move', () => {
+    expect(
+      rankAlternatives(
+        days,
+        requestedMs,
+        30 * 60_000,
+        3,
+        Date.parse('2026-08-06T08:00:00.000Z')
+      ).map((a) => a.startsAt)
+    ).toEqual(['2026-08-06T12:00:00.000Z', '2026-08-07T08:00:00.000Z'])
   })
 })
 
