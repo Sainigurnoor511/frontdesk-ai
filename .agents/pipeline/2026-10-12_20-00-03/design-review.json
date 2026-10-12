@@ -1,0 +1,104 @@
+{
+  "verdict": "CHANGES_REQUESTED",
+  "summary": {
+    "high": 0,
+    "medium": 3,
+    "nit": 6,
+    "total": 9
+  },
+  "findings": [
+    {
+      "id": 1,
+      "severity": "MEDIUM",
+      "title": "Data-dependent gates omit the Supabase precondition, turning a partial configuration into a hard failure",
+      "where": [
+        "e2e/booking-page.e2e.ts (live-slug test)",
+        "e2e/auth-live.e2e.ts (journey test)",
+        "e2e/support/env.ts"
+      ],
+      "problem": "The live-slug test gates only on E2E_BOOKING_SLUG and the journey only on E2E_USER_EMAIL/E2E_USER_PASSWORD. getOrganizationBySlug (lib/data/organization-slug.ts:33-41) uses createServiceRoleClient() which needs NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY (lib/supabase/service-role.ts:5-7), and the journey needs URL + publishable key for signInWithPassword (app/(auth)/actions.ts:85). With the Supabase variables unset the config injects placeholders, so both tests fail instead of skipping. This violates AC9 ('never fails due to missing seed data') and AC10 ('passes deterministically or is skipped'), and the proposed CI workflow documents all six secrets as independently optional, so the configuration is reachable by design. supabaseConfigured also checks only two of the three Supabase keys, so the name overstates what it proves.",
+      "fix": "Rename supabaseConfigured to authConfigured and add a serviceRoleConfigured getter checking NEXT_PUBLIC_SUPABASE_URL + SUPABASE_SECRET_KEY. Gate the booking live-slug test on !e2eEnv.serviceRoleConfigured || !e2eEnv.bookingSlug and the journey on !e2eEnv.authConfigured || !e2eEnv.userEmail || !e2eEnv.userPassword, with skip messages naming the Supabase variables as co-preconditions. Update the env table and README skip list to match."
+    },
+    {
+      "id": 2,
+      "severity": "MEDIUM",
+      "title": "Locator-policy claim contradicts the specs in the same section; FR4.5 deviation missing from the declared deviations",
+      "where": [
+        "02-design.md 'Specs' section opening line",
+        "e2e/booking-page.e2e.ts",
+        "e2e/auth-live.e2e.ts",
+        "e2e/README.md deviations bullet"
+      ],
+      "problem": "The section states 'All locators are role/label/text based per FR4.5' and then uses page.locator('[data-booking-public-root]') and page.locator('[data-sonner-toast][data-type=\"error\"]'). Both selectors are correct (verified: booking-page-public-client.tsx:470, exactly one occurrence; sonner/dist/index.mjs:648 and :662), but the blanket claim is false, and FR1.3 and FR5.1 are carried into the README deviations bullet and the final report while FR4.5 is not, so this deviation disappears at hand-off.",
+      "fix": "Reword the opening to name the two structural-attribute exceptions and their reasons (all visible booking-page copy is switchable through booking_page_config; sonner exposes no role/name for the error variant), and extend the README's 'Deviations from the requirements' bullet to three items: FR1.3 port, FR4.5 two attribute locators, FR5.1 form-driven sign-in."
+    },
+    {
+      "id": 3,
+      "severity": "MEDIUM",
+      "title": "Run A to Run B can silently reuse the Run A dev server, invalidating the AC2 evidence",
+      "where": [
+        "02-design.md 'Testability and verification' steps 5-7",
+        "playwright.config.ts webServer.reuseExistingServer"
+      ],
+      "problem": "reuseExistingServer is true locally and Playwright's webServer plugin checks availability before considering the command and returns silently on reuse (playwright/lib/runner/index.js:842-851). If anything is listening on 3100 when Run B starts, the suite attaches to a server still carrying Run A's placeholder Supabase env while the runner's gate reads true from the freshly copied .env.local. The failure is quiet: the toast test's tolerant regex accepts 'Something went wrong. Please try again.', which friendlyAuthError returns for an unreachable project, so Run B would be reported as 5 passed while proving nothing. The error-handling table covers only a foreign server on port 3000.",
+      "fix": "Add an explicit port-free precondition to verification steps 5 and 7 (e.g. throw if Get-NetTCPConnection -LocalPort 3100 -State Listen returns anything, before invoking pnpm test:e2e) and state in step 7 that Run B is only valid if the run started its own server. Keep reuseExistingServer: !process.env.CI, which FR1.4 requires."
+    },
+    {
+      "id": 4,
+      "severity": "NIT",
+      "title": "FR1.3 baseURL default deviation should be tracked as a requirement change",
+      "where": ["02-design.md 'Port 3100, not 3000'", "final report"],
+      "problem": "FR1.3 states the baseURL default is http://localhost:3000; the design uses http://127.0.0.1:3100. The reasoning and override are documented, but hand-off reviews read the requirements doc, not the design.",
+      "fix": "Add one explicit line to the final report: 'FR1.3 default changed from http://localhost:3000 to http://127.0.0.1:3100; restore with E2E_PORT=3000 plus E2E_BASE_URL=http://localhost:3000', so the requirement can be amended rather than quietly contradicted."
+    },
+    {
+      "id": 5,
+      "severity": "NIT",
+      "title": "Booking spec interpolates a string | null into the URL",
+      "where": ["e2e/booking-page.e2e.ts"],
+      "problem": "page.goto(`/smb/${e2eEnv.bookingSlug}`) typechecks but would navigate to /smb/null if the preceding gate changed, because test.skip() does not narrow types. auth-live.e2e.ts uses a non-null assertion for the same situation.",
+      "fix": "Use await page.goto(`/smb/${e2eEnv.bookingSlug!}`) for consistency and to make the precondition explicit."
+    },
+    {
+      "id": 6,
+      "severity": "NIT",
+      "title": "globalSetup skips warming in the case that most needs it",
+      "where": ["e2e/support/global-setup.ts"],
+      "problem": "The warm-up returns early when E2E_NO_WEB_SERVER is set, but that flag's documented meaning is 'something is already listening on E2E_PORT', which includes a hand-started cold pnpm dev. The warm-up is a best-effort GET against the same origin the specs use, so skipping it buys nothing.",
+      "fix": "Gate only on the foreign-origin flag: `if (readEnv('E2E_BASE_URL')) return`, and keep warming when E2E_NO_WEB_SERVER is set."
+    },
+    {
+      "id": 7,
+      "severity": "NIT",
+      "title": "Env table does not say E2E_PORT is inert when E2E_BASE_URL is set",
+      "where": ["02-design.md 'Env contract' table, E2E_PORT row"],
+      "problem": "useWebServer is false whenever E2E_BASE_URL is set, so E2E_PORT affects nothing in that mode, yet the table only says it defaults to 3100.",
+      "fix": "Append to the E2E_PORT row: 'ignored when E2E_BASE_URL is set (no server is booted); still validated, so a malformed value throws either way'."
+    },
+    {
+      "id": 8,
+      "severity": "NIT",
+      "title": "CI job has no timeout-minutes",
+      "where": [".github/workflows/e2e.yml"],
+      "problem": "webServer.timeout is 180s, but a slow-but-answering dev server or a hung Chromium would run against GitHub's default job timeout.",
+      "fix": "Add timeout-minutes: 30 to the e2e job alongside runs-on: ubuntu-latest."
+    },
+    {
+      "id": 9,
+      "severity": "NIT",
+      "title": "Journey URL regex matches any path ending in a slash",
+      "where": ["e2e/auth-live.e2e.ts journey test"],
+      "problem": "toHaveURL(/\\/(onboarding)?$/) also matches http://host/anything/. Nothing in the app produces that today, but this assertion is what proves the session took.",
+      "fix": "Use the URL predicate form, supported in 1.62.1 (playwright/types/test.d.ts:10189): await expect(page).toHaveURL((url) => url.pathname === '/' || url.pathname === '/onboarding', { timeout: 30_000 })."
+    }
+  ],
+  "verified_assumptions_count": 31,
+  "unverified_assumptions": [
+    "notFound() returning HTTP 404 under Next 16.4 dev + Turbopack is not executed (worktree has no node_modules); the design states the contingency.",
+    "The Vitest baseline (AC4's 10 failures across 4 files vs AGENTS.md's 3 files) could not be measured; the design re-measures before any change.",
+    "Timing budget figures are derived from verified library constants, not measured against a cold Turbopack compile on this machine.",
+    "The four 'unconditional' tests still need outbound network for next/font/google in app/layout.tsx; disclosed in the README outline but not in the Overview's 'identical on a bare machine' claim.",
+    "e2eEnv getters being read in worker processes after the config's dotenv load was not traced through Playwright's worker bootstrap; worst case is a skip, never a false pass.",
+    "Library internals were verified against e:\\Projects\\frontdesk-ai\\node_modules (the worktree has none); versions match the worktree's committed pnpm-lock.yaml."
+  ]
+}

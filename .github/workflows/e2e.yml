@@ -1,0 +1,71 @@
+# Runs the Playwright E2E suite on demand. Dispatch-only on purpose: the suite
+# is new and some of its tests need seeded Supabase data, so it must not be able
+# to gate a merge yet.
+#
+# Optional GitHub repository secrets. With none of them set the job still runs
+# the four unconditional tests green (playwright.config.ts injects placeholder
+# Supabase values) and skips the other three:
+#   - NEXT_PUBLIC_SUPABASE_URL              : app Supabase project URL
+#   - NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY  : app publishable (anon) key
+#   - SUPABASE_SECRET_KEY                   : app service-role key
+#   - E2E_BOOKING_SLUG                      : org slug with booking_page_enabled = true
+#   - E2E_USER_EMAIL                        : test user that owns an organization
+#   - E2E_USER_PASSWORD                     : that user's password
+name: E2E
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # webServer.timeout is 180s, but a dev server that answers slowly rather
+    # than never, or a hung Chromium, would otherwise run to GitHub's default.
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      E2E_BOOKING_SLUG: ${{ secrets.E2E_BOOKING_SLUG }}
+      E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+      E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # package.json has no `packageManager` field, so the action needs an
+          # explicit version or it errors out.
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # The installed @supabase/* 2.112.2 family declares engines
+          # node >= 22.0.0; 24 matches the dev machine (v24.16.0).
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run E2E suite
+        run: pnpm test:e2e
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
