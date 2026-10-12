@@ -2,7 +2,6 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
-import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS } from '@/lib/auth/recovery'
 import { resolveMfaGate, MFA_VERIFY_PATH, POST_LOGIN_PATH } from '@/lib/auth/mfa'
 
 export async function GET(request: NextRequest) {
@@ -98,15 +97,9 @@ export async function GET(request: NextRequest) {
   // No attempt-counter reset for a pending OAuth sign-in: the counter is server-side state keyed
   // by user id (`lib/auth/mfa-attempts.ts`) and a fresh first factor must not refill the budget.
 
-  if (isRecovery) {
-    response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: request.nextUrl.protocol === 'https:',
-      path: '/',
-      maxAge: PASSWORD_RECOVERY_MAX_AGE_SECONDS,
-    })
-  }
+  // No recovery cookie either. `/reset-password` and `updatePassword` read the proof of a reset
+  // link from the session's own signed token (`hasRecentRecoveryClaim`), which `?flow=recovery`
+  // cannot fake: that query parameter only picks the destination.
 
   return response
 }

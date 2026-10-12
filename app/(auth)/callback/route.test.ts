@@ -104,12 +104,12 @@ describe('GET /callback', () => {
     expect(response.headers.get('location')).toBe('https://app.example.com/')
   })
 
-  it('keeps the recovery flow working, cookie and all, even for a TOTP user', async () => {
-    await mockSupabase({ factors: [totpFactor], currentLevel: 'aal1' })
+  it('sends a recovery link to /reset-password without setting a forgeable recovery cookie', async () => {
+    await mockSupabase({ factors: [] })
 
     const response = await GET(callbackRequest('?code=abc&flow=recovery'))
 
     expect(response.headers.get('location')).toBe('https://app.example.com/reset-password')
-    expect(response.cookies.get('fd_password_recovery')?.value).toBe('1')
+    expect(response.cookies.get('fd_password_recovery')).toBeUndefined()
   })
 })

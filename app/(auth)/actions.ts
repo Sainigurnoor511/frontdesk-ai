@@ -1,6 +1,5 @@
 'use server'
 
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import {
@@ -16,7 +15,7 @@ import {
   type TotpCodeInput,
 } from '@/lib/validations/auth'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import { hasRecentRecoveryClaim } from '@/lib/auth/recovery'
 import {
   resolveMfaGate,
   mfaErrorMessage,
@@ -306,11 +305,9 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  const cookieStore = await cookies()
-  if (!user || !cookieStore.has(PASSWORD_RECOVERY_COOKIE)) {
+  // The only proof of a reset link is a signature-verified `recovery` entry in the session's own
+  // token, recent enough. An ordinary session, aal1 or aal2, has none and cannot get here.
+  if (!(await hasRecentRecoveryClaim(supabase))) {
     return { error: 'This reset link has expired. Request a new one.' }
   }
 
@@ -323,7 +320,6 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
     }
   }
 
-  cookieStore.delete(PASSWORD_RECOVERY_COOKIE)
   redirect('/')
 }
 

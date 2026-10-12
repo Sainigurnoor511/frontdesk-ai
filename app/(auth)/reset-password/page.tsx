@@ -1,7 +1,6 @@
 import Link from 'next/link'
-import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import { hasRecentRecoveryClaim } from '@/lib/auth/recovery'
 import { ResetPasswordForm } from '@/components/auth/reset-password-form'
 
 export default async function ResetPasswordPage() {
@@ -10,9 +9,8 @@ export default async function ResetPasswordPage() {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const cookieStore = await cookies()
-
-  if (!user || !cookieStore.has(PASSWORD_RECOVERY_COOKIE)) {
+  // Same check `updatePassword` makes, so the form is only offered where it can succeed.
+  if (!user || !(await hasRecentRecoveryClaim(supabase))) {
     return (
       <div className="space-y-4 text-center">
         <h1 className="text-2xl font-semibold">This link has expired</h1>
