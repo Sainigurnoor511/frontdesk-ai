@@ -14,6 +14,10 @@
 #   - E2E_MFA_USER_EMAIL                    : second user, with a verified TOTP factor
 #   - E2E_MFA_USER_PASSWORD                 : that user's password
 #   - E2E_MFA_TOTP_SECRET                   : that factor's base32 secret
+#
+# Redis is a service container, not a secret: the TOTP code step reserves
+# attempts in Redis and fails closed without it, so the MFA spec needs one.
+# The spec also probes REDIS_URL itself and skips when nothing answers.
 name: E2E
 
 on: workflow_dispatch
@@ -31,7 +35,20 @@ jobs:
     # webServer.timeout is 180s, but a dev server that answers slowly rather
     # than never, or a hung Chromium, would otherwise run to GitHub's default.
     timeout-minutes: 30
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
     env:
+      # Read by the runner and handed to the dev server via playwright.config.ts's
+      # webServer.env, so the spec's probe and the app dial the same Redis.
+      REDIS_URL: redis://localhost:6379/0
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}

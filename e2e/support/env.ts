@@ -46,6 +46,16 @@ export const e2eEnv = {
     return readEnv('E2E_MFA_TOTP_SECRET')?.trim() ?? null
   },
   /**
+   * The Redis the dev server's TOTP attempt budget uses. `playwright.config.ts` hands this same
+   * value to `webServer.env`, so the reachability probe in the MFA spec checks the server the app
+   * will actually dial. The default matches `lib/auth/mfa-attempts.ts`'s own fallback. As with
+   * `authConfigured`, this is the runner's value: against a remote origin it says nothing about
+   * that deployment's Redis.
+   */
+  get redisUrl(): string {
+    return readEnv('REDIS_URL')?.trim() ?? 'redis://127.0.0.1:6379/0'
+  },
+  /**
    * True when the runner's environment supplies a real project for the *auth*
    * path — the browser-side client built by `createBrowserClient` and the
    * server client in `proxy.ts`. This is what the sign-in tests need.

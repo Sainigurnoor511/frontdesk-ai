@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 import { config as loadEnv } from 'dotenv'
 import path from 'path'
-import { readEnv } from './e2e/support/env'
+import { e2eEnv, readEnv } from './e2e/support/env'
 
 // Loads the worktree's .env.local when one is present, so the dev server and
 // the env-gated specs see the same values. dotenv never overwrites an existing
@@ -121,7 +121,9 @@ export default defineConfig({
         timeout: 180_000,
         stdout: 'pipe',
         stderr: 'pipe',
-        env: placeholderSupabaseEnv,
+        // REDIS_URL is passed explicitly, from the same getter the MFA spec probes, so the spec's
+        // skip gate and the server's attempt budget always look at the same Redis.
+        env: { ...placeholderSupabaseEnv, REDIS_URL: e2eEnv.redisUrl },
       }
     : undefined,
 })

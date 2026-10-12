@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import { e2eEnv } from './support/env'
 import { totpCode } from './support/totp'
+import { redisReachable } from './support/redis'
 
 // The contract under test: when a Server Action is submitted with a session that still owes its
 // TOTP code, proxy.ts answers with an `x-action-redirect: /verify;replace` header (not a 3xx), and
@@ -28,6 +29,12 @@ test('a Server Action submitted with a pending session lands the tab on /verify'
       !e2eEnv.mfaUserPassword ||
       !e2eEnv.mfaTotpSecret,
     'Needs NEXT_PUBLIC_SUPABASE_URL + NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY plus E2E_MFA_USER_EMAIL, E2E_MFA_USER_PASSWORD and E2E_MFA_TOTP_SECRET for a Supabase user with a verified TOTP factor who owns an organization with at least one receptionist, and a reachable REDIS_URL for the dev server (the attempt budget fails closed without it)'
+  )
+  // Probed, not assumed: without Redis the code step is refused ("temporarily unavailable") and the
+  // test would fail inside its first sign-in, for an environment reason that reads as a product one.
+  test.skip(
+    !(await redisReachable(e2eEnv.redisUrl)),
+    'Needs a reachable REDIS_URL (default redis://127.0.0.1:6379/0) for the dev server: the TOTP attempt budget fails closed without it, so the code step would be refused'
   )
   const email = e2eEnv.mfaUserEmail!
   const password = e2eEnv.mfaUserPassword!
