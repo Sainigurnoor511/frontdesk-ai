@@ -78,6 +78,53 @@ Use this as the completion gate before marking a feature item done.
 - [ ] Move conversations filters to server-side query params for scale
 - [ ] Improve `phone` and `chat` channel coverage in conversation flows
 
+## P1 - Public booking page hardening
+
+Opened 2026-10-12 out of the semantic review of the voice cancel/reschedule tools. The
+voice tools' identification rule (organization + a caller-confirmed email) is justified by
+parity with the public manage-booking page, so the page's own controls are load-bearing for
+both surfaces.
+
+- [ ] **Rate-limit the public manage-booking actions** (added: 2026-10-12) —
+      `lookupPublicAppointments`, `reschedulePublicAppointment`, and
+      `cancelPublicAppointment` in `app/smb/actions.ts` carry no
+      `checkAndConsumeRateLimit`, unlike `createPublicAppointment`
+      (`MAX_BOOKINGS_PER_HOUR_PER_IP`). Email is the only credential, so the lookup is an
+      unthrottled email-keyed enumeration oracle for appointment titles and times. An
+      earlier docstring on `getUpcomingAppointmentsByEmailServiceRole` claimed these were
+      "rate-limited by caller"; the comment has been corrected, the rate limit has not been
+      added.
+- [ ] **The Turnstile guard on the booking actions is dead code** (added: 2026-10-12) —
+      both blocks run under `if (false && turnstileSecret)` (see the `showTurnstile` note in
+      `booking-page-public-client.tsx`). Either revive it or delete it; leaving a disabled
+      bot check that reads as enabled is worse than neither.
+- [ ] **Concurrent *new* bookings can still overlap a reschedule** (added: 2026-10-12) —
+      migration `045`'s `reschedule_appointment_atomic` takes an org-scoped advisory lock
+      and re-checks the destination, which closes reschedule-vs-reschedule and
+      reschedule-vs-cancel. `createAppointmentServiceRole` does not take that lock, so an
+      insert committing between a reschedule's overlap check and its write is still
+      invisible. Closing it means routing inserts through the same lock, or an overlap
+      exclusion constraint on `appointments` — note the latter would also forbid overlaps
+      that existing data may already contain, since nothing enforces non-overlap today.
+- [ ] **No email when an appointment is cancelled or moved** (added: 2026-10-12, explicit
+      decision) — a new booking sends `sendAppointmentConfirmationEmail`; cancel and
+      reschedule send nothing on either the voice or the web path, so a caller whose
+      appointment moved has only the spoken confirmation and no record of the new time. Not
+      an oversight as of this entry, but it should be a deliberate omission on the record
+      rather than an implicit one. Fix by adding templates under `lib/email/`.
+- [ ] **`appointment.updated` is not an outbound webhook event** (added: 2026-10-12) — it
+      is absent from `WEBHOOK_EVENT_TYPES`, so a reschedule dispatches no webhook at all
+      while a cancel dispatches `appointment.cancelled`. Downstream integrations see a move
+      as nothing happening. Adding it is a standalone change.
+- [ ] **No verification tool exists for secure-mode agents** (added: 2026-10-12) —
+      `manageBookingToolsAllowed()` in `lib/voice/tool-handlers.ts` withholds
+      `find_appointment` / `cancel_appointment` / `reschedule_appointment` from any agent
+      with `secure_mode` or `identity_verification_enabled` on, because a caller-spoken
+      email is the only credential those tools have and nothing in the shared handler set
+      can verify a caller. Those agents therefore cannot manage existing appointments by
+      voice at all. Lifting the restriction needs caller ID on `conversations` or an OTP
+      flow as a real voice tool, not a sentence in the system prompt.
+
 ## P1 - Telephony + Integrations
 
 - [ ] Twilio inbound phone path to LiveKit SIP flow
@@ -102,11 +149,15 @@ Use this as the completion gate before marking a feature item done.
 
 ## Known Technical Issues
 
-- [ ] **Pre-existing test failures** (recorded 2026-10-08): 10 tests across
-      `app/smb/actions.test.ts`, `lib/data/analytics.test.ts`,
-      `lib/data/availability-engine.test.ts` (date/timezone fixtures), and
-      `lib/voice/adapters/fish-audio-tts.test.ts`. Present on `main` since at least
-      `9dfb2d8`.
+- [ ] **Pre-existing test failures** (recorded 2026-10-08, narrowed 2026-10-12): now **4**
+      tests — 2 in `lib/data/analytics.test.ts` and 2 in
+      `lib/voice/adapters/fish-audio-tts.test.ts`. The 6 in
+      `lib/data/availability-engine.test.ts` were fixed on 2026-10-12: they were not a
+      timezone problem but a stale clock, asserting slot lists that the engine's
+      `minimum_booking_notice_minutes` filter empties once the 2026-08-10 fixture date is in
+      the past. Pinning the system time in that suite's `beforeEach` restored them, and
+      they now cover staff scoping and service duration as well. `app/smb/actions.test.ts`
+      passes and had already stopped failing before this.
 - [ ] **Pre-existing lint errors** (recorded 2026-10-08): `pnpm lint` reports 29 errors,
       4 warnings — down from ~2100 in August. Clear them so full-repo lint becomes a gate again.
 - [ ] Fix TypeScript errors in `app/smb/actions.ts` (`parsed.data` undefined cases)
@@ -140,6 +191,23 @@ Use this as the completion gate before marking a feature item done.
       strength the public manage-booking page already offers. Deliberately left out:
       caller-ID/OTP identification, and `appointment.updated` as an outbound webhook event
       (not in `WEBHOOK_EVENT_TYPES`, so reschedule fires none — parity with the public page).
+- [x] Fixed the review findings on those tools (2026-10-12). The four High items:
+      the manage-booking tools are now **withheld in code** from any agent with
+      `secure_mode` or `identity_verification_enabled` on
+      (`manageBookingToolsAllowed()` in `lib/voice/tool-handlers.ts`) rather than
+      discouraged by a prompt sentence that said the opposite; reschedule passes the
+      appointment's stored `service_id` and `staff_id` to the availability engine instead of
+      blanks; `getAvailableSlots()` throws on any Postgres read error instead of reading a
+      failed query as an empty table and quietly removing blockers; and both mutations are
+      now conditional on the start time the caller confirmed, with reschedule going through
+      `reschedule_appointment_atomic` (migration `045`) so the destination overlap check and
+      the write share one transaction and an org-scoped advisory lock. Also: the lookup
+      splits into a forward query plus a bounded lookback so recent history cannot crowd out
+      real upcoming appointments; disambiguation candidates exclude cancelled and past rows;
+      offered alternatives exclude the appointment's own current time; and the public
+      reschedule passes `excludeAppointmentId` so the same move no longer succeeds by voice
+      and fails on the web. The residual gaps are the P1 "Public booking page hardening"
+      section above.
 - [x] Google Calendar OAuth + encrypted token storage + sync on appointment
       create/update/cancel (`lib/integrations/google-calendar-sync.ts`, migration `038`);
       Microsoft Calendar, Cal.com, and Calendly followed the same pattern (`039`, `040`)

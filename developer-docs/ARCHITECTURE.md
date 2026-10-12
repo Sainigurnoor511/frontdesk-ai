@@ -137,7 +137,7 @@ Public read policies exist only where the booking page needs them (booking confi
 
 ### Migrations
 
-44 numbered SQL files in `supabase/migrations/`. Next number: `045`.
+45 numbered SQL files in `supabase/migrations/`. Next number: `046`.
 
 | Migration | Tables/Features |
 | --- | --- |
@@ -183,6 +183,7 @@ Public read policies exist only where the booking page needs them (booking confi
 | `_042` | Agent `detect_language` |
 | `_043` | `agent_rules` |
 | `_044` | Agent `voice_provider` (`livekit` \| `assemblyai`), conversation `assemblyai_session_id` |
+| `_045` | `reschedule_appointment_atomic()` — locks, re-checks the confirmed start, and re-checks the destination for overlaps in one transaction |
 
 Apply with `npx supabase db push`. CI applies them on merge to `main` (see [CI](#ci)).
 
@@ -353,9 +354,14 @@ Browser side lives in `components/voice/assemblyai/` (WebSocket session, PCM cap
 
 ### Shared Tools
 
-Tools are provider-neutral. `lib/voice/tools/*-handlers.ts` define them with `defineVoiceTool` (Zod-validated args); `buildVoiceToolHandlers()` in `lib/voice/tool-handlers.ts` composes them (honoring `skip_knowledge_retrieval`). Both providers go through that one composition point: LiveKit via `lib/voice/livekit-tools.ts` (which wraps it in `livekit-tool-adapter.ts` for `AgentSession`), AssemblyAI by sending them as `session.tools` and relaying calls through `providers/assemblyai/tool-relay.ts`. Adding a handler module therefore reaches both engines by construction.
+Tools are provider-neutral. `lib/voice/tools/*-handlers.ts` define them with `defineVoiceTool` (Zod-validated args); `buildVoiceToolHandlers()` in `lib/voice/tool-handlers.ts` composes them (honoring `skip_knowledge_retrieval`, `secure_mode`, and `identity_verification_enabled`). Both providers go through that one composition point: LiveKit via `lib/voice/livekit-tools.ts` (which wraps it in `livekit-tool-adapter.ts` for `AgentSession`), AssemblyAI by sending them as `session.tools` and relaying calls through `providers/assemblyai/tool-relay.ts`. Adding a handler module therefore reaches both engines by construction.
 
 Current tools: `check_availability`, `book_appointment`, `find_appointment`, `cancel_appointment`, `reschedule_appointment`, `search_knowledge`.
+
+Two gates are enforced in the composition point, not in the system prompt, so a withheld tool is both absent from the model's list and answers `unknown_tool` if dispatched anyway:
+
+- `skip_knowledge_retrieval` omits `search_knowledge`.
+- `secure_mode` **or** `identity_verification_enabled` omits all three manage-booking tools (`manageBookingToolsAllowed()`). Those tools authorize on organization + a caller-spoken email address, which is a single unverified factor; no verification tool exists in the shared handler set yet, so agents with either flag cannot manage existing appointments by voice at all. `buildSystemPrompt()` tells those agents to say so instead of reaching for a tool they do not have.
 
 ### Components
 
