@@ -232,6 +232,19 @@ describe('NotificationCenter', () => {
     expect(link?.getAttribute('href')).toBe('/')
   })
 
+  // Round-2 issue 7: the panel lists ten rows and has no "view all", so the
+  // badge must not promise thirty.
+  it('caps the unread count at what the panel can show', async () => {
+    const { getNotificationPanel } = await import('./notification-actions')
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 30 })
+
+    render(<NotificationCenter initialUnreadCount={30} />)
+
+    expect(screen.getByText('9+ unread')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Notifications, 9+ unread' })).toBeTruthy()
+    expect(screen.queryByText('30')).toBeNull()
+  })
+
   it('refetches the panel when the window regains focus', async () => {
     const { getNotificationPanel } = await import('./notification-actions')
     vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 2 })

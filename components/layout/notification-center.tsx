@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DotLoader } from '@/components/ui/matrix'
 import { safeNotificationLinkPath } from '@/lib/notifications/link-path'
-import type { NotificationType } from '@/lib/notifications/types'
+import { NOTIFICATION_PANEL_LIMIT, type NotificationType } from '@/lib/notifications/types'
 import {
   getNotificationPanel,
   markAllNotificationsAsRead,
@@ -21,6 +21,17 @@ const TYPE_ICONS: Record<NotificationType, typeof Bell> = {
   appointment_reminder: BellRing,
   client_booking: Users,
   staff_booking: UserCog,
+}
+
+/**
+ * The badge never names a number the panel cannot show: it lists the newest
+ * `NOTIFICATION_PANEL_LIMIT` rows and has no "view all", so past one below that
+ * the count reads `9+` rather than "30 unread" over a list of ten.
+ */
+const BADGE_MAX = NOTIFICATION_PANEL_LIMIT - 1
+
+function formatUnread(count: number): string {
+  return count > BADGE_MAX ? `${BADGE_MAX}+` : String(count)
 }
 
 /**
@@ -169,7 +180,9 @@ export function NotificationCenter({
               // otherwise hear only "Notifications" with no sign that anything
               // is unread.
               aria-label={
-                unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
+                unreadCount > 0
+                  ? `Notifications, ${formatUnread(unreadCount)} unread`
+                  : 'Notifications'
               }
             />
           }
@@ -246,12 +259,12 @@ export function NotificationCenter({
           aria-hidden
           className="pointer-events-none absolute -top-1 -right-1 h-4 min-w-4 rounded-sm bg-brand px-0.5 text-[10px] leading-none font-medium tabular-nums text-brand-foreground"
         >
-          {unreadCount > 99 ? '99+' : unreadCount}
+          {formatUnread(unreadCount)}
         </span>
       )}
       {/* Announces changes to the count while the user is elsewhere on the page. */}
       <span className="sr-only" aria-live="polite">
-        {unreadCount} unread
+        {formatUnread(unreadCount)} unread
       </span>
     </span>
   )
