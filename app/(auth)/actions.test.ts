@@ -23,12 +23,13 @@ vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => cookieStore),
 }))
 
-// The attempt counter is Redis-backed server state, so the unit tests drive it directly rather
-// than through a cookie the requester could have forged.
+// The attempt budget is Redis-backed server state, so the unit tests drive it directly rather
+// than through a cookie the requester could have forged. The Redis side, including the atomic
+// script, is covered against real connections in lib/auth/mfa-attempts.test.ts.
 vi.mock('@/lib/auth/mfa-attempts', () => ({
-  readFailedAttempts: vi.fn(async () => 0),
-  recordFailedAttempt: vi.fn(async () => 1),
-  clearFailedAttempts: vi.fn(async () => {}),
+  reserveAttempt: vi.fn(async () => ({ status: 'reserved', attempts: 1 })),
+  releaseAttempt: vi.fn(async () => {}),
+  clearAttempts: vi.fn(async () => {}),
 }))
 
 describe('signUp', () => {
@@ -203,10 +204,10 @@ async function attemptMocks() {
 }
 
 async function resetAttemptMocks() {
-  const { readFailedAttempts, recordFailedAttempt, clearFailedAttempts } = await attemptMocks()
-  vi.mocked(readFailedAttempts).mockReset().mockResolvedValue(0)
-  vi.mocked(recordFailedAttempt).mockReset().mockResolvedValue(1)
-  vi.mocked(clearFailedAttempts).mockReset().mockResolvedValue(undefined)
+  const { reserveAttempt, releaseAttempt, clearAttempts } = await attemptMocks()
+  vi.mocked(reserveAttempt).mockReset().mockResolvedValue({ status: 'reserved', attempts: 1 })
+  vi.mocked(releaseAttempt).mockReset().mockResolvedValue(undefined)
+  vi.mocked(clearAttempts).mockReset().mockResolvedValue(undefined)
 }
 
 describe('logIn', () => {
@@ -253,12 +254,13 @@ describe('logIn', () => {
   it('does not refill the attempt budget on a fresh password sign-in', async () => {
     // The whole point of the server-side counter: an attacker holding the password could
     // previously clear their own failure count just by signing in again.
-    const { clearFailedAttempts } = await attemptMocks()
+    const { clearAttempts, releaseAttempt } = await attemptMocks()
     await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1' })
 
     await logIn({ email: 'owner@example.com', password: 'password123' })
 
-    expect(clearFailedAttempts).not.toHaveBeenCalled()
+    expect(clearAttempts).not.toHaveBeenCalled()
+    expect(releaseAttempt).not.toHaveBeenCalled()
     expect(cookieStore.set).not.toHaveBeenCalled()
     expect(cookieStore.delete).not.toHaveBeenCalled()
   })
@@ -277,6 +279,23 @@ describe('logIn', () => {
     expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_unavailable')
     expect(redirect).toHaveBeenCalledTimes(1)
     consoleWarn.mockRestore()
+  })
+
+  it('sends an account with only an unsupported factor to /verify to explain, not round the loop', async () => {
+    // Signing out with the generic notice put the user back on the password form, which signed
+    // them straight back into the same dead end. /verify says why and who can fix it.
+    const { redirect } = await import('next/navigation')
+    const { signOut, getAuthenticatorAssuranceLevel } = await useAuthClient({
+      factors: [{ id: 'f-phone', factor_type: 'phone', status: 'verified' }],
+      currentLevel: 'aal1',
+    })
+
+    await logIn({ email: 'owner@example.com', password: 'password123' })
+
+    expect(getAuthenticatorAssuranceLevel).toHaveBeenCalled()
+    expect(signOut).not.toHaveBeenCalled()
+    expect(redirect).toHaveBeenNthCalledWith(1, '/verify')
+    expect(redirect).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -337,15 +356,38 @@ describe('verifyMfaChallenge', () => {
       challengeId: 'challenge-9',
       code: '123456',
     })
-    const { clearFailedAttempts } = await attemptMocks()
-    expect(clearFailedAttempts).toHaveBeenCalledWith('u1')
+    const { clearAttempts, reserveAttempt } = await attemptMocks()
+    expect(reserveAttempt).toHaveBeenCalledWith('u1')
+    expect(clearAttempts).toHaveBeenCalledWith('u1')
     expect(redirect).toHaveBeenNthCalledWith(1, '/')
     expect(redirect).toHaveBeenCalledTimes(1)
   })
 
-  it('rejects a wrong code, stays put, and counts it against the server-side budget', async () => {
+  it('takes the attempt from the budget before the code reaches Supabase', async () => {
+    const { reserveAttempt } = await attemptMocks()
+    const order: string[] = []
+    vi.mocked(reserveAttempt).mockImplementation(async () => {
+      order.push('reserve')
+      return { status: 'reserved', attempts: 1 }
+    })
+    const challenge = vi.fn(async () => {
+      order.push('challenge')
+      return { data: { id: 'challenge-9' }, error: null }
+    })
+    const verify = vi.fn(async () => {
+      order.push('verify')
+      return { data: {}, error: null }
+    })
+    await useAuthClient({ factors: [totpFactor], currentLevel: 'aal1', challenge, verify })
+
+    await verifyMfaChallenge({ code: '123456' })
+
+    expect(order).toEqual(['reserve', 'challenge', 'verify'])
+  })
+
+  it('rejects a wrong code, stays put, and keeps the reserved attempt as the failure', async () => {
     const { redirect } = await import('next/navigation')
-    const { recordFailedAttempt } = await attemptMocks()
+    const { reserveAttempt, releaseAttempt } = await attemptMocks()
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
     const verify = vi
       .fn()
@@ -359,7 +401,8 @@ describe('verifyMfaChallenge', () => {
     })
     expect(redirect).not.toHaveBeenCalled()
     // Keyed by the user id the server resolved, and never written to a cookie the client controls.
-    expect(recordFailedAttempt).toHaveBeenCalledWith('u1')
+    expect(reserveAttempt).toHaveBeenCalledWith('u1')
+    expect(releaseAttempt).not.toHaveBeenCalled()
     expect(cookieStore.set).not.toHaveBeenCalled()
   })
 
@@ -367,8 +410,8 @@ describe('verifyMfaChallenge', () => {
     // The hole this replaces: the count lived in `fd_mfa_attempts`, so omitting the cookie made
     // `Number.parseInt` yield NaN and restarted the count at 1 on every request.
     const { redirect } = await import('next/navigation')
-    const { readFailedAttempts } = await attemptMocks()
-    vi.mocked(readFailedAttempts).mockResolvedValue(5)
+    const { reserveAttempt } = await attemptMocks()
+    vi.mocked(reserveAttempt).mockResolvedValue({ status: 'exhausted' })
     const challenge = vi.fn()
     const verify = vi.fn()
     const { signOut } = await useAuthClient({
@@ -387,7 +430,7 @@ describe('verifyMfaChallenge', () => {
   })
 
   it('counts a non-fatal challenge failure too, so that call is not an unbounded loop', async () => {
-    const { recordFailedAttempt } = await attemptMocks()
+    const { reserveAttempt, releaseAttempt } = await attemptMocks()
     const challenge = vi
       .fn()
       .mockResolvedValue({
@@ -401,7 +444,8 @@ describe('verifyMfaChallenge', () => {
 
     expect(result).toEqual({ error: 'Could not verify that code. Please try again.' })
     expect(verify).not.toHaveBeenCalled()
-    expect(recordFailedAttempt).toHaveBeenCalledWith('u1')
+    expect(reserveAttempt).toHaveBeenCalledWith('u1')
+    expect(releaseAttempt).not.toHaveBeenCalled()
   })
 
   it.each(['challenge', 'verify'] as const)(
@@ -425,9 +469,84 @@ describe('verifyMfaChallenge', () => {
       expect(result).toEqual({
         error: 'Could not reach two-factor sign-in. Please try again.',
       })
+      // A thrown challenge() means verify() never ran, so the code was not evaluated and the slot
+      // goes back. A thrown verify() may have been evaluated server-side, so it stays counted.
+      const { releaseAttempt } = await attemptMocks()
+      if (which === 'challenge') {
+        expect(releaseAttempt).toHaveBeenCalledWith('u1')
+      } else {
+        expect(releaseAttempt).not.toHaveBeenCalled()
+      }
       consoleError.mockRestore()
     }
   )
+
+  it('fails closed when the attempt counter is unreachable, keeping the session for a retry', async () => {
+    // The counter is the only per-account guessing bound, so an outage refuses the check rather
+    // than skipping it. The pending session is kept: nothing to sign in again for.
+    const { redirect } = await import('next/navigation')
+    const { reserveAttempt } = await attemptMocks()
+    vi.mocked(reserveAttempt).mockResolvedValue({ status: 'unavailable' })
+    const challenge = vi.fn()
+    const verify = vi.fn()
+    const { signOut } = await useAuthClient({
+      factors: [totpFactor],
+      currentLevel: 'aal1',
+      challenge,
+      verify,
+    })
+
+    const result = await verifyMfaChallenge({ code: '123456' })
+
+    expect(result).toEqual({
+      error: 'Two-factor sign-in is temporarily unavailable. Please try again in a minute.',
+    })
+    expect(challenge).not.toHaveBeenCalled()
+    expect(verify).not.toHaveBeenCalled()
+    expect(signOut).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  it('lets no more than the remaining budget reach mfa.verify() under concurrent requests', async () => {
+    // Four attempts already used, one left. Five requests are held at a barrier inside getUser()
+    // and released together. The budget fake is atomic the same way the Lua script is: the check
+    // and the increment happen with nothing in between.
+    const { reserveAttempt } = await attemptMocks()
+    let used = 4
+    vi.mocked(reserveAttempt).mockImplementation(async () => {
+      if (used >= 5) return { status: 'exhausted' }
+      used += 1
+      return { status: 'reserved', attempts: used }
+    })
+
+    let release!: () => void
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const challenge = vi.fn(async () => ({ data: { id: 'challenge-9' }, error: null }))
+    const verify = vi.fn(async () => ({
+      data: null,
+      error: { code: 'mfa_verification_failed', status: 400 },
+    }))
+    const { client } = mockAuthClient({ factors: [totpFactor], currentLevel: 'aal1', challenge, verify })
+    const realGetUser = client.auth.getUser
+    client.auth.getUser = vi.fn(async () => {
+      await barrier
+      return realGetUser()
+    })
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    vi.mocked(createSupabaseClient).mockResolvedValue(client as never)
+
+    const requests = Array.from({ length: 5 }, (_, i) =>
+      verifyMfaChallenge({ code: String(100000 + i) })
+    )
+    release()
+    await Promise.all(requests)
+
+    expect(client.auth.getUser).toHaveBeenCalledTimes(5)
+    expect(verify).toHaveBeenCalledTimes(1)
+    expect(reserveAttempt).toHaveBeenCalledTimes(5)
+  })
 
   it('reports an expired challenge with copy distinct from the wrong-code copy', async () => {
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
@@ -453,14 +572,15 @@ describe('verifyMfaChallenge', () => {
     expect(result).toEqual({
       error: 'Too many attempts. Please wait a few minutes and try again.',
     })
-    const { recordFailedAttempt } = await attemptMocks()
-    expect(recordFailedAttempt).not.toHaveBeenCalled()
+    // The reservation goes back: Supabase refused to evaluate the code, so no guess was spent.
+    const { releaseAttempt } = await attemptMocks()
+    expect(releaseAttempt).toHaveBeenCalledWith('u1')
   })
 
   it('ends the pending session on the fifth counted failure', async () => {
     const { redirect } = await import('next/navigation')
-    const { recordFailedAttempt, clearFailedAttempts } = await attemptMocks()
-    vi.mocked(recordFailedAttempt).mockResolvedValue(5)
+    const { reserveAttempt, clearAttempts } = await attemptMocks()
+    vi.mocked(reserveAttempt).mockResolvedValue({ status: 'reserved', attempts: 5 })
     const challenge = vi.fn().mockResolvedValue({ data: { id: 'challenge-9' }, error: null })
     const verify = vi
       .fn()
@@ -477,7 +597,7 @@ describe('verifyMfaChallenge', () => {
     expect(signOut).toHaveBeenCalledWith({ scope: 'local' })
     // The counter survives the teardown on purpose: its TTL is the lockout window, so clearing it
     // here would let the requester reset the budget by signing in again.
-    expect(clearFailedAttempts).not.toHaveBeenCalled()
+    expect(clearAttempts).not.toHaveBeenCalled()
     expect(redirect).toHaveBeenNthCalledWith(1, '/login?error=mfa_attempts')
     expect(redirect).toHaveBeenCalledTimes(1)
   })

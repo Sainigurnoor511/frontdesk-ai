@@ -24,11 +24,7 @@ import {
   MFA_VERIFY_PATH,
   POST_LOGIN_PATH,
 } from '@/lib/auth/mfa'
-import {
-  clearFailedAttempts,
-  readFailedAttempts,
-  recordFailedAttempt,
-} from '@/lib/auth/mfa-attempts'
+import { clearAttempts, releaseAttempt, reserveAttempt } from '@/lib/auth/mfa-attempts'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -147,6 +143,13 @@ export async function logIn(input: LoginInput): Promise<{ error: string }> {
   // the one after it and a pending user could be redirected home under test.
   const mfa = await resolveMfaGate(supabase)
   if (mfa.state === 'pending') return redirect(MFA_VERIFY_PATH)
+  // An account whose only verified factor is one this app cannot challenge is not a transient
+  // failure, so signing out with the generic "unavailable" notice would only loop the user back
+  // to the password form. `/verify` explains the dead end and who can clear it; the session stays
+  // pending, which every gate still denies.
+  if (mfa.state === 'indeterminate' && mfa.reason === 'unsupported_factor') {
+    return redirect(MFA_VERIFY_PATH)
+  }
   if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
 
   return redirect(POST_LOGIN_PATH)
@@ -168,9 +171,25 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
   if (mfa.state === 'satisfied') return redirect(POST_LOGIN_PATH)
   if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
 
-  // The budget is checked before Supabase is touched, so a locked-out requester cannot spend
-  // further attempts just by posting again.
-  if ((await readFailedAttempts(mfa.userId)) >= MFA_MAX_ATTEMPTS) {
+  // One slot is taken from the budget atomically *before* Supabase sees the code. Reading the
+  // count first and recording the failure afterwards let parallel requests at count four all
+  // reach `mfa.verify()`; with a reservation, at most the remaining budget can. What happens to
+  // the slot depends on the outcome, and every branch below says which:
+  //   verified                         -> budget cleared
+  //   wrong code / non-fatal error     -> slot kept; it is the failed attempt
+  //   Supabase throttled               -> slot released; the code was not evaluated
+  //   challenge() threw                -> slot released; verify() never ran
+  //   verify() threw                   -> slot kept; the request may have reached Supabase and
+  //                                       been evaluated, so it is counted to stay conservative
+  //   fatal (factor gone, feature off) -> slot kept; the session ends anyway
+  const reservation = await reserveAttempt(mfa.userId)
+  if (reservation.status === 'unavailable') {
+    // Fail closed, keeping the pending session so the user can simply retry. The reasoning is in
+    // `lib/auth/mfa-attempts.ts`.
+    logMfaEvent('attempt counter unavailable', { userId: mfa.userId })
+    return { error: 'Two-factor sign-in is temporarily unavailable. Please try again in a minute.' }
+  }
+  if (reservation.status === 'exhausted') {
     return endPendingSession(supabase, 'mfa_attempts', mfa.userId)
   }
 
@@ -183,6 +202,7 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
     challenge = await supabase.auth.mfa.challenge({ factorId: mfa.factorId })
   } catch (thrown) {
     console.error('[auth] mfa challenge threw:', thrown)
+    await releaseAttempt(mfa.userId)
     return { error: 'Could not reach two-factor sign-in. Please try again.' }
   }
 
@@ -194,7 +214,7 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
     }
     // A non-fatal, non-throttled challenge failure counts against the budget as well, otherwise
     // the challenge call is an unbounded loop that never advances the counter.
-    return countFailure(supabase, mfa.userId, mapped)
+    return settleFailure(supabase, mfa.userId, reservation.attempts, mapped)
   }
 
   let verified
@@ -215,31 +235,33 @@ export async function verifyMfaChallenge(input: TotpCodeInput): Promise<{ error:
       logMfaEvent('challenge unavailable', { userId: mfa.userId, code: verified.error.code ?? '' })
       return endPendingSession(supabase, 'mfa_unavailable', mfa.userId)
     }
-    return countFailure(supabase, mfa.userId, mapped)
+    return settleFailure(supabase, mfa.userId, reservation.attempts, mapped)
   }
 
-  await clearFailedAttempts(mfa.userId)
+  await clearAttempts(mfa.userId)
   logMfaEvent('verified', { userId: mfa.userId })
   return redirect(POST_LOGIN_PATH)
 }
 
 /**
- * Records one failed code against the user's budget and either returns the retry message or ends
- * the session on the last attempt. Never returns normally once the budget is spent.
+ * Settles a reserved attempt whose code did not verify: either gives the slot back (Supabase
+ * throttled, so the code was never evaluated) or keeps it as the failure, ending the session when
+ * it was the last one. Never returns normally once the budget is spent.
  */
-async function countFailure(
+async function settleFailure(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
+  attempts: number,
   mapped: ReturnType<typeof mfaErrorMessage>
 ): Promise<{ error: string }> {
-  // Supabase's own throttling is not the user failing, so it must not advance the counter:
+  // Supabase's own throttling is not the user failing, so it must not use up the budget:
   // "wait a few minutes" followed immediately by a forced sign-out reads as contradictory.
   if (mapped.throttled) {
+    await releaseAttempt(userId)
     logMfaEvent('throttled by supabase', { userId })
     return { error: mapped.message }
   }
 
-  const attempts = await recordFailedAttempt(userId)
   logMfaEvent('failed attempt', { userId, attempts })
   if (attempts >= MFA_MAX_ATTEMPTS) {
     return endPendingSession(supabase, 'mfa_attempts', userId)
