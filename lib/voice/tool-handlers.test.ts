@@ -7,7 +7,11 @@ vi.mock('@/lib/data/knowledge-service', () => ({
   searchKnowledgeServiceRole: vi.fn(),
 }))
 
-import { buildVoiceToolHandlers, executeVoiceToolHandler } from './tool-handlers'
+import {
+  buildVoiceToolHandlers,
+  executeVoiceToolHandler,
+  manageBookingToolsAllowed,
+} from './tool-handlers'
 
 const CONTEXT = {
   organizationId: 'org-1',
@@ -35,6 +39,41 @@ describe('buildVoiceToolHandlers', () => {
     expect(names).not.toContain('search_knowledge')
     expect(names).toContain('cancel_appointment')
     expect(names).toContain('reschedule_appointment')
+  })
+
+  // The security gate. Email is the only caller credential these three tools
+  // have, so an org that turned on secure mode must not get an agent that reads
+  // appointment titles and times back to anyone who can say a client's address.
+  it('withholds every manage-booking tool from a secure-mode agent', () => {
+    const names = buildVoiceToolHandlers({ ...CONTEXT, secureMode: true }).map(
+      (handler) => handler.name
+    )
+
+    expect(names).not.toContain('find_appointment')
+    expect(names).not.toContain('cancel_appointment')
+    expect(names).not.toContain('reschedule_appointment')
+    // Booking a new appointment discloses nothing about an existing client, so
+    // it stays.
+    expect(names).toEqual(['check_availability', 'book_appointment', 'search_knowledge'])
+  })
+
+  it('withholds them for identity verification alone, which is a separate toggle', () => {
+    const names = buildVoiceToolHandlers({
+      ...CONTEXT,
+      identityVerificationEnabled: true,
+    }).map((handler) => handler.name)
+
+    expect(names).not.toContain('find_appointment')
+    expect(names).not.toContain('cancel_appointment')
+    expect(names).not.toContain('reschedule_appointment')
+  })
+
+  it('reports the gate directly, so the prompt builder and the tool list agree', () => {
+    expect(manageBookingToolsAllowed(CONTEXT)).toBe(true)
+    expect(manageBookingToolsAllowed({ ...CONTEXT, secureMode: true })).toBe(false)
+    expect(manageBookingToolsAllowed({ ...CONTEXT, identityVerificationEnabled: true })).toBe(
+      false
+    )
   })
 
   it('lets no tool select an organization', () => {
@@ -80,5 +119,19 @@ describe('executeVoiceToolHandler', () => {
     expect(await executeVoiceToolHandler(CONTEXT, 'delete_everything', {})).toEqual({
       error: 'unknown_tool',
     })
+  })
+
+  // Dispatch goes through the same builder, so the gate holds even if a model
+  // invents the call or a provider replays a tool name from an earlier session.
+  it('refuses to dispatch a manage-booking tool for a secure-mode agent', async () => {
+    for (const name of ['find_appointment', 'cancel_appointment', 'reschedule_appointment']) {
+      expect(
+        await executeVoiceToolHandler({ ...CONTEXT, secureMode: true }, name, {
+          clientEmail: 'ada@example.com',
+          startsAt: '2026-08-05T14:00:00Z',
+          newStartsAt: '2026-08-06T09:00:00Z',
+        })
+      ).toEqual({ error: 'unknown_tool' })
+    }
   })
 })

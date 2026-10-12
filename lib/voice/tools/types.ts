@@ -46,6 +46,14 @@ export type VoiceToolContext = {
   conversationId: string
   /** Mirrors `agents.skip_knowledge_retrieval`; omits `search_knowledge` when true. */
   skipKnowledgeRetrieval?: boolean
+  /**
+   * Mirrors `agents.secure_mode`. Withholds the manage-booking tools
+   * (`find_appointment`, `cancel_appointment`, `reschedule_appointment`) when
+   * true — see `buildVoiceToolHandlers`.
+   */
+  secureMode?: boolean
+  /** Mirrors `agents.identity_verification_enabled`. Same effect as `secureMode`. */
+  identityVerificationEnabled?: boolean
 }
 
 /**

@@ -71,6 +71,8 @@ export async function startAssemblyAiCall(options: {
         agentId: agent.id,
         conversationId: conversation.id,
         skipKnowledgeRetrieval: agent.skip_knowledge_retrieval,
+        secureMode: agent.secure_mode,
+        identityVerificationEnabled: agent.identity_verification_enabled,
       }),
     })
 

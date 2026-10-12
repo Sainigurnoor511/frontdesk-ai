@@ -258,12 +258,15 @@ async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
       agent: createReceptionistAgent({
         instructions: buildSystemPrompt(agentDetail, agentRules),
         // One list, built from the shared composition point, including the
-        // `skip_knowledge_retrieval` gate — see `lib/voice/livekit-tools.ts`.
+        // `skip_knowledge_retrieval` and secure-mode gates — see
+        // `lib/voice/livekit-tools.ts`.
         tools: buildLiveKitTools({
           organizationId: agentDetail.organization_id,
           agentId,
           conversationId,
           skipKnowledgeRetrieval: agentDetail.skip_knowledge_retrieval,
+          secureMode: agentDetail.secure_mode,
+          identityVerificationEnabled: agentDetail.identity_verification_enabled,
         }),
         greetingText,
         tts,
