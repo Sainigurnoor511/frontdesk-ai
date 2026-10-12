@@ -24,6 +24,8 @@ import { isMfaExemptPath, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
  *   does not exist, and the user saw an action-resolution error instead of a code prompt.
  * - **`/api/*` called by code**: 401 with a JSON body. These callers are `fetch`, not navigation;
  *   handing them a redirect to an HTML page makes client error handling misreport the cause.
+ *   `verifyPath` is the contract fetch clients act on: they navigate there when
+ *   `mfaVerifyPathFromDenial()` (`lib/auth/mfa.ts`) recognises the body, as the assistant does.
  * - **Everything else**, including an `/api/*` URL the browser *navigated* to (the Google and
  *   Microsoft calendar OAuth callbacks live under `/api/integrations/.../callback`): 303 to
  *   `/verify`. 303 rather than 307 so a POST navigation — a no-JS form submit — follows up with a

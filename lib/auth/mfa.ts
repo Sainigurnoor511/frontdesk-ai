@@ -221,6 +221,17 @@ export async function getAssuredUser(supabase: MfaAwareClient): Promise<User | n
   return (await resolveMfaGateForUser(supabase, user)).state === 'satisfied' ? user : null
 }
 
+/**
+ * For `fetch` clients of gated `/api/*` routes: the path to navigate to when a response is
+ * `proxy.ts`'s two-factor denial (401 with `verifyPath`), otherwise `null`. Only the app's own
+ * challenge path is ever returned, whatever the body says, so a response body can never steer the
+ * browser somewhere else.
+ */
+export function mfaVerifyPathFromDenial(status: number, body: unknown): string | null {
+  if (status !== 401 || typeof body !== 'object' || body === null) return null
+  return (body as { verifyPath?: unknown }).verifyPath === MFA_VERIFY_PATH ? MFA_VERIFY_PATH : null
+}
+
 // An allowlist, so any route added later is gated by default.
 const MFA_EXEMPT_PREFIXES = [
   '/verify', // the challenge screen itself, and the POST target for its actions

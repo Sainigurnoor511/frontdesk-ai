@@ -14,6 +14,7 @@ import { SkeletonChatMessages } from '@/components/layout/dashboard-skeletons'
 import { ThinkingOrb } from 'thinking-orbs'
 import { Response as MarkdownResponse } from '@/components/ui/response'
 import type { AssistantChatSummary } from '@/lib/data/assistant-chats'
+import { mfaVerifyPathFromDenial } from '@/lib/auth/mfa'
 import { loadAssistantChat, removeAssistantChat } from './actions'
 
 type ChatMessage = { role: 'user' | 'assistant'; content: string }
@@ -136,6 +137,13 @@ export function AssistantClient({
     if (!apiResponse.ok || !apiResponse.body) {
       setIsThinking(false)
       const body = await apiResponse.json().catch(() => null)
+      // The session still owes its two-factor code (it went pending while this tab was open), so
+      // take the user to the challenge instead of leaving them on an error they cannot act on.
+      const verifyPath = mfaVerifyPathFromDenial(apiResponse.status, body)
+      if (verifyPath) {
+        window.location.assign(verifyPath)
+        return
+      }
       setErrorMessage(body?.error ?? 'The assistant could not respond. Please try again.')
       return
     }

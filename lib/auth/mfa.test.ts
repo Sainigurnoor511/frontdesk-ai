@@ -12,6 +12,7 @@ import {
   getAssuredUser,
   isMfaExemptPath,
   mfaErrorMessage,
+  mfaVerifyPathFromDenial,
   type MfaAwareClient,
 } from './mfa'
 
@@ -351,6 +352,25 @@ describe('getAssuredUser', () => {
         })
       )
     ).resolves.toBeNull()
+  })
+})
+
+describe('mfaVerifyPathFromDenial', () => {
+  it("returns the challenge path for proxy.ts's 401 denial body", () => {
+    expect(
+      mfaVerifyPathFromDenial(401, { error: 'Two-factor verification required.', verifyPath: '/verify' })
+    ).toBe('/verify')
+  })
+
+  it('ignores any other path, so a response body cannot steer the browser', () => {
+    expect(mfaVerifyPathFromDenial(401, { verifyPath: 'https://evil.example/verify' })).toBeNull()
+    expect(mfaVerifyPathFromDenial(401, { verifyPath: '//evil.example' })).toBeNull()
+  })
+
+  it('ignores ordinary errors and non-401 statuses', () => {
+    expect(mfaVerifyPathFromDenial(401, { error: 'Unauthorized' })).toBeNull()
+    expect(mfaVerifyPathFromDenial(401, null)).toBeNull()
+    expect(mfaVerifyPathFromDenial(500, { verifyPath: '/verify' })).toBeNull()
   })
 })
 
