@@ -204,6 +204,33 @@ both surfaces.
       keep the switch AssemblyAI-only.
 - [ ] Add outbound API/webhook key model for external automation
 
+## P1 - Auth hardening
+
+Both items are the residual gaps of the TOTP login challenge (see Completed Recently), and both
+are **awaiting a product decision**, so neither has been started.
+
+- [ ] **RLS does not require `aal2`** (added: 2026-10-13) — a pending session's `aal1` access
+      token is an ordinary valid token in browser-readable cookies, and every member-scoped
+      policy in `supabase/migrations/` authorizes on membership alone. Someone holding only
+      the password can therefore skip the app and read or write the organization's data
+      through PostgREST with the publishable key, which the Next-side gate cannot see. Held
+      for the product owner because the fix is a migration and CI applies migrations to
+      production on merge to `main`. Context for the decision, not a commitment: Supabase's
+      MFA guide ("Enforce only for users that have opted-in",
+      https://supabase.com/docs/guides/auth/auth-mfa) documents a `restrictive` policy that
+      demands `aal2` only when `auth.mfa_factors` holds a verified factor for `auth.uid()` and
+      accepts `aal1` or `aal2` otherwise, so users without MFA are not locked out. It would
+      go on every member-scoped table, leaving the public booking reads and the service-role
+      paths alone, and its cost is one `auth.mfa_factors` lookup per policy evaluation.
+- [ ] **No recovery path for a lost authenticator** (added: 2026-10-13) — `unenrollTotpFactor`
+      requires a satisfied gate (correctly: it is the one action that removes the second
+      factor), so a user without their device cannot remove it, and there is no in-app way
+      back. Options for the decision: recovery codes issued at enrolment, or an
+      email-verified unenroll. Until one ships, recovery is the operator procedure in
+      `developer-docs/ARCHITECTURE.md` (Auth Flow): delete the user's factor with the admin
+      API from a service-role context, then have them sign in and enrol again. The same
+      procedure clears an account stuck on a non-TOTP factor, which `/verify` now explains.
+
 ## P2 - UX + Platform
 
 - [ ] **E2E / load testing pass** (moved from root `TODO.md`, audited 2026-08-25, rechecked
@@ -214,9 +241,6 @@ both surfaces.
 - [ ] Calendar per-slot buffer time support
 - [ ] Notification center UI (header popover currently shell)
 - [ ] Billing/upgrade flow behind sidebar upgrade card
-- [ ] Enforce TOTP at login: after password sign-in, check
-      `getAuthenticatorAssuranceLevel()` and require the code before the session counts
-      (enrollment shipped in `98692e0`; login does not challenge yet)
 
 ---
 
@@ -254,6 +278,19 @@ both surfaces.
 
 ## Completed Recently
 
+- [x] **Enforce TOTP at login** (2026-10-13, branch `feat/totp-login-challenge`) — a session
+      holding a verified factor but no `aal2` claim is pending: `logIn` and the OAuth callback
+      send it to the new `/verify` challenge screen, `proxy.ts` refuses it on every non-exempt
+      path (in the shape the caller can follow: an `x-action-redirect` header for Server
+      Actions, a 303 for navigations including the calendar OAuth callbacks, 401 JSON for
+      programmatic `/api/*` calls), and `getAssuredUser()` refuses it inside every
+      privileged action, route handler and `lib/data` read helper. The gate fails closed,
+      including on the `AuthRetryableFetchError` that auth-js *returns* during a GoTrue
+      outage. Code attempts are budgeted in Redis (5 per user per 10 minutes), reserved
+      atomically before the code reaches Supabase, on a dedicated bounded client that fails
+      closed when Redis is down. Teardown signs out `local`, never `global`. An account whose
+      only factor is not TOTP gets an explanation instead of a loop. Residual gaps are the
+      two P1 "Auth hardening" items.
 - [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
       receptionist promised a human handoff it had no tool to perform. The UI advertises
       transfers (the Transfer rules section on the agent detail page, the "Handoff to a

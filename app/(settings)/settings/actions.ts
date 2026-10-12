@@ -211,7 +211,8 @@ export async function unenrollTotpFactor(factorId: string): Promise<ActionResult
   // from the proxy. GoTrue very likely refuses an `aal1` unenroll of a verified factor, but
   // "very likely" is not a control: a password-only session must be refused here, in code we own.
   // Consequence worth knowing: a user who has lost their authenticator cannot reach this either,
-  // which is the recovery-path gap tracked separately — it is not solved by loosening this guard.
+  // which is the recovery-path gap in developer-docs/TODO.md ("P1 - Auth hardening") — it is not
+  // solved by loosening this guard.
   if (!(await getAssuredUser(supabase))) {
     return { error: 'You must be signed in to do this.' }
   }
