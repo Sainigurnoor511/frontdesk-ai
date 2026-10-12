@@ -8,6 +8,7 @@ import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
 import {
   cancelAppointmentReminder,
+  dispatchNotification,
   scheduleAppointmentReminder,
 } from '@/lib/notifications/dispatch'
 import {
@@ -150,6 +151,21 @@ export async function createAppointmentServiceRole(
     staffId: data.staff_id,
     source: agentId ? 'voice' : 'public',
   })
+
+  // Notified where the booking is written — the `book_appointment` voice tool
+  // and the public booking page both land here — so a phone booking no longer
+  // depends on the call's terminal write landing. That seam still re-dispatches
+  // as a backstop; the fixed job ids and the row claim make the repeat a no-op.
+  // Both helpers never throw, and the `.catch` is belt and braces: nothing here
+  // may fail or delay a booking that is already committed.
+  void dispatchNotification({
+    type: 'client_booking',
+    organizationId,
+    appointmentId: data.id,
+  }).catch((error) => console.error('[notifications] booking dispatch failed:', error))
+  void scheduleAppointmentReminder(organizationId, data.id, data.starts_at).catch((error) =>
+    console.error('[notifications] reminder scheduling failed:', error)
+  )
 
   void handleAppointmentCreated(organizationId, data.id)
   void handleCalComAppointmentCreated(organizationId, data.id)

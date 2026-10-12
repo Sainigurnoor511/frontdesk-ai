@@ -133,7 +133,10 @@ describe('createPublicAppointment', () => {
     )
   })
 
-  it('notifies the organization about the client booking and schedules a reminder', async () => {
+  // The notification and reminder are dispatched inside
+  // `createAppointmentServiceRole()` (covered in `booking-service.test.ts`), so
+  // the page must not dispatch a second time on top of it.
+  it('leaves the booking notification to the shared appointment write', async () => {
     vi.mocked(getAvailableSlots).mockResolvedValue([
       { date: '2026-08-10', slots: [{ startsAt: '2026-08-10T09:00:00.000Z', endsAt: '2026-08-10T09:30:00.000Z' }] },
     ])
@@ -143,16 +146,9 @@ describe('createPublicAppointment', () => {
 
     await createPublicAppointment(validInput)
 
-    expect(dispatchNotification).toHaveBeenCalledWith({
-      type: 'client_booking',
-      organizationId: '11111111-1111-1111-1111-111111111111',
-      appointmentId: 'appt-1',
-    })
-    expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
-      '11111111-1111-1111-1111-111111111111',
-      'appt-1',
-      '2026-08-10T09:00:00.000Z'
-    )
+    expect(createAppointmentServiceRole).toHaveBeenCalledTimes(1)
+    expect(dispatchNotification).not.toHaveBeenCalled()
+    expect(scheduleAppointmentReminder).not.toHaveBeenCalled()
   })
 
   it('refuses to book when the slot is no longer open', async () => {

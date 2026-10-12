@@ -17,7 +17,8 @@ vi.mock('@/lib/integrations/webhook', () => ({
 }))
 
 vi.mock('@/lib/notifications/dispatch', () => ({
-  scheduleAppointmentReminder: vi.fn(),
+  dispatchNotification: vi.fn(() => Promise.resolve()),
+  scheduleAppointmentReminder: vi.fn(() => Promise.resolve()),
   cancelAppointmentReminder: vi.fn(),
 }))
 
@@ -249,6 +250,8 @@ describe('createAppointmentServiceRole', () => {
     const insert = vi.fn().mockReturnValue({ select })
     const from = vi.fn().mockReturnValue({ insert })
     vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+    const { dispatchNotification } = await import('@/lib/notifications/dispatch')
+    vi.mocked(dispatchNotification).mockClear()
 
     await expect(
       createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', {
@@ -260,6 +263,76 @@ describe('createAppointmentServiceRole', () => {
         endsAt: '2026-08-03T15:00:00Z',
       })
     ).rejects.toThrow('boom')
+    expect(dispatchNotification).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Round-2 issue 4. A phone booking used to be announced only from the call's
+   * terminal conversation write, so a hard-killed voice worker meant no booking
+   * notification and no reminder, ever. It is announced where it is written.
+   */
+  describe('notifying the organization', () => {
+    async function mockInsert(row: Record<string, unknown>) {
+      const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+      const single = vi.fn().mockResolvedValue({ data: row, error: null })
+      const select = vi.fn().mockReturnValue({ single })
+      const insert = vi.fn().mockReturnValue({ select })
+      vi.mocked(createServiceRoleClient).mockReturnValue({
+        from: vi.fn().mockReturnValue({ insert }),
+      } as never)
+    }
+
+    const INPUT = {
+      title: 'Consultation',
+      clientName: 'Ada Lovelace',
+      clientPhone: null,
+      clientId: 'client-1',
+      startsAt: '2026-08-10T14:00:00.000Z',
+      endsAt: '2026-08-10T15:00:00.000Z',
+    }
+
+    it('dispatches the booking and schedules the reminder at creation', async () => {
+      await mockInsert({ id: 'appt-9', starts_at: '2026-08-10T14:00:00+00:00' })
+      const { dispatchNotification, scheduleAppointmentReminder } = await import(
+        '@/lib/notifications/dispatch'
+      )
+      vi.mocked(dispatchNotification).mockClear()
+      vi.mocked(scheduleAppointmentReminder).mockClear()
+
+      await createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', INPUT)
+
+      expect(dispatchNotification).toHaveBeenCalledWith({
+        type: 'client_booking',
+        organizationId: 'org-1',
+        appointmentId: 'appt-9',
+      })
+      expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+        'org-1',
+        'appt-9',
+        '2026-08-10T14:00:00+00:00'
+      )
+    })
+
+    it('still returns the booking when both dispatches reject', async () => {
+      await mockInsert({ id: 'appt-9', starts_at: '2026-08-10T14:00:00+00:00' })
+      const { dispatchNotification, scheduleAppointmentReminder } = await import(
+        '@/lib/notifications/dispatch'
+      )
+      vi.mocked(dispatchNotification).mockRejectedValueOnce(new Error('redis down'))
+      vi.mocked(scheduleAppointmentReminder).mockRejectedValueOnce(new Error('redis down'))
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await expect(
+        createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', INPUT)
+      ).resolves.toMatchObject({ id: 'appt-9' })
+      // Let the swallowed rejections settle inside this test.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(error).toHaveBeenCalledWith(
+        '[notifications] booking dispatch failed:',
+        expect.any(Error)
+      )
+      error.mockRestore()
+    })
   })
 })
 

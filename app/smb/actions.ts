@@ -38,7 +38,6 @@ import {
   cancelAppointmentByEmailServiceRole,
 } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
-import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
 import {
   getPublicAvailableSlotsSchema,
   createPublicAppointmentSchema,
@@ -416,16 +415,9 @@ export async function createPublicAppointment(
     notes: parsed.data.notes ?? null,
   })
 
-  void dispatchNotification({
-    type: 'client_booking',
-    organizationId: parsed.data.organizationId,
-    appointmentId: appointment.id,
-  })
-  void scheduleAppointmentReminder(
-    parsed.data.organizationId,
-    appointment.id,
-    parsed.data.startsAt
-  )
+  // The org's booking notification and the reminder are dispatched inside
+  // `createAppointmentServiceRole()`, the write this page shares with the
+  // `book_appointment` voice tool.
 
   try {
     await sendAppointmentConfirmationEmail({
