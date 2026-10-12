@@ -100,6 +100,61 @@ describe('proxy — pending MFA gate', () => {
     })
   })
 
+  it.each([
+    '/api/integrations/google-calendar/callback?code=abc&state=xyz',
+    '/api/integrations/microsoft-calendar/callback?code=abc&state=xyz',
+  ])('sends a browser navigation to %s to the challenge screen, not raw JSON', async (url) => {
+    // The calendar OAuth callbacks live under /api/ but are reached by the provider redirecting
+    // the browser, so the user would otherwise land on a bare JSON body after consent.
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(
+      new NextRequest(new URL(url, 'https://app.example.com'), {
+        headers: {
+          'sec-fetch-mode': 'navigate',
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+      })
+    )
+
+    expect(response.status).toBe(303)
+    expect(response.headers.get('location')).toBe('https://app.example.com/verify')
+    expect(response.cookies.get('sb-access-token')?.value).toBe('refreshed-token')
+  })
+
+  it('treats an HTML-accepting request without Sec-Fetch-Mode as a navigation', async () => {
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(
+      new NextRequest(
+        new URL('/api/integrations/google-calendar/callback', 'https://app.example.com'),
+        { headers: { accept: 'text/html,*/*;q=0.8' } }
+      )
+    )
+
+    expect(response.status).toBe(303)
+  })
+
+  it.each<Record<string, string>>([
+    { 'sec-fetch-mode': 'cors', accept: '*/*' },
+    { 'sec-fetch-mode': 'same-origin', accept: 'application/json' },
+    // Sec-Fetch-Mode wins over Accept: a fetch that happens to ask for HTML is still a fetch.
+    { 'sec-fetch-mode': 'cors', accept: 'text/html' },
+    { accept: 'application/json' },
+  ])('keeps the 401 JSON for a programmatic API call (%j)', async (headers) => {
+    await mockUpdateSession(PENDING)
+
+    const response = await proxy(
+      new NextRequest(
+        new URL('/api/integrations/google-calendar/callback', 'https://app.example.com'),
+        { headers }
+      )
+    )
+
+    expect(response.status).toBe(401)
+    expect(response.headers.get('location')).toBeNull()
+  })
+
   it('keeps the no-store headers on the API denial, so no proxy caches it', async () => {
     await mockUpdateSession(PENDING)
 

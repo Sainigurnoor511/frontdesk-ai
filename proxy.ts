@@ -22,10 +22,13 @@ import { isMfaExemptPath, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
  *   header and completes the navigation), so an already-open tab lands on the challenge screen.
  *   A plain 307 made the browser re-POST the `Next-Action` header to `/verify`, where the action
  *   does not exist, and the user saw an action-resolution error instead of a code prompt.
- * - **`/api/*`**: 401 with a JSON body. These callers are `fetch`, not navigation; handing them a
- *   redirect to an HTML page makes client error handling misreport the cause.
- * - **Everything else** (document navigations and RSC payload requests): 303 to `/verify`. 303
- *   rather than 307 so a POST navigation — a no-JS form submit — follows up with a GET.
+ * - **`/api/*` called by code**: 401 with a JSON body. These callers are `fetch`, not navigation;
+ *   handing them a redirect to an HTML page makes client error handling misreport the cause.
+ * - **Everything else**, including an `/api/*` URL the browser *navigated* to (the Google and
+ *   Microsoft calendar OAuth callbacks live under `/api/integrations/.../callback`): 303 to
+ *   `/verify`. 303 rather than 307 so a POST navigation — a no-JS form submit — follows up with a
+ *   GET. Whether an `/api/*` request is a navigation is decided by `isDocumentNavigation`, from
+ *   the request's own intent rather than from its path.
  */
 function challengeResponse(request: NextRequest): NextResponse {
   if (request.headers.has('Next-Action')) {
@@ -38,7 +41,7 @@ function challengeResponse(request: NextRequest): NextResponse {
     })
   }
 
-  if (request.nextUrl.pathname.startsWith('/api/')) {
+  if (request.nextUrl.pathname.startsWith('/api/') && !isDocumentNavigation(request)) {
     return NextResponse.json(
       { error: 'Two-factor verification required.', verifyPath: MFA_VERIFY_PATH },
       { status: 401 }
@@ -46,6 +49,19 @@ function challengeResponse(request: NextRequest): NextResponse {
   }
 
   return NextResponse.redirect(new URL(MFA_VERIFY_PATH, request.url), 303)
+}
+
+/**
+ * True for a top-level browser navigation. `Sec-Fetch-Mode` is a forbidden header name, so page
+ * script cannot set it, and every current browser sends `navigate` for a document load and
+ * `cors` / `same-origin` / `no-cors` for `fetch`. When it is absent (an old browser, or a
+ * non-browser client) the `Accept` header decides: a navigation asks for `text/html`, while
+ * `fetch` defaults to the any-type wildcard and API clients ask for JSON.
+ */
+function isDocumentNavigation(request: NextRequest): boolean {
+  const mode = request.headers.get('sec-fetch-mode')
+  if (mode) return mode === 'navigate'
+  return (request.headers.get('accept') ?? '').toLowerCase().includes('text/html')
 }
 
 export async function proxy(request: NextRequest) {
