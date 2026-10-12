@@ -5,10 +5,6 @@ import {
   markNotificationAsRead,
 } from './notification-actions'
 
-vi.mock('next/cache', () => ({
-  revalidatePath: vi.fn(),
-}))
-
 vi.mock('@/lib/supabase/server', () => ({
   createClient: vi.fn(),
 }))
@@ -24,32 +20,31 @@ vi.mock('@/lib/data/notifications', () => ({
 
 const NOTIFICATION_ID = '44444444-4444-4444-4444-444444444444'
 
-function mockSupabase({
-  user = { id: 'user-1' } as { id: string } | null,
-  organizationId = 'org-1',
-  updateError = null as { message: string } | null,
-} = {}) {
+function mockSupabase({ updateError = null as { message: string } | null } = {}) {
   const updateEqOrg = vi.fn().mockResolvedValue({ error: updateError })
   const updateEqId = vi.fn().mockReturnValue({ eq: updateEqOrg })
   const update = vi.fn().mockReturnValue({ eq: updateEqId })
 
-  const memberSingle = vi.fn().mockResolvedValue({
-    data: user ? { organization_id: organizationId } : null,
-  })
-  const memberEq = vi.fn().mockReturnValue({ single: memberSingle })
-  const memberSelect = vi.fn().mockReturnValue({ eq: memberEq })
-
   const from = vi.fn((table: string) => {
-    if (table === 'members') return { select: memberSelect }
     if (table === 'notifications') return { update }
     throw new Error(`Unexpected table: ${table}`)
   })
 
-  return {
-    auth: { getUser: vi.fn().mockResolvedValue({ data: { user } }) },
-    from,
-    __mocks: { update, updateEqId, updateEqOrg },
-  }
+  return { from, __mocks: { update, updateEqId, updateEqOrg } }
+}
+
+/** Both mutations resolve the org through the documented helper, not inline. */
+async function mockSession(organizationId: string | null) {
+  const { getCurrentOrgAndUser } = await import('@/lib/data/organization')
+  vi.mocked(getCurrentOrgAndUser).mockResolvedValue(
+    organizationId
+      ? {
+          user: { id: 'user-1', email: 'owner@example.com', avatarUrl: null },
+          org: { id: organizationId, name: 'Smile Dental' },
+          role: 'owner',
+        }
+      : null
+  )
 }
 
 beforeEach(() => {
@@ -58,24 +53,18 @@ beforeEach(() => {
 
 describe('getNotificationPanel', () => {
   it('returns an empty panel when there is no session or membership', async () => {
-    const { getCurrentOrgAndUser } = await import('@/lib/data/organization')
     const { getRecentNotifications } = await import('@/lib/data/notifications')
-    vi.mocked(getCurrentOrgAndUser).mockResolvedValue(null)
+    await mockSession(null)
 
     await expect(getNotificationPanel()).resolves.toEqual({ items: [], unreadCount: 0 })
     expect(getRecentNotifications).not.toHaveBeenCalled()
   })
 
   it('reads the organization from the session, never from a parameter', async () => {
-    const { getCurrentOrgAndUser } = await import('@/lib/data/organization')
     const { getRecentNotifications, getUnreadNotificationCount } = await import(
       '@/lib/data/notifications'
     )
-    vi.mocked(getCurrentOrgAndUser).mockResolvedValue({
-      user: { id: 'user-1', email: 'owner@example.com', avatarUrl: null },
-      org: { id: 'org-1', name: 'Smile Dental' },
-      role: 'owner',
-    })
+    await mockSession('org-1')
     vi.mocked(getRecentNotifications).mockResolvedValue([
       {
         id: NOTIFICATION_ID,
@@ -108,38 +97,26 @@ describe('markNotificationAsRead', () => {
     expect(createClient).not.toHaveBeenCalled()
   })
 
-  it('requires a session', async () => {
+  it('requires a session with an organization', async () => {
     const { createClient } = await import('@/lib/supabase/server')
-    vi.mocked(createClient).mockResolvedValue(mockSupabase({ user: null }) as never)
+    await mockSession(null)
 
     await expect(markNotificationAsRead(NOTIFICATION_ID)).resolves.toEqual({
       error: 'You must be signed in to update notifications.',
     })
-  })
-
-  it('requires a membership', async () => {
-    const { createClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase()
-    supabase.from = vi.fn(() => ({
-      select: vi.fn().mockReturnValue({
-        eq: vi.fn().mockReturnValue({ single: vi.fn().mockResolvedValue({ data: null }) }),
-      }),
-    })) as never
-    vi.mocked(createClient).mockResolvedValue(supabase as never)
-
-    await expect(markNotificationAsRead(NOTIFICATION_ID)).resolves.toEqual({
-      error: 'Could not determine organization.',
-    })
+    expect(createClient).not.toHaveBeenCalled()
   })
 
   it('scopes the update to the id and the caller organization', async () => {
     const { createClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ organizationId: 'org-42' })
+    const supabase = mockSupabase()
     vi.mocked(createClient).mockResolvedValue(supabase as never)
+    await mockSession('org-42')
 
     const result = await markNotificationAsRead(NOTIFICATION_ID)
 
     expect(result).toEqual({ success: true })
+    // The only column a member may write; migration 047 revokes the rest.
     expect(supabase.__mocks.update).toHaveBeenCalledWith({ is_read: true })
     expect(supabase.__mocks.updateEqId).toHaveBeenCalledWith('id', NOTIFICATION_ID)
     expect(supabase.__mocks.updateEqOrg).toHaveBeenCalledWith('organization_id', 'org-42')
@@ -148,8 +125,9 @@ describe('markNotificationAsRead', () => {
   it('reports success without changing rows for another organization\'s notification', async () => {
     const { createClient } = await import('@/lib/supabase/server')
     // The org filter matches zero rows: PostgREST reports no error, nothing changes.
-    const supabase = mockSupabase({ organizationId: 'org-42' })
+    const supabase = mockSupabase()
     vi.mocked(createClient).mockResolvedValue(supabase as never)
+    await mockSession('org-42')
 
     await expect(markNotificationAsRead(NOTIFICATION_ID)).resolves.toEqual({ success: true })
     expect(supabase.__mocks.updateEqOrg).toHaveBeenCalledWith('organization_id', 'org-42')
@@ -160,6 +138,7 @@ describe('markNotificationAsRead', () => {
     vi.mocked(createClient).mockResolvedValue(
       mockSupabase({ updateError: { message: 'boom' } }) as never
     )
+    await mockSession('org-1')
 
     await expect(markNotificationAsRead(NOTIFICATION_ID)).resolves.toEqual({
       error: 'Could not update notifications. Please try again.',
@@ -170,8 +149,9 @@ describe('markNotificationAsRead', () => {
 describe('markAllNotificationsAsRead', () => {
   it('clears unread rows for the caller organization only', async () => {
     const { createClient } = await import('@/lib/supabase/server')
-    const supabase = mockSupabase({ organizationId: 'org-42' })
+    const supabase = mockSupabase()
     vi.mocked(createClient).mockResolvedValue(supabase as never)
+    await mockSession('org-42')
 
     const result = await markAllNotificationsAsRead()
 
@@ -181,12 +161,13 @@ describe('markAllNotificationsAsRead', () => {
     expect(supabase.__mocks.updateEqOrg).toHaveBeenCalledWith('is_read', false)
   })
 
-  it('requires a session', async () => {
+  it('requires a session with an organization', async () => {
     const { createClient } = await import('@/lib/supabase/server')
-    vi.mocked(createClient).mockResolvedValue(mockSupabase({ user: null }) as never)
+    await mockSession(null)
 
     await expect(markAllNotificationsAsRead()).resolves.toEqual({
       error: 'You must be signed in to update notifications.',
     })
+    expect(createClient).not.toHaveBeenCalled()
   })
 })

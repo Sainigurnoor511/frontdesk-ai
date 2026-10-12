@@ -7,6 +7,7 @@ import { Bell, BellRing, FileText, UserCog, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { DotLoader } from '@/components/ui/matrix'
+import { safeNotificationLinkPath } from '@/lib/notifications/link-path'
 import type { NotificationType } from '@/lib/notifications/types'
 import {
   getNotificationPanel,
@@ -82,6 +83,23 @@ export function NotificationCenter({
     }
   }, [initialUnreadCount])
 
+  // The worker writes notifications through the service role, so no Next cache
+  // invalidation reaches this component and the badge would otherwise sit stale
+  // until the panel is opened or the page is hard-reloaded. Refetching on focus
+  // does not fight the optimistic updates below: it only runs while the panel is
+  // closed, by which point any mutation has already resolved, and the server is
+  // the authority on what it then reports.
+  useEffect(() => {
+    if (open) return
+
+    function onFocus() {
+      void load()
+    }
+
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [open])
+
   function handleOpenChange(nextOpen: boolean) {
     setOpen(nextOpen)
     if (nextOpen) void load()
@@ -89,30 +107,72 @@ export function NotificationCenter({
 
   function handleRowClick(item: NotificationItem) {
     if (item.isRead) return
-    void markNotificationAsRead(item.id).catch((error) =>
-      console.error('[notifications] mark as read failed:', error)
-    )
+
+    // Optimistic, then reconciled against the *resolved* value: both mutations
+    // return expected failures as `{ error }` rather than rejecting, so catching
+    // rejections alone left the badge showing a write that never happened.
     setItems((current) =>
       current.map((entry) => (entry.id === item.id ? { ...entry, isRead: true } : entry))
     )
     setUnreadCount((current) => Math.max(0, current - 1))
+
+    void markNotificationAsRead(item.id)
+      .then((result) => {
+        if ('error' in result) rollbackRow(item.id, result.error)
+      })
+      .catch((error) => {
+        console.error('[notifications] mark as read failed:', error)
+        rollbackRow(item.id, 'request failed')
+      })
+  }
+
+  function rollbackRow(id: string, reason: string) {
+    console.error(`[notifications] mark as read failed: ${reason}`)
+    setItems((current) =>
+      current.map((entry) => (entry.id === id ? { ...entry, isRead: false } : entry))
+    )
+    setUnreadCount((current) => current + 1)
   }
 
   async function handleMarkAll() {
-    try {
-      await markAllNotificationsAsRead()
-    } catch (error) {
-      console.error('[notifications] mark all as read failed:', error)
-    }
+    const previousItems = items
+    const previousUnread = unreadCount
+
     setItems((current) => current.map((entry) => ({ ...entry, isRead: true })))
     setUnreadCount(0)
+
+    function rollback(reason: string) {
+      console.error(`[notifications] mark all as read failed: ${reason}`)
+      setItems(previousItems)
+      setUnreadCount(previousUnread)
+    }
+
+    try {
+      const result = await markAllNotificationsAsRead()
+      if ('error' in result) rollback(result.error)
+    } catch (error) {
+      console.error('[notifications] mark all as read failed:', error)
+      rollback('request failed')
+    }
   }
 
   return (
     <span className="relative inline-flex">
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger
-          render={<Button variant="outline" size="icon" aria-label="Notifications" />}
+          render={
+            <Button
+              variant="outline"
+              size="icon"
+              // The count belongs in the accessible name: the badge is
+              // `aria-hidden`, so a screen-reader user tabbing here would
+              // otherwise hear only "Notifications" with no sign that anything
+              // is unread.
+              aria-label={
+                unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'
+              }
+            />
+          }
         >
           <Bell />
         </PopoverTrigger>
@@ -148,7 +208,10 @@ export function NotificationCenter({
                   return (
                     <li key={item.id} data-unread={item.isRead ? 'false' : 'true'}>
                       <Link
-                        href={item.linkPath}
+                        // Allow-listed, never the stored value verbatim: an
+                        // off-origin `link_path` would otherwise become a CTA
+                        // inside the product's own UI.
+                        href={safeNotificationLinkPath(item.linkPath)}
                         onClick={() => handleRowClick(item)}
                         className={`flex gap-2.5 border-b px-3 py-2.5 last:border-b-0 hover:bg-muted/60 ${
                           item.isRead ? '' : 'bg-muted/40'
@@ -186,7 +249,10 @@ export function NotificationCenter({
           {unreadCount > 99 ? '99+' : unreadCount}
         </span>
       )}
-      <span className="sr-only">{unreadCount} unread</span>
+      {/* Announces changes to the count while the user is elsewhere on the page. */}
+      <span className="sr-only" aria-live="polite">
+        {unreadCount} unread
+      </span>
     </span>
   )
 }

@@ -1,6 +1,5 @@
 'use server'
 
-import { revalidatePath } from 'next/cache'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { getCurrentOrgAndUser } from '@/lib/data/organization'
 import {
@@ -46,36 +45,27 @@ export async function getNotificationPanel(): Promise<{
 export async function markAllNotificationsAsRead(): Promise<
   { error: string } | { success: true }
 > {
-  const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  // Through the documented helper, like `getNotificationPanel` above, rather
+  // than a hand-rolled copy of the session → `members` lookup.
+  const context = await getCurrentOrgAndUser()
+  if (!context) {
     return { error: 'You must be signed in to update notifications.' }
   }
 
-  const { data: member } = await supabase
-    .from('members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) {
-    return { error: 'Could not determine organization.' }
-  }
-
+  const supabase = await createSupabaseClient()
   const { error } = await supabase
     .from('notifications')
     .update({ is_read: true })
-    .eq('organization_id', member.organization_id)
+    .eq('organization_id', context.org.id)
     .eq('is_read', false)
 
   if (error) {
     return { error: 'Could not update notifications. Please try again.' }
   }
 
-  revalidatePath('/', 'layout')
+  // No `revalidatePath`: the panel reads through a server action on open and on
+  // window focus, never from a cached render, so invalidating the whole layout
+  // tree bought re-renders and nothing else.
   return { success: true }
 }
 
@@ -87,37 +77,24 @@ export async function markNotificationAsRead(
     return { error: parsed.error.issues[0].message }
   }
 
-  const supabase = await createSupabaseClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) {
+  const context = await getCurrentOrgAndUser()
+  if (!context) {
     return { error: 'You must be signed in to update notifications.' }
   }
 
-  const { data: member } = await supabase
-    .from('members')
-    .select('organization_id')
-    .eq('user_id', user.id)
-    .single()
-
-  if (!member) {
-    return { error: 'Could not determine organization.' }
-  }
-
+  const supabase = await createSupabaseClient()
   // Both filters: a foreign id matches zero rows and changes nothing. RLS is the
-  // second, independent gate.
+  // second, independent gate, and migration 047 narrows the member's update
+  // privilege to `is_read` alone.
   const { error } = await supabase
     .from('notifications')
     .update({ is_read: true })
     .eq('id', parsed.data.id)
-    .eq('organization_id', member.organization_id)
+    .eq('organization_id', context.org.id)
 
   if (error) {
     return { error: 'Could not update notifications. Please try again.' }
   }
 
-  revalidatePath('/', 'layout')
   return { success: true }
 }

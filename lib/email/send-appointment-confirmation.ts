@@ -46,7 +46,7 @@ export async function sendAppointmentConfirmationEmail(
  * Deliberately NOT reused for values read back out of Postgres: `timestamptz`
  * columns come back normalised to `+00:00`, so the offset parsed here is always
  * zero and the rendered time is UTC. Use `formatInTimeZone()` from
- * `lib/email/html.ts` with the org's IANA timezone for those.
+ * `lib/email/format.ts` with the org's IANA timezone for those.
  */
 function formatInIsoOffset(iso: string, pattern: 'date' | 'time'): string {
   const match = iso.match(/([+-])(\d{2}):(\d{2})$/)

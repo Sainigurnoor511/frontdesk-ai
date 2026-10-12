@@ -43,6 +43,14 @@ afterEach(() => {
   vi.clearAllMocks()
 })
 
+/**
+ * The trigger's accessible name carries the unread count, so it is matched by
+ * prefix rather than by the bare label.
+ */
+function notificationBell(): HTMLElement {
+  return screen.getByRole('button', { name: /^Notifications/ })
+}
+
 describe('NotificationCenter', () => {
   it('lists notifications with unread state and an unread count', async () => {
     const { getNotificationPanel } = await import('./notification-actions')
@@ -51,7 +59,7 @@ describe('NotificationCenter', () => {
     render(<NotificationCenter initialUnreadCount={1} />)
 
     expect(screen.getByText('1 unread')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(notificationBell())
 
     expect(await screen.findByText('New booking')).toBeTruthy()
     expect(screen.getByText('Call summary')).toBeTruthy()
@@ -64,7 +72,7 @@ describe('NotificationCenter', () => {
     vi.mocked(getNotificationPanel).mockResolvedValue({ items: [], unreadCount: 0 })
 
     render(<NotificationCenter initialUnreadCount={0} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(notificationBell())
 
     expect(await screen.findByText('No notifications yet.')).toBeTruthy()
     expect(screen.getByText('Call summaries and booking alerts show up here.')).toBeTruthy()
@@ -81,7 +89,7 @@ describe('NotificationCenter', () => {
     vi.mocked(markAllNotificationsAsRead).mockResolvedValue({ success: true })
 
     render(<NotificationCenter initialUnreadCount={1} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(notificationBell())
     await screen.findByText('New booking')
 
     fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }))
@@ -99,7 +107,7 @@ describe('NotificationCenter', () => {
     vi.mocked(markNotificationAsRead).mockResolvedValue({ success: true })
 
     render(<NotificationCenter initialUnreadCount={1} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(notificationBell())
     fireEvent.click(await screen.findByText('New booking'))
 
     expect(markNotificationAsRead).toHaveBeenCalledWith(ITEMS[0].id)
@@ -112,7 +120,7 @@ describe('NotificationCenter', () => {
     const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     render(<NotificationCenter initialUnreadCount={0} />)
-    fireEvent.click(screen.getByRole('button', { name: 'Notifications' }))
+    fireEvent.click(notificationBell())
 
     expect(await screen.findByText('No notifications yet.')).toBeTruthy()
     await waitFor(() => expect(screen.queryByRole('status')).toBeNull())
@@ -127,6 +135,84 @@ describe('NotificationCenter', () => {
     render(<NotificationCenter />)
 
     await waitFor(() => expect(getNotificationPanel).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(screen.getByText('2 unread')).toBeTruthy())
+  })
+
+  it('names the unread count in the trigger accessible name', async () => {
+    const { getNotificationPanel } = await import('./notification-actions')
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 3 })
+
+    render(<NotificationCenter initialUnreadCount={3} />)
+
+    expect(screen.getByRole('button', { name: 'Notifications, 3 unread' })).toBeTruthy()
+  })
+
+  // Issue 8: both mutations return expected failures as `{ error }` rather than
+  // rejecting, so the optimistic update has to inspect the resolved value.
+  it('rolls the row and the badge back when marking one read resolves with an error', async () => {
+    const { getNotificationPanel, markNotificationAsRead } = await import(
+      './notification-actions'
+    )
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 1 })
+    vi.mocked(markNotificationAsRead).mockResolvedValue({ error: 'Could not update.' })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(<NotificationCenter initialUnreadCount={1} />)
+    fireEvent.click(notificationBell())
+    fireEvent.click(await screen.findByText('New booking'))
+
+    await waitFor(() => expect(screen.getByText('1 unread')).toBeTruthy())
+    expect(document.querySelectorAll('[data-unread="true"]')).toHaveLength(1)
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Could not update.'))
+    error.mockRestore()
+  })
+
+  it('restores every unread row when mark-all resolves with an error', async () => {
+    const { getNotificationPanel, markAllNotificationsAsRead } = await import(
+      './notification-actions'
+    )
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 1 })
+    vi.mocked(markAllNotificationsAsRead).mockResolvedValue({ error: 'Could not update.' })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    render(<NotificationCenter initialUnreadCount={1} />)
+    fireEvent.click(notificationBell())
+    await screen.findByText('New booking')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mark all as read' }))
+
+    await waitFor(() => expect(screen.getByText('1 unread')).toBeTruthy())
+    expect(document.querySelectorAll('[data-unread="true"]')).toHaveLength(1)
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Could not update.'))
+    error.mockRestore()
+  })
+
+  // Issue 3, render side: a forged or corrupted `link_path` must not become an
+  // off-origin call to action inside the app's own UI.
+  it('sends an off-origin link_path to the fallback route', async () => {
+    const { getNotificationPanel } = await import('./notification-actions')
+    vi.mocked(getNotificationPanel).mockResolvedValue({
+      items: [{ ...ITEMS[0], linkPath: 'https://evil.example/phish' }],
+      unreadCount: 1,
+    })
+
+    render(<NotificationCenter initialUnreadCount={1} />)
+    fireEvent.click(notificationBell())
+    await screen.findByText('New booking')
+
+    const link = document.querySelector('a')
+    expect(link?.getAttribute('href')).toBe('/')
+  })
+
+  it('refetches the panel when the window regains focus', async () => {
+    const { getNotificationPanel } = await import('./notification-actions')
+    vi.mocked(getNotificationPanel).mockResolvedValue({ items: ITEMS, unreadCount: 2 })
+
+    render(<NotificationCenter initialUnreadCount={0} />)
+    expect(getNotificationPanel).not.toHaveBeenCalled()
+
+    fireEvent.focus(window)
+
     await waitFor(() => expect(screen.getByText('2 unread')).toBeTruthy())
   })
 })

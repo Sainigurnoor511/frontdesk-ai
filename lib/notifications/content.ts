@@ -1,4 +1,4 @@
-import { formatInTimeZone } from '@/lib/email/html'
+import { formatInTimeZone } from '@/lib/email/format'
 import type { NotificationType } from '@/lib/notifications/types'
 
 export type NotificationContent = {
