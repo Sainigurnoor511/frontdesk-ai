@@ -58,6 +58,8 @@ export async function runVoiceToolForConversation(options: {
       agentId: agent.id,
       conversationId,
       skipKnowledgeRetrieval: agent.skip_knowledge_retrieval,
+      secureMode: agent.secure_mode,
+      identityVerificationEnabled: agent.identity_verification_enabled,
     },
     toolName,
     options.arguments

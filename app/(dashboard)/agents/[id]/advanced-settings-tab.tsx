@@ -231,15 +231,24 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
         title="Speech recognition"
         description="Control which speech the receptionist responds to."
       >
-        <SettingRow
-          title="Filter background speech"
-          description="Enable background voice detection to filter out far-field human speech."
-        >
-          <Switch
-            checked={filterBackgroundSpeech}
-            onCheckedChange={(checked) => setFilterBackgroundSpeech(Boolean(checked))}
-          />
-        </SettingRow>
+        <div className="space-y-3">
+          <SettingRow
+            title="Filter background speech"
+            description="Enable background voice detection to filter out far-field human speech."
+          >
+            <Switch
+              checked={filterBackgroundSpeech}
+              onCheckedChange={(checked) => setFilterBackgroundSpeech(Boolean(checked))}
+            />
+          </SettingRow>
+
+          {!usingAssemblyAi && (
+            <p className="max-w-xl rounded-lg bg-warning-subtle px-3 py-2 text-sm text-warning">
+              Only active on the AssemblyAI engine. Groq + Fish Audio has no voice isolation
+              model available, so your choice is saved but does nothing on this engine.
+            </p>
+          )}
+        </div>
       </SettingsCard>
 
       <SettingsCard
@@ -318,7 +327,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
         <div className="space-y-4">
           <SettingRow
             title="Secure mode"
-            description="Only allows client lookups and edits when the caller's phone number matches the one on file. When the phone number does not match, or the conversation is through the web, the identity verification tool is required to access or edit client information."
+            description="Only allows client lookups and edits when the caller's phone number matches the one on file. When the phone number does not match, or the conversation is through the web, the identity verification tool is required to access or edit client information. While this is on, the receptionist also cannot look up, move, or cancel existing appointments on a call, because an email address read out by a caller is not a verified identity."
           >
             <Switch
               checked={secureMode}
@@ -328,7 +337,7 @@ export function AdvancedSettingsTab({ agent }: { agent: AgentDetail }) {
 
           <SettingRow
             title="Identity verification tool"
-            description="Allows the receptionist to send a one-time code by SMS or email to the client's contact information on file and verify their identity for the conversation."
+            description="Allows the receptionist to send a one-time code by SMS or email to the client's contact information on file and verify their identity for the conversation. Like secure mode, this withholds the appointment lookup, move, and cancel tools from calls until the caller is verified."
           >
             <Switch
               checked={identityVerificationEnabled}

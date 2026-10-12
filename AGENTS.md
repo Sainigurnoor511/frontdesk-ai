@@ -6,7 +6,7 @@ This version (Next.js 16.4) has breaking changes — APIs, conventions, and file
 
 Open-source, self-hostable AI receptionist SaaS. Original implementation inspired by products like ElevenLabs' Reception.ai. User-supplied reference markup/screenshots from comparable products (e.g. pasted HTML) may be copied literally — including class names and structure — when the user provides them as a direct reference to match.
 
-Deeper reference: [developer-docs/ARCHITECTURE.md](developer-docs/ARCHITECTURE.md). Backlog: [developer-docs/TODO.md](developer-docs/TODO.md) (team) and [TODO.md](TODO.md) (phase audit).
+Deeper reference: [developer-docs/ARCHITECTURE.md](developer-docs/ARCHITECTURE.md). Backlog: [developer-docs/TODO.md](developer-docs/TODO.md) (the only one — the old root `TODO.md` phase audit was folded into it).
 
 ## Stack
 
@@ -37,7 +37,7 @@ Deeper reference: [developer-docs/ARCHITECTURE.md](developer-docs/ARCHITECTURE.m
 | `pnpm exec eslint <files>` | Lint touched files. Full-repo `pnpm lint` carries pre-existing errors, so it is not a usable gate |
 | `npx supabase db push` | Apply migrations (CI does this on merge to `main`) |
 
-Known baseline (2026-10-08): `pnpm lint` reports 29 pre-existing errors; `pnpm test` has 3 pre-existing failing files (`lib/data/analytics.test.ts`, `lib/data/availability-engine.test.ts`, `lib/voice/adapters/fish-audio-tts.test.ts`). Compare against this before blaming your change, and update it when you fix one.
+Known baseline (2026-10-12): `pnpm lint` reports 29 pre-existing errors; `pnpm test` has 2 pre-existing failing files, 4 tests (`lib/data/analytics.test.ts`, `lib/voice/adapters/fish-audio-tts.test.ts`). `lib/data/availability-engine.test.ts` used to be a third — its 6 failures were a stale system clock, not timezones, and were fixed on 2026-10-12. Compare against this before blaming your change, and update it when you fix one.
 
 ## Layout
 
@@ -57,7 +57,7 @@ Known baseline (2026-10-08): `pnpm lint` reports 29 pre-existing errors; `pnpm t
 - Every `organization_id`-scoped query must resolve the caller's org via `supabase.auth.getUser()` → `members` table lookup (helper: `getCurrentOrgAndUser()` in `lib/data/organization.ts`), never a client-supplied id. Reference: `app/onboarding/actions.ts`'s `createAgent`.
 - Validation lives in `lib/validations/*.ts` as Zod schemas, not inline in actions/components. Model-produced tool arguments are Zod-validated too before any write.
 - `server-only` must not be imported by any module also consumed outside a Next.js request context (standalone workers, Vitest) — see `lib/supabase/service-role.ts` vs `lib/supabase/server.ts` for the split pattern.
-- Migrations are numbered SQL files in `supabase/migrations/` (next is `045`), RLS policies follow the exact `organization_id in (select organization_id from members where user_id = auth.uid())` pattern throughout.
+- Migrations are numbered SQL files in `supabase/migrations/` (next is `046`), RLS policies follow the exact `organization_id in (select organization_id from members where user_id = auth.uid())` pattern throughout.
 - Server-wrapper + client-component split for any page needing both server-side data fetching and client interactivity (see `app/(dashboard)/page.tsx` + `home-client.tsx`). Each dashboard route also ships a `loading.tsx`.
 - New BullMQ queues: define with `lazyQueue()` from `lib/queue/lazy-queue.ts` (no Redis connection at import time), put the handler in `lib/queue/processors/`, and register it in the `QUEUES` list in `workers/jobs.ts`. Never construct a BullMQ `Worker` in `workers/voice-agent.ts` — LiveKit's CLI forks and re-imports that module.
 - Voice tools are provider-neutral: add a handler in `lib/voice/tools/*-handlers.ts` (via `defineVoiceTool`) and both providers pick it up through `buildVoiceToolHandlers()` in `lib/voice/tool-handlers.ts`.

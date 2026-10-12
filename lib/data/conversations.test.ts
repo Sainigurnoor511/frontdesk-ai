@@ -210,6 +210,8 @@ describe('getCallerMessagesForOrg', () => {
           is_read: false,
           converted_to_client_id: null,
           created_at: '2026-01-01T00:00:00.000Z',
+          urgency: 'high',
+          source: 'agent_escalation',
         },
       ],
     })
@@ -242,6 +244,8 @@ describe('getCallerMessagesForOrg', () => {
         isRead: false,
         convertedToClientId: null,
         createdAt: '2026-01-01T00:00:00.000Z',
+        urgency: 'high',
+        source: 'agent_escalation',
       },
     ])
   })

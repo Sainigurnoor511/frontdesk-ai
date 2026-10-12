@@ -429,8 +429,9 @@ export function ConversationsClient({
         <TabsContent value="messages" className="space-y-4 pt-4">
           <p className="text-sm text-muted-foreground">
             When someone leaves your AI receptionist a message — on a call or in chat — it shows
-            up here. These are usually requests the caller wanted but the receptionist could not
-            finish (for example, booking a slot that was unavailable).
+            up here. Some are requests the receptionist could not finish (for example, booking a
+            slot that was unavailable); others are callers who asked to speak to a person, where
+            the receptionist took their number and promised a call back.
           </p>
           {messageList.length > 0 && (
             <div className="flex justify-end">
@@ -455,8 +456,9 @@ export function ConversationsClient({
                     </EmptyMedia>
                     <EmptyTitle>No messages yet</EmptyTitle>
                     <EmptyDescription>
-                      When a caller asks for something your receptionist could not complete, the
-                      summary will appear here so you can follow up.
+                      When a caller asks to speak to a person, or asks for something your
+                      receptionist could not complete, the message will appear here with their
+                      callback number.
                     </EmptyDescription>
                   </EmptyHeader>
                 </Empty>
@@ -480,7 +482,23 @@ export function ConversationsClient({
                               {message.callerPhone}
                             </a>
                           )}
-                          <Badge variant="secondary">Unresolved request</Badge>
+                          <Badge variant="secondary">
+                            {message.source === 'agent_escalation'
+                              ? 'Asked for a human'
+                              : 'Unresolved request'}
+                          </Badge>
+                          {message.urgency !== 'normal' && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                message.urgency === 'high'
+                                  ? 'border-transparent bg-danger-subtle text-danger'
+                                  : 'text-muted-foreground'
+                              }
+                            >
+                              {message.urgency === 'high' ? 'Urgent' : 'Can wait'}
+                            </Badge>
+                          )}
                         </div>
                         <span className="text-xs text-muted-foreground">
                           {formatRelativeTime(message.createdAt)}

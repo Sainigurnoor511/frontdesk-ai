@@ -22,7 +22,13 @@ const KEYTERMS_MAX = 100
 const TOOL_TIMEOUT_SECONDS: Record<string, number> = {
   check_availability: 20,
   search_knowledge: 20,
+  find_appointment: 20,
   book_appointment: 30,
+  cancel_appointment: 30,
+  reschedule_appointment: 30,
+  // One insert plus a webhook enqueue, and it is the fallback the caller was
+  // escalated to — a timeout here leaves them with nothing.
+  take_message: 20,
 }
 
 const DEFAULT_TOOL_TIMEOUT_SECONDS = 20
