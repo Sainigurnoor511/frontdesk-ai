@@ -20,11 +20,12 @@ export const MFA_VERIFY_PATH = '/verify'
 export const POST_LOGIN_PATH = '/'
 
 /**
- * Failed-code budget per user, and how long the lockout lasts. The counter lives in Redis keyed by
+ * Code-attempt budget per user, and how long the lockout lasts. The counter lives in Redis keyed by
  * user id (`lib/auth/mfa-attempts.ts`), not in a cookie: a request-supplied counter is reset by
- * simply omitting it, so the number would imply protection it does not give. Reaching
- * `MFA_MAX_ATTEMPTS` locks the user out for the remainder of `MFA_ATTEMPTS_TTL_SECONDS`, and a
- * fresh password sign-in does not clear it — that reset was the other half of the same hole.
+ * simply omitting it, so the number would imply protection it does not give. Each attempt is
+ * reserved atomically before the code reaches Supabase; once `MFA_MAX_ATTEMPTS` are used the user
+ * is locked out for the remainder of `MFA_ATTEMPTS_TTL_SECONDS`, and a fresh password sign-in does
+ * not clear it — that reset was the other half of the same hole.
  */
 export const MFA_MAX_ATTEMPTS = 5
 export const MFA_ATTEMPTS_TTL_SECONDS = 10 * 60
@@ -42,11 +43,22 @@ export type MfaAwareClient = {
   }
 }
 
+/**
+ * `indeterminate` is a deny state everywhere. `reason` only refines the copy `/verify` shows; it
+ * never changes the decision, which is why it is an optional field on the existing state rather
+ * than a new state that every consumer of the gate would have to remember to deny.
+ *
+ * - `unsupported_factor`: the account's verified factors include none this app can challenge
+ *   (only TOTP is supported), so no amount of retrying will get it through. Reachable only through
+ *   a factor enrolled outside the app, such as project-level phone MFA or the admin API.
+ */
+export type MfaIndeterminateReason = 'unsupported_factor'
+
 export type MfaGate =
   | { state: 'unauthenticated' }
   | { state: 'satisfied' }
   | { state: 'pending'; userId: string; factorId: string; email: string }
-  | { state: 'indeterminate' }
+  | { state: 'indeterminate'; reason?: MfaIndeterminateReason }
 
 /**
  * Resolves the gate for an already-validated user.
@@ -96,7 +108,7 @@ async function resolveMfaGateForUser(
 
   // A missing `aal` claim lands here as pending, which is the fail-closed direction.
   const totp = verified.find((factor) => factor.factor_type === 'totp')
-  if (!totp) return { state: 'indeterminate' }
+  if (!totp) return { state: 'indeterminate', reason: 'unsupported_factor' }
 
   // The user id and the factor id both come from the server's own validated `getUser()` response,
   // never from the request: `userId` keys the failed-attempt counter, so a requester-supplied
@@ -105,14 +117,69 @@ async function resolveMfaGateForUser(
 }
 
 /**
+ * GoTrue error codes that positively say "this request carries no usable session". Anything not
+ * listed here is not evidence of a signed-out caller. From `ErrorCode` in
+ * `@supabase/auth-js/dist/main/lib/error-codes.d.ts` (2.112.2), plus `invalid_jwt`, which
+ * `AuthInvalidJwtError` sets.
+ */
+const SESSION_ABSENT_CODES = new Set([
+  'bad_jwt',
+  'invalid_jwt',
+  'no_authorization',
+  'session_not_found',
+  'session_expired',
+  'refresh_token_not_found',
+  'refresh_token_already_used',
+  'user_not_found',
+  'user_banned',
+])
+
+/**
+ * Classifies a `getUser()` error that was *returned*, not thrown.
+ *
+ * Only a clearly absent or invalid session is `unauthenticated`, because that is a pass-through
+ * state in `proxy.ts`. auth-js 2.112.2 turns a fetch failure and any 5xx (and the Cloudflare 52x
+ * range) into `AuthRetryableFetchError` inside `handleError()` (`lib/fetch.js`), and `_getUser()`
+ * then *returns* it as `{ data: { user: null }, error }` instead of throwing — so treating every
+ * returned error as "signed out" waved pending sessions through the proxy during a GoTrue outage.
+ * Retryable, server-side, rate-limited and unrecognized errors are all `indeterminate`.
+ *
+ * Structural checks (`name`, `code`, `status`) rather than auth-js's `isAuth*Error` helpers, which
+ * test a private `__isAuthError` marker: the shape is what the SDK documents, and it keeps this
+ * module's fakes honest.
+ */
+function classifyReturnedGetUserError(error: AuthError): MfaGate {
+  // No access token at all, or GoTrue says the token's `session_id` is gone (`session_not_found`
+  // is rewritten to this class in `handleError()`).
+  if (error.name === 'AuthSessionMissingError') return { state: 'unauthenticated' }
+
+  if (error.name === 'AuthRetryableFetchError') return { state: 'indeterminate' }
+  if (typeof error.status === 'number' && (error.status >= 500 || error.status === 429)) {
+    return { state: 'indeterminate' }
+  }
+
+  if (error.code && SESSION_ABSENT_CODES.has(error.code)) return { state: 'unauthenticated' }
+
+  // A code-less 401/403 from GoTrue is the server rejecting the credential (older servers omit
+  // `code`). Only for `AuthApiError`, which is the class built from a real HTTP response.
+  if (error.name === 'AuthApiError' && (error.status === 401 || error.status === 403)) {
+    return { state: 'unauthenticated' }
+  }
+
+  return { state: 'indeterminate' }
+}
+
+/**
  * Resolves the gate, fetching the user itself. Used where no validated user is in hand: the
  * interception layer, the login action, the OAuth callback, and the `/verify` screen.
  *
- * Never rejects. A *returned* `getUser()` error means there is no session, so it maps to
- * `unauthenticated`. A *thrown* `getUser()` means the check itself could not be performed, which
- * is a different thing and maps to `indeterminate` — the same fail-closed direction as every other
- * failure in this module. Mapping it to `unauthenticated` let a pending session through the proxy
- * during a GoTrue blip, since `unauthenticated` is a pass-through state there.
+ * Never rejects, and fails closed in both directions the SDK can fail:
+ * - A *thrown* `getUser()` (auth-js rethrows anything that is not an `AuthError`) means the check
+ *   could not be performed, so it is `indeterminate`.
+ * - A *returned* error is `unauthenticated` only when it positively says the session is absent or
+ *   invalid; see `classifyReturnedGetUserError`.
+ * - No error and no user is a shape the SDK does not produce, so it is not evidence of anything
+ *   and is `indeterminate` as well.
  */
 export async function resolveMfaGate(supabase: MfaAwareClient): Promise<MfaGate> {
   let result
@@ -121,7 +188,8 @@ export async function resolveMfaGate(supabase: MfaAwareClient): Promise<MfaGate>
   } catch {
     return { state: 'indeterminate' }
   }
-  if (result.error || !result.data.user) return { state: 'unauthenticated' }
+  if (result.error) return classifyReturnedGetUserError(result.error)
+  if (!result.data.user) return { state: 'indeterminate' }
   return resolveMfaGateForUser(supabase, result.data.user)
 }
 

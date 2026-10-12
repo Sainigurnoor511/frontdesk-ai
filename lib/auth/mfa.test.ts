@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { AuthError, User } from '@supabase/supabase-js'
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  AuthSessionMissingError,
+  AuthUnknownError,
+  type AuthError,
+  type User,
+} from '@supabase/supabase-js'
 import {
   resolveMfaGate,
   getAssuredUser,
@@ -148,12 +155,24 @@ describe('the gate', () => {
     ).resolves.toEqual({ state: 'indeterminate' })
   })
 
-  it('is indeterminate when the only verified factor is not TOTP, and challenges nothing', async () => {
+  it('is indeterminate when the only verified factor is not TOTP, and says why', async () => {
+    // Still a deny state everywhere: `reason` only lets /verify explain the dead end instead of
+    // looping the user back to the password form.
     const user = fakeUser([{ id: 'f-phone', factor_type: 'phone', status: 'verified' }])
 
     await expect(gateFor(user, aalOk('aal1'))).resolves.toEqual({
       state: 'indeterminate',
+      reason: 'unsupported_factor',
     })
+  })
+
+  it('gives no reason for an indeterminate gate that a retry could clear', async () => {
+    const aal = vi.fn().mockRejectedValue(new Error('gotrue down'))
+
+    const gate = await gateFor(fakeUser([totpFactor]), aal)
+
+    expect(gate).toEqual({ state: 'indeterminate' })
+    expect(gate).not.toHaveProperty('reason')
   })
 
   it('is satisfied for an aal2 session whose only verified factor is not TOTP', async () => {
@@ -187,6 +206,89 @@ describe('resolveMfaGate', () => {
     await expect(resolveMfaGate(fakeClient({ getUser }))).resolves.toEqual({
       state: 'indeterminate',
     })
+  })
+
+  it('fails closed on a thrown non-AuthError, which auth-js rethrows as-is', async () => {
+    const getUser = vi.fn().mockRejectedValue(new TypeError('Cannot read properties of undefined'))
+
+    await expect(resolveMfaGate(fakeClient({ getUser }))).resolves.toEqual({
+      state: 'indeterminate',
+    })
+  })
+
+  // The shape auth-js 2.112.2 really produces in an outage: `handleError()` builds an
+  // `AuthRetryableFetchError` for a fetch failure or a 5xx, and `_getUser()` *returns* it as
+  // `{ data: { user: null }, error }` rather than throwing. Real SDK classes, not lookalikes.
+  function returned(error: AuthError, aal?: ReturnType<typeof vi.fn>) {
+    return fakeClient({
+      getUser: vi.fn().mockResolvedValue({ data: { user: null }, error }),
+      aal,
+    })
+  }
+
+  it('fails closed on a returned AuthRetryableFetchError from a network failure', async () => {
+    const aal = aalOk('aal2')
+
+    await expect(
+      resolveMfaGate(returned(new AuthRetryableFetchError('fetch failed', 0), aal))
+    ).resolves.toEqual({ state: 'indeterminate' })
+    expect(aal).not.toHaveBeenCalled()
+  })
+
+  it.each([500, 502, 503, 522])(
+    'fails closed on a returned AuthRetryableFetchError for HTTP %i',
+    async (status) => {
+      await expect(
+        resolveMfaGate(returned(new AuthRetryableFetchError('Service Unavailable', status)))
+      ).resolves.toEqual({ state: 'indeterminate' })
+    }
+  )
+
+  it('fails closed on a returned 5xx or 429 AuthApiError, whatever its code', async () => {
+    await expect(
+      resolveMfaGate(returned(new AuthApiError('boom', 500, 'unexpected_failure')))
+    ).resolves.toEqual({ state: 'indeterminate' })
+    await expect(
+      resolveMfaGate(returned(new AuthApiError('slow down', 429, 'over_request_rate_limit')))
+    ).resolves.toEqual({ state: 'indeterminate' })
+  })
+
+  it('fails closed on an unrecognized returned error', async () => {
+    await expect(
+      resolveMfaGate(returned(new AuthUnknownError('bad json', new SyntaxError('x'))))
+    ).resolves.toEqual({ state: 'indeterminate' })
+    await expect(
+      resolveMfaGate(returned(new AuthApiError('teapot', 418, 'something_new')))
+    ).resolves.toEqual({ state: 'indeterminate' })
+  })
+
+  it('fails closed when getUser returns neither a user nor an error', async () => {
+    const getUser = vi.fn().mockResolvedValue({ data: { user: null }, error: null })
+
+    await expect(resolveMfaGate(fakeClient({ getUser }))).resolves.toEqual({
+      state: 'indeterminate',
+    })
+  })
+
+  it('is unauthenticated for a missing session, which is the no-cookie visitor', async () => {
+    await expect(resolveMfaGate(returned(new AuthSessionMissingError()))).resolves.toEqual({
+      state: 'unauthenticated',
+    })
+  })
+
+  it.each(['bad_jwt', 'session_expired', 'refresh_token_not_found', 'user_not_found'])(
+    'is unauthenticated for a returned %s',
+    async (code) => {
+      await expect(resolveMfaGate(returned(new AuthApiError('no', 403, code)))).resolves.toEqual({
+        state: 'unauthenticated',
+      })
+    }
+  )
+
+  it('is unauthenticated for a code-less 401 from an older GoTrue', async () => {
+    await expect(
+      resolveMfaGate(returned(new AuthApiError('invalid token', 401, undefined)))
+    ).resolves.toEqual({ state: 'unauthenticated' })
   })
 
   it('resolves the gate from the server-fetched user', async () => {
