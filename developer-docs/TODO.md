@@ -183,11 +183,46 @@ both surfaces.
       multiple containers and a stale cache mails a former address, so the right fix is
       denormalizing the email onto `members` and keeping it in sync (a migration plus a sync
       path on signup and email change), which is bigger than the review that found it.
-- [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13, found
-      during the `answering_mode` investigation) — honoured on the AssemblyAI path
-      (`session-config.ts` sends `voice_focus` + `voice_focus_threshold`), but
-      `workers/voice-agent.ts` never reads the field. A per-provider gap, unrelated to
-      routing.
+- [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13,
+      investigated 2026-10-13 — see `.agents/tasks/filter-background-speech-livekit.md`) —
+      honoured on the AssemblyAI path (`session-config.ts` sends `voice_focus` +
+      `voice_focus_threshold`), but `workers/voice-agent.ts` never reads the field. A
+      per-provider gap, unrelated to routing. **Blocked on a paid dependency**, so the
+      switch is now labelled inactive for the default engine in the agent's Advanced tab
+      (`advanced-settings-tab.tsx`) rather than silently doing nothing. What the
+      investigation established, so nobody repeats it:
+      - `@livekit/agents@1.6.1` only *passes through* noise cancellation: `RoomInputOptions`
+        (and `session.start({ inputOptions })`) accepts
+        `noiseCancellation?: NoiseCancellationOptions | FrameProcessor<AudioFrame>`, and
+        `NoiseCancellationOptions` from `@livekit/rtc-node@0.13.33` is just
+        `{ moduleId, options }` resolved against an `AudioFilter(moduleId, path)` native
+        library. The framework ships no filter of its own, and neither does
+        `@livekit/local-inference@0.2.6` (VAD + EOT only). Nothing installed can honour the
+        setting.
+      - Supplying a filter means a new dependency with platform binaries, one of:
+        `@livekit/noise-cancellation-node@0.3.0` (Krisp; `krisp.voiceIsolation()` /
+        `krisp.voiceIsolationTelephony()`, runtime `setNoiseSuppressionLevel`, LiveKit ToS
+        licence) or `@livekit/plugins-ai-coustics@0.3.4` (ai-coustics Voice Focus 2.1 S/L,
+        plus a `*-<platform>` binary package each for linux/darwin/windows).
+      - Both default to authenticating and metering through **LiveKit Cloud**, and the
+        voice-isolation models — the actual equivalent of AssemblyAI's `voice_focus`, which
+        is near-field speaker isolation rather than plain noise suppression — are a
+        **paid add-on** (background *noise* suppression is included with Cloud; voice
+        isolation is not). Self-hosting the SFU is only viable with the ai-coustics plugin,
+        which can take a direct ai-coustics licence key via `auth` and bill there instead —
+        that is the new env var this would add (no other config needed; `LIVEKIT_URL`,
+        `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` already exist).
+      - Cheaper near-miss, deliberately not taken: `turnHandling.interruption.mode:
+        'adaptive'` (currently pinned to `'vad'` in `workers/voice-agent.ts`) runs
+        LiveKit's ML barge-in classifier and would stop background speech from
+        *interrupting* the agent. It needs no new package but does call LiveKit's inference
+        gateway over a WebSocket with `LIVEKIT_API_KEY`/`LIVEKIT_API_SECRET`
+        (`inference/interruption/interruption_detector.js`), so it is Cloud-billed too, it
+        changes turn-taking feel for every call, and it never cleans the audio the STT
+        sees. Not the same feature.
+      So: either accept a paid Cloud add-on and wire
+      `session.start({ inputOptions: { noiseCancellation: … } })` to the agent's flag, or
+      keep the switch AssemblyAI-only.
 - [ ] Add outbound API/webhook key model for external automation
 
 ## P2 - UX + Platform
