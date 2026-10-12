@@ -51,3 +51,8 @@ __pycache__/
 
 # social launch posts, kept local
 /launch-posts/
+
+# parallel agent worktrees and run artifacts, never commit
+/.worktrees/
+/.agents/pipeline/
+/.agents/tasks/

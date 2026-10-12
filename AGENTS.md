@@ -6,7 +6,7 @@ This version (Next.js 16.4) has breaking changes — APIs, conventions, and file
 
 Open-source, self-hostable AI receptionist SaaS. Original implementation inspired by products like ElevenLabs' Reception.ai. User-supplied reference markup/screenshots from comparable products (e.g. pasted HTML) may be copied literally — including class names and structure — when the user provides them as a direct reference to match.
 
-Deeper reference: [developer-docs/ARCHITECTURE.md](developer-docs/ARCHITECTURE.md). Backlog: [developer-docs/TODO.md](developer-docs/TODO.md) (team) and [TODO.md](TODO.md) (phase audit).
+Deeper reference: [developer-docs/ARCHITECTURE.md](developer-docs/ARCHITECTURE.md). Backlog: [developer-docs/TODO.md](developer-docs/TODO.md) (the only one — the old root `TODO.md` phase audit was folded into it).
 
 ## Stack
 
