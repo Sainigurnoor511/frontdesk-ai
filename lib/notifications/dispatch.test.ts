@@ -1,0 +1,300 @@
+// Imports the real dispatch module *and* the real queue module, so this suite is
+// also the `server-only` canary for the enqueue path: it mocks one level lower,
+// at `lib/queue/lazy-queue`, rather than mocking the queue itself.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import {
+  dispatchConversationCompletedNotifications,
+  dispatchConversationCompletedNotificationsBounded,
+  dispatchNotification,
+  scheduleAppointmentReminder,
+} from './dispatch'
+import {
+  notificationQueue,
+  POST_CALL_SUMMARY_DELAY_MS,
+} from '@/lib/queue/queues/notification'
+
+const { addMock } = vi.hoisted(() => ({ addMock: vi.fn() }))
+
+vi.mock('@/lib/queue/lazy-queue', () => ({
+  lazyQueue: () => ({ add: addMock }),
+}))
+
+vi.mock('@/lib/supabase/service-role', () => ({
+  createServiceRoleClient: vi.fn(),
+}))
+
+const ALL_ON = {
+  notify_post_call_summary: true,
+  notify_appointment_reminders: true,
+  notify_client_bookings: true,
+  notify_staff_bookings: true,
+}
+
+/** Minimal PostgREST-shaped chain: thenable, and terminal through single/maybeSingle. */
+function chain(result: unknown) {
+  const node: Record<string, unknown> = {}
+  for (const key of ['select', 'eq', 'order', 'limit', 'is', 'in']) {
+    node[key] = vi.fn(() => node)
+  }
+  node.maybeSingle = vi.fn(() => Promise.resolve(result))
+  node.single = vi.fn(() => Promise.resolve(result))
+  node.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+    Promise.resolve(result).then(resolve, reject)
+  return node
+}
+
+async function mockClient({
+  settings = { data: ALL_ON, error: null } as unknown,
+  appointments = { data: [], error: null } as unknown,
+}: { settings?: unknown; appointments?: unknown } = {}) {
+  const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+  const from = vi.fn((table: string) => {
+    if (table === 'organization_settings') return chain(settings)
+    if (table === 'appointments') return chain(appointments)
+    throw new Error(`Unexpected table: ${table}`)
+  })
+  vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+  return { from }
+}
+
+const PREFERENCE_CASES = [
+  { type: 'post_call_summary', column: 'notify_post_call_summary' },
+  { type: 'client_booking', column: 'notify_client_bookings' },
+  { type: 'staff_booking', column: 'notify_staff_bookings' },
+] as const
+
+function eventFor(type: (typeof PREFERENCE_CASES)[number]['type']) {
+  return type === 'post_call_summary'
+    ? ({ type, organizationId: 'org-1', conversationId: 'conv-1' } as const)
+    : ({ type, organizationId: 'org-1', appointmentId: 'appt-1' } as const)
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('dispatchNotification', () => {
+  it.each(PREFERENCE_CASES)('enqueues $type when the preference is on', async ({ type }) => {
+    await mockClient()
+
+    await dispatchNotification(eventFor(type))
+
+    expect(notificationQueue.add).toHaveBeenCalledTimes(1)
+    expect(addMock).toHaveBeenCalledWith(
+      type,
+      {
+        organizationId: 'org-1',
+        type,
+        subjectId: type === 'post_call_summary' ? 'conv-1' : 'appt-1',
+      },
+      expect.objectContaining({
+        jobId: `notify:${type}:${type === 'post_call_summary' ? 'conv-1' : 'appt-1'}`,
+      })
+    )
+  })
+
+  it.each(PREFERENCE_CASES)('enqueues nothing for $type when off', async ({ type, column }) => {
+    await mockClient({ settings: { data: { ...ALL_ON, [column]: false }, error: null } })
+
+    await dispatchNotification(eventFor(type))
+
+    expect(addMock).not.toHaveBeenCalled()
+  })
+
+  it('delays only the post-call summary', async () => {
+    await mockClient()
+
+    await dispatchNotification(eventFor('post_call_summary'))
+    expect(addMock.mock.calls[0][2]).toMatchObject({ delay: POST_CALL_SUMMARY_DELAY_MS })
+
+    addMock.mockClear()
+    await dispatchNotification(eventFor('client_booking'))
+    expect(addMock.mock.calls[0][2].delay).toBeUndefined()
+  })
+
+  it('falls back to the schema defaults when the org has no settings row', async () => {
+    await mockClient({ settings: { data: null, error: null } })
+
+    await dispatchNotification(eventFor('post_call_summary'))
+
+    expect(addMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('swallows a failing enqueue instead of throwing into the caller', async () => {
+    await mockClient()
+    addMock.mockRejectedValueOnce(new Error('redis down'))
+
+    await expect(dispatchNotification(eventFor('post_call_summary'))).resolves.toBeUndefined()
+  })
+
+  it('swallows a failing settings read instead of throwing into the caller', async () => {
+    await mockClient({ settings: { data: null, error: { message: 'boom' } } })
+
+    await expect(dispatchNotification(eventFor('post_call_summary'))).resolves.toBeUndefined()
+    expect(addMock).not.toHaveBeenCalled()
+  })
+
+  it('uses preloaded preferences without reading settings', async () => {
+    const { from } = await mockClient()
+
+    await dispatchNotification(eventFor('client_booking'), {
+      notifyPostCallSummary: true,
+      notifyAppointmentReminders: true,
+      notifyClientBookings: true,
+      notifyStaffBookings: true,
+    })
+
+    expect(from).not.toHaveBeenCalled()
+    expect(addMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('scheduleAppointmentReminder', () => {
+  const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
+
+  it('schedules a delayed job when reminders are on', async () => {
+    await mockClient()
+
+    await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+
+    expect(addMock).toHaveBeenCalledTimes(1)
+    const [name, payload, options] = addMock.mock.calls[0]
+    expect(name).toBe('appointment_reminder')
+    expect(payload).toEqual({
+      organizationId: 'org-1',
+      type: 'appointment_reminder',
+      subjectId: 'appt-1',
+    })
+    expect(options.jobId).toBe('notify:appointment_reminder:appt-1')
+    expect(options.delay).toBeGreaterThan(0)
+  })
+
+  it('schedules nothing when reminders are off', async () => {
+    await mockClient({
+      settings: { data: { ...ALL_ON, notify_appointment_reminders: false }, error: null },
+    })
+
+    await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+
+    expect(addMock).not.toHaveBeenCalled()
+  })
+
+  it('skips a booking less than 24 hours out', async () => {
+    await mockClient()
+
+    await scheduleAppointmentReminder(
+      'org-1',
+      'appt-1',
+      new Date(Date.now() + 3 * 3_600_000).toISOString()
+    )
+
+    expect(addMock).not.toHaveBeenCalled()
+  })
+
+  it('warns and skips an unparseable start time', async () => {
+    await mockClient()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await scheduleAppointmentReminder('org-1', 'appt-1', 'not-a-date')
+
+    expect(addMock).not.toHaveBeenCalled()
+    expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('dispatchConversationCompletedNotifications', () => {
+  const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
+
+  it('reads preferences once and dispatches the summary plus a booking per appointment', async () => {
+    const { from } = await mockClient({
+      appointments: {
+        data: [
+          { id: 'appt-1', starts_at: farFuture },
+          // Cancellation does not suppress a booking notification; only the
+          // reminder is suppressed, at delivery time.
+          { id: 'appt-2', starts_at: farFuture },
+        ],
+        error: null,
+      },
+    })
+
+    await dispatchConversationCompletedNotifications('org-1', 'conv-1', 'completed')
+
+    const settingsReads = from.mock.calls.filter(([table]) => table === 'organization_settings')
+    expect(settingsReads).toHaveLength(1)
+
+    const names = addMock.mock.calls.map(([name]) => name)
+    expect(names).toEqual([
+      'post_call_summary',
+      'client_booking',
+      'appointment_reminder',
+      'client_booking',
+      'appointment_reminder',
+    ])
+  })
+
+  it('dispatches the booking half but no summary for a failed call', async () => {
+    await mockClient({
+      appointments: { data: [{ id: 'appt-1', starts_at: farFuture }], error: null },
+    })
+
+    await dispatchConversationCompletedNotifications('org-1', 'conv-1', 'failed')
+
+    const names = addMock.mock.calls.map(([name]) => name)
+    expect(names).toEqual(['client_booking', 'appointment_reminder'])
+  })
+
+  it('resolves without throwing when the appointments query rejects', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const rejecting: Record<string, unknown> = {}
+    rejecting.select = vi.fn(() => rejecting)
+    rejecting.eq = vi.fn(() => rejecting)
+    rejecting.then = (
+      resolve: (value: unknown) => unknown,
+      reject?: (reason: unknown) => unknown
+    ) => Promise.reject(new Error('appointments read failed')).then(resolve, reject)
+    const from = vi.fn((table: string) =>
+      table === 'organization_settings' ? chain({ data: ALL_ON, error: null }) : rejecting
+    )
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(
+      dispatchConversationCompletedNotifications('org-1', 'conv-1', 'completed')
+    ).resolves.toBeUndefined()
+    // The summary — requirement 1's headline trigger — is enqueued before the
+    // lookup, so it survives the lookup failing.
+    expect(addMock.mock.calls.map(([name]) => name)).toEqual(['post_call_summary'])
+    error.mockRestore()
+  })
+})
+
+describe('dispatchConversationCompletedNotificationsBounded', () => {
+  it('resolves on the budget when the enqueue never settles', async () => {
+    vi.useFakeTimers()
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const hanging: Record<string, unknown> = {}
+    hanging.select = vi.fn(() => hanging)
+    hanging.eq = vi.fn(() => hanging)
+    hanging.maybeSingle = vi.fn(() => new Promise(() => {}))
+    vi.mocked(createServiceRoleClient).mockReturnValue({
+      from: vi.fn(() => hanging),
+    } as never)
+
+    let settled = false
+    const promise = dispatchConversationCompletedNotificationsBounded(
+      'org-1',
+      'conv-1',
+      'completed'
+    ).then(() => {
+      settled = true
+    })
+
+    await vi.advanceTimersByTimeAsync(3_000)
+    await promise
+
+    expect(settled).toBe(true)
+    vi.useRealTimers()
+  })
+})

@@ -10,6 +10,7 @@
 // which has no such taint, keeping it safe for both Next.js and worker contexts.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
+import { dispatchConversationCompletedNotificationsBounded } from '@/lib/notifications/dispatch'
 import {
   buildCallerMessageContent,
   shouldCreateCallerMessage,
@@ -140,6 +141,16 @@ export async function updateConversationStatus(
       endedReason: patch.endedReason ?? null,
       transcript: patch.transcript ?? [],
     })
+  }
+
+  if (organizationId && (patch.status === 'completed' || patch.status === 'failed')) {
+    // Awaited, not `void`-ed: LiveKit's job process calls `process.exit(0)`
+    // right after its shutdown callbacks, which does not drain pending I/O, so
+    // a `void`-ed enqueue here is reliably killed. Bounded internally so Redis
+    // being unreachable cannot stall the update below, and placed *before* that
+    // update so no added `await` sits between an existing write and the work
+    // that follows it. Never throws.
+    await dispatchConversationCompletedNotificationsBounded(organizationId, id, patch.status)
   }
 
   // When transitioning out of 'active' (the terminal-state writes made by the

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
+import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
 import {
   handleAppointmentCreated,
   handleAppointmentUpdated,
@@ -88,6 +89,17 @@ export async function createAppointment(
     notes: parsed.data.notes,
     source: 'dashboard',
   })
+
+  void dispatchNotification({
+    type: 'staff_booking',
+    organizationId: member.organization_id,
+    appointmentId: appointment.id,
+  })
+  void scheduleAppointmentReminder(
+    member.organization_id,
+    appointment.id,
+    parsed.data.startsAt
+  )
 
   void handleAppointmentCreated(member.organization_id, appointment.id)
   void handleCalComAppointmentCreated(member.organization_id, appointment.id)

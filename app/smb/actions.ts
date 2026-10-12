@@ -38,6 +38,7 @@ import {
   cancelPublicAppointmentServiceRole,
 } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
+import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
 import {
   getPublicAvailableSlotsSchema,
   createPublicAppointmentSchema,
@@ -390,6 +391,17 @@ export async function createPublicAppointment(
     staffId: parsed.data.staffId ?? null,
     notes: parsed.data.notes ?? null,
   })
+
+  void dispatchNotification({
+    type: 'client_booking',
+    organizationId: parsed.data.organizationId,
+    appointmentId: appointment.id,
+  })
+  void scheduleAppointmentReminder(
+    parsed.data.organizationId,
+    appointment.id,
+    parsed.data.startsAt
+  )
 
   try {
     await sendAppointmentConfirmationEmail({

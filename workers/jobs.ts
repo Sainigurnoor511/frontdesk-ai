@@ -17,6 +17,11 @@ import {
   processScanWebsite,
 } from '@/lib/queue/processors/scan-website'
 import { describeWebhookJob, processWebhookDelivery } from '@/lib/queue/processors/webhook'
+import { NOTIFICATION_QUEUE } from '@/lib/queue/queues/notification'
+import {
+  describeNotificationJob,
+  processNotification,
+} from '@/lib/queue/processors/notification'
 
 /**
  * Single host process for every BullMQ queue.
@@ -70,6 +75,15 @@ const QUEUES: QueueDefinition[] = [
     concurrency: 5,
     process: processAssemblyAiSession as QueueDefinition['process'],
     describe: describeAssemblyAiSessionJob as QueueDefinition['describe'],
+  },
+  {
+    name: NOTIFICATION_QUEUE,
+    // Deliberately lower than the other I/O-bound queues: each job spends
+    // exactly one Resend request, and that budget is account-wide and shared
+    // with the appointment-confirmation sender.
+    concurrency: 2,
+    process: processNotification as QueueDefinition['process'],
+    describe: describeNotificationJob as QueueDefinition['describe'],
   },
 ]
 

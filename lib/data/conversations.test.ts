@@ -17,6 +17,13 @@ vi.mock('@/lib/integrations/webhook', () => ({
   dispatchWebhook: vi.fn(),
 }))
 
+vi.mock('@/lib/notifications/dispatch', () => ({
+  dispatchNotification: vi.fn(),
+  scheduleAppointmentReminder: vi.fn(),
+  dispatchConversationCompletedNotifications: vi.fn(),
+  dispatchConversationCompletedNotificationsBounded: vi.fn(),
+}))
+
 describe('getConversationsForOrg', () => {
   it('returns an empty array when no user is signed in', async () => {
     const { createClient } = await import('@/lib/supabase/server')
@@ -377,5 +384,41 @@ describe('updateConversationStatus', () => {
         durationSeconds: 42,
       })
     )
+  })
+
+  it('dispatches notifications for both terminal states, and not otherwise', async () => {
+    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+    const { dispatchConversationCompletedNotificationsBounded } = await import(
+      '@/lib/notifications/dispatch'
+    )
+    const { updateConversationStatus } = await import('./conversations-service')
+
+    const statusEq = vi.fn().mockResolvedValue({ error: null })
+    const idEq = vi.fn().mockReturnValue({ eq: statusEq })
+    const update = vi.fn().mockReturnValue({ eq: idEq })
+    const from = vi.fn().mockReturnValue({ update })
+    vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+    vi.mocked(dispatchConversationCompletedNotificationsBounded).mockClear()
+
+    await updateConversationStatus('conv-1', { status: 'completed' }, 'org-1')
+    expect(dispatchConversationCompletedNotificationsBounded).toHaveBeenCalledWith(
+      'org-1',
+      'conv-1',
+      'completed'
+    )
+
+    await updateConversationStatus('conv-1', { status: 'failed' }, 'org-1')
+    expect(dispatchConversationCompletedNotificationsBounded).toHaveBeenCalledWith(
+      'org-1',
+      'conv-1',
+      'failed'
+    )
+
+    expect(dispatchConversationCompletedNotificationsBounded).toHaveBeenCalledTimes(2)
+
+    // No org id, and no terminal status: both leave the seam unreachable.
+    await updateConversationStatus('conv-1', { status: 'completed' })
+    await updateConversationStatus('conv-1', { summary: 'Caller asked about hours' }, 'org-1')
+    expect(dispatchConversationCompletedNotificationsBounded).toHaveBeenCalledTimes(2)
   })
 })

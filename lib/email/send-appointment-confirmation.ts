@@ -1,4 +1,5 @@
 import { Resend } from 'resend'
+import { escapeHtml } from '@/lib/email/html'
 
 type SendAppointmentConfirmationInput = {
   to: string
@@ -36,20 +37,16 @@ export async function sendAppointmentConfirmationEmail(
   }
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
 /**
  * The signed ISO datetimes produced by the LLM carry an explicit offset (e.g.
  * `2026-08-03T14:00:00+05:00` or a trailing `Z`). Format the wall-clock time in
  * *that* offset rather than the worker host's own timezone, so the email shows
  * the time the caller actually agreed to regardless of where the worker runs.
+ *
+ * Deliberately NOT reused for values read back out of Postgres: `timestamptz`
+ * columns come back normalised to `+00:00`, so the offset parsed here is always
+ * zero and the rendered time is UTC. Use `formatInTimeZone()` from
+ * `lib/email/html.ts` with the org's IANA timezone for those.
  */
 function formatInIsoOffset(iso: string, pattern: 'date' | 'time'): string {
   const match = iso.match(/([+-])(\d{2}):(\d{2})$/)

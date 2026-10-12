@@ -20,6 +20,10 @@ vi.mock('@/lib/data/conversations-service', () => ({
   createConversation: vi.fn(),
   updateConversationStatus: vi.fn(),
 }))
+vi.mock('@/lib/notifications/dispatch', () => ({
+  dispatchNotification: vi.fn(),
+  scheduleAppointmentReminder: vi.fn(),
+}))
 vi.mock('@/lib/voice/end-call', () => ({
   endLiveKitCallRoom: vi.fn(),
 }))
@@ -44,6 +48,7 @@ import { getAvailableSlots } from '@/lib/data/availability-engine'
 import { findOrCreateClientServiceRole, createAppointmentServiceRole } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
+import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
 import { getPublicAvailableSlots, createPublicAppointment } from './actions'
 
 beforeEach(() => {
@@ -111,6 +116,28 @@ describe('createPublicAppointment', () => {
     )
   })
 
+  it('notifies the organization about the client booking and schedules a reminder', async () => {
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      { date: '2026-08-10', slots: [{ startsAt: '2026-08-10T09:00:00.000Z', endsAt: '2026-08-10T09:30:00.000Z' }] },
+    ])
+    vi.mocked(findOrCreateClientServiceRole).mockResolvedValue({ id: 'client-1', isNew: true })
+    vi.mocked(createAppointmentServiceRole).mockResolvedValue({ id: 'appt-1' } as never)
+    vi.mocked(sendAppointmentConfirmationEmail).mockResolvedValue()
+
+    await createPublicAppointment(validInput)
+
+    expect(dispatchNotification).toHaveBeenCalledWith({
+      type: 'client_booking',
+      organizationId: '11111111-1111-1111-1111-111111111111',
+      appointmentId: 'appt-1',
+    })
+    expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      'appt-1',
+      '2026-08-10T09:00:00.000Z'
+    )
+  })
+
   it('refuses to book when the slot is no longer open', async () => {
     vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-10', slots: [] }])
 
@@ -118,6 +145,7 @@ describe('createPublicAppointment', () => {
 
     expect(result).toEqual({ error: 'slot_taken' })
     expect(createAppointmentServiceRole).not.toHaveBeenCalled()
+    expect(dispatchNotification).not.toHaveBeenCalled()
   })
 
   it('rejects when rate limited', async () => {

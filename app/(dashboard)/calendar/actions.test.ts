@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest'
-import { updateAppointment, cancelAppointment } from './actions'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { createAppointment, updateAppointment, cancelAppointment } from './actions'
 
 vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
@@ -13,14 +13,47 @@ vi.mock('@/lib/integrations/webhook', () => ({
   dispatchWebhook: vi.fn(),
 }))
 
+vi.mock('@/lib/notifications/dispatch', () => ({
+  dispatchNotification: vi.fn(),
+  scheduleAppointmentReminder: vi.fn(),
+}))
+
+// The calendar-sync fan-out is `void`-ed at the call site and is not what these
+// tests are about; mocking it keeps `createAppointment` off real integrations.
+vi.mock('@/lib/integrations/google-calendar-sync', () => ({
+  handleAppointmentCreated: vi.fn(),
+  handleAppointmentUpdated: vi.fn(),
+  handleAppointmentCancelled: vi.fn(),
+}))
+vi.mock('@/lib/integrations/calcom', () => ({
+  handleCalComAppointmentCreated: vi.fn(),
+  handleCalComAppointmentUpdated: vi.fn(),
+  handleCalComAppointmentCancelled: vi.fn(),
+}))
+vi.mock('@/lib/integrations/microsoft-calendar-sync', () => ({
+  handleMicrosoftAppointmentCreated: vi.fn(),
+  handleMicrosoftAppointmentUpdated: vi.fn(),
+  handleMicrosoftAppointmentCancelled: vi.fn(),
+}))
+vi.mock('@/lib/integrations/calendly', () => ({
+  handleCalendlyAppointmentCreated: vi.fn(),
+  handleCalendlyAppointmentUpdated: vi.fn(),
+  handleCalendlyAppointmentCancelled: vi.fn(),
+}))
+
 function mockSupabase({
   user = { id: 'user-1' } as { id: string } | null,
   organizationId = 'org-1',
   updateError = null as { message: string } | null,
+  insertResult = { data: { id: 'appt-1' }, error: null } as unknown,
 } = {}) {
   const updateEqOrg = vi.fn().mockResolvedValue({ error: updateError })
   const updateEqId = vi.fn().mockReturnValue({ eq: updateEqOrg })
   const update = vi.fn().mockReturnValue({ eq: updateEqId })
+
+  const insertSingle = vi.fn().mockResolvedValue(insertResult)
+  const insertSelect = vi.fn().mockReturnValue({ single: insertSingle })
+  const insert = vi.fn().mockReturnValue({ select: insertSelect })
 
   const memberSingle = vi.fn().mockResolvedValue({
     data: user ? { organization_id: organizationId } : null,
@@ -33,7 +66,7 @@ function mockSupabase({
       return { select: memberSelect }
     }
     if (table === 'appointments') {
-      return { update }
+      return { update, insert }
     }
     throw new Error(`Unexpected table: ${table}`)
   })
@@ -43,7 +76,7 @@ function mockSupabase({
       getUser: vi.fn().mockResolvedValue({ data: { user } }),
     },
     from,
-    __mocks: { update, updateEqId, updateEqOrg },
+    __mocks: { update, updateEqId, updateEqOrg, insert },
   }
 }
 
@@ -56,6 +89,52 @@ const VALID_INPUT = {
   notes: 'Follow-up',
   internalNotes: 'VIP',
 }
+
+describe('createAppointment', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('notifies the organization about the staff booking and schedules a reminder', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const { dispatchNotification, scheduleAppointmentReminder } = await import(
+      '@/lib/notifications/dispatch'
+    )
+    vi.mocked(createSupabaseClient).mockResolvedValue(
+      mockSupabase({ organizationId: 'org-42' }) as never
+    )
+
+    const result = await createAppointment(VALID_INPUT)
+
+    expect(result).toEqual({ success: true })
+    expect(dispatchNotification).toHaveBeenCalledWith({
+      type: 'staff_booking',
+      organizationId: 'org-42',
+      appointmentId: 'appt-1',
+    })
+    expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+      'org-42',
+      'appt-1',
+      VALID_INPUT.startsAt
+    )
+  })
+
+  it('notifies nothing when the insert fails', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const { dispatchNotification, scheduleAppointmentReminder } = await import(
+      '@/lib/notifications/dispatch'
+    )
+    vi.mocked(createSupabaseClient).mockResolvedValue(
+      mockSupabase({ insertResult: { data: null, error: { message: 'boom' } } }) as never
+    )
+
+    const result = await createAppointment(VALID_INPUT)
+
+    expect(result).toEqual({ error: 'Could not create appointment. Please try again.' })
+    expect(dispatchNotification).not.toHaveBeenCalled()
+    expect(scheduleAppointmentReminder).not.toHaveBeenCalled()
+  })
+})
 
 describe('updateAppointment', () => {
   it('returns a validation error for an empty title', async () => {
