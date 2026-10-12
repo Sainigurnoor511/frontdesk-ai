@@ -2,12 +2,27 @@
 // worker: no `next/headers`, no `server-only`-tainted imports. The session-client
 // counterpart lives in `lib/data/notifications.ts`.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
-import type { NotificationType } from '@/lib/notifications/types'
+import type { NotificationEmailStatus, NotificationType } from '@/lib/notifications/types'
 
 export const MAX_RECIPIENTS = 50
 const RECIPIENT_LOOKUP_CHUNK = 10
 
-export type NotificationClaim = { id: string; emailSentAt: string | null }
+export type NotificationClaim = {
+  id: string
+  emailSentAt: string | null
+  emailStatus: NotificationEmailStatus
+}
+
+export type OwedNotificationEmail = {
+  id: string
+  organizationId: string
+  type: NotificationType
+  dedupeKey: string
+  createdAt: string
+  emailClaimedAt: string | null
+  sweepCount: number
+  lastSweptAt: string | null
+}
 
 export type NotificationRecipient = { userId: string; email: string }
 
@@ -65,10 +80,12 @@ export async function claimNotification(input: {
       body: input.body,
       link_path: input.linkPath,
     })
-    .select('id, email_sent_at')
+    .select('id, email_sent_at, email_status')
     .single()
 
-  if (!error && data) return { id: data.id, emailSentAt: data.email_sent_at }
+  if (!error && data) {
+    return { id: data.id, emailSentAt: data.email_sent_at, emailStatus: data.email_status }
+  }
 
   // 23505 = unique_violation: someone already claimed this (org, type, subject).
   // Anything else is a real failure.
@@ -78,7 +95,7 @@ export async function claimNotification(input: {
 
   const { data: existing, error: readError } = await supabase
     .from('notifications')
-    .select('id, email_sent_at')
+    .select('id, email_sent_at, email_status')
     .eq('organization_id', input.organizationId)
     .eq('type', input.type)
     .eq('dedupe_key', input.dedupeKey)
@@ -93,7 +110,11 @@ export async function claimNotification(input: {
   // announced. The email always re-reads the subject, so it shows current state.
   // A moved appointment does not need a refresh either: its reminder dedupe key
   // carries the start time, so the new time claims a row of its own.
-  return { id: existing.id, emailSentAt: existing.email_sent_at }
+  return {
+    id: existing.id,
+    emailSentAt: existing.email_sent_at,
+    emailStatus: existing.email_status,
+  }
 }
 
 /**
@@ -124,6 +145,47 @@ export async function supersedeAppointmentReminders(
     .is('superseded_at', null)
 
   if (error) throw new Error(`Failed to supersede earlier reminders: ${error.message}`)
+
+  // An earlier time's unsent email is no longer owed; the current time's reminder replaces it.
+  await skipPendingNotificationEmails(organizationId, 'appointment_reminder', appointmentId, {
+    exceptDedupeKey: currentDedupeKey,
+  })
+}
+
+/** The subject no longer warrants an email (gone, cancelled, started, superseded). */
+export async function skipPendingNotificationEmails(
+  organizationId: string,
+  type: NotificationType,
+  subjectId: string,
+  options: { exceptDedupeKey?: string } = {}
+): Promise<void> {
+  let query = createServiceRoleClient()
+    .from('notifications')
+    .update({ email_status: 'skipped' })
+    .eq('organization_id', organizationId)
+    .eq('type', type)
+    .eq('email_status', 'pending')
+
+  // Appointment ids are uuids, so the prefix carries no LIKE wildcard.
+  query =
+    type === 'appointment_reminder'
+      ? query.like('dedupe_key', `${subjectId}:%`)
+      : query.eq('dedupe_key', subjectId)
+  if (options.exceptDedupeKey) query = query.neq('dedupe_key', options.exceptDedupeKey)
+
+  const { error } = await query
+  if (error) throw new Error(`Failed to skip owed notification emails: ${error.message}`)
+}
+
+/** Terminal "no email owed", so the sweep never mails an org that opted out. */
+export async function markNotificationEmailSkipped(id: string): Promise<void> {
+  const { error } = await createServiceRoleClient()
+    .from('notifications')
+    .update({ email_status: 'skipped' })
+    .eq('id', id)
+    .eq('email_status', 'pending')
+
+  if (error) throw new Error(`Failed to mark notification email skipped: ${error.message}`)
 }
 
 /**
@@ -180,7 +242,9 @@ export async function claimNotificationEmailLease(
     })
     .eq('id', id)
     .is('email_sent_at', null)
-    // Free, ours already, or abandoned long enough to steal.
+    // Only an owed email: `skipped` and `abandoned` rows are never sent.
+    .eq('email_status', 'pending')
+    // Free, ours already, or held by a dead worker long enough to steal.
     .or(
       `email_claim_token.is.null,email_claim_token.eq."${token}",email_claimed_at.lt."${expired}"`
     )
@@ -198,7 +262,7 @@ export async function claimNotificationEmailLease(
 export async function markNotificationEmailSent(id: string): Promise<void> {
   const { error } = await createServiceRoleClient()
     .from('notifications')
-    .update({ email_sent_at: new Date().toISOString() })
+    .update({ email_sent_at: new Date().toISOString(), email_status: 'sent' })
     .eq('id', id)
 
   if (error) {
@@ -210,9 +274,10 @@ export async function markNotificationEmailSent(id: string): Promise<void> {
     // Residual state, accepted: if every attempt fails at this write, the row is
     // left delivered but unstamped (`email_sent_at` null, lease set). The retries
     // themselves land well inside the 24h window (10s exponential backoff, at
-    // most five attempts), so they cannot duplicate. A *re-install* of the same
-    // job id more than 24 hours later — the conversation seam firing again, a
-    // backfill re-run — would re-send it once.
+    // most five attempts), and so do the sweep's re-queues of the still-pending
+    // row (its whole retry schedule ends inside a day), so neither can
+    // duplicate. A *re-install* of the same job id more than 24 hours later —
+    // the conversation seam firing again — would re-send it once.
     throw new Error(`Failed to record notification email send: ${error.message}`)
   }
 }
@@ -232,6 +297,97 @@ export async function releaseNotificationEmailClaim(id: string): Promise<void> {
     // signal — log and move on. The lease expires on its own regardless.
     console.error(`[notifications] failed to release email claim for ${id}:`, error.message)
   }
+}
+
+/** One keyset page of `pending` rows, oldest first, after the `(created_at, id)` cursor. */
+export async function listOwedNotificationEmails(input: {
+  createdBefore: string
+  after: { createdAt: string; id: string } | null
+  limit: number
+}): Promise<OwedNotificationEmail[]> {
+  let query = createServiceRoleClient()
+    .from('notifications')
+    .select(
+      'id, organization_id, type, dedupe_key, created_at, email_claimed_at, email_sweep_count, email_last_swept_at'
+    )
+    .eq('email_status', 'pending')
+    .lt('created_at', input.createdBefore)
+
+  if (input.after) {
+    query = query.or(keysetAfter('created_at', input.after.createdAt, input.after.id))
+  }
+
+  const { data, error } = await query.order('created_at').order('id').limit(input.limit)
+  if (error) throw new Error(`Failed to list owed notification emails: ${error.message}`)
+
+  return (data ?? []).map(
+    (row: {
+      id: string
+      organization_id: string
+      type: NotificationType
+      dedupe_key: string
+      created_at: string
+      email_claimed_at: string | null
+      email_sweep_count: number | null
+      email_last_swept_at: string | null
+    }) => ({
+      id: row.id,
+      organizationId: row.organization_id,
+      type: row.type,
+      dedupeKey: row.dedupe_key,
+      createdAt: row.created_at,
+      emailClaimedAt: row.email_claimed_at,
+      sweepCount: row.email_sweep_count ?? 0,
+      lastSweptAt: row.email_last_swept_at,
+    })
+  )
+}
+
+/** Conditional on the count read; true means this sweep owns the re-queue. */
+export async function recordNotificationEmailSweep(
+  id: string,
+  previousCount: number,
+  nowIso: string = new Date().toISOString()
+): Promise<boolean> {
+  const { data, error } = await createServiceRoleClient()
+    .from('notifications')
+    .update({ email_sweep_count: previousCount + 1, email_last_swept_at: nowIso })
+    .eq('id', id)
+    .eq('email_status', 'pending')
+    .eq('email_sweep_count', previousCount)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to record notification sweep: ${error.message}`)
+  return Boolean(data)
+}
+
+export async function abandonNotificationEmail(id: string): Promise<boolean> {
+  const { data, error } = await createServiceRoleClient()
+    .from('notifications')
+    .update({ email_status: 'abandoned' })
+    .eq('id', id)
+    .eq('email_status', 'pending')
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to abandon notification email: ${error.message}`)
+  return Boolean(data)
+}
+
+export async function countNotificationEmails(status: 'pending' | 'abandoned'): Promise<number> {
+  const { count, error } = await createServiceRoleClient()
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .eq('email_status', status)
+
+  if (error) throw new Error(`Failed to count ${status} notification emails: ${error.message}`)
+  return count ?? 0
+}
+
+/** Pass the raw DB string: a `Date` round trip drops microseconds and re-reads the cursor row. */
+export function keysetAfter(column: string, value: string, id: string): string {
+  return `${column}.gt."${value}",and(${column}.eq."${value}",id.gt."${id}")`
 }
 
 /**

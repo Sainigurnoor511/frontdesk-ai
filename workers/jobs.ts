@@ -22,7 +22,7 @@ import {
   describeNotificationJob,
   processNotification,
 } from '@/lib/queue/processors/notification'
-import { reconcileAppointmentReminders } from '@/lib/notifications/reconcile-reminders'
+import { registerNotificationSweep } from '@/lib/notifications/sweep'
 
 /**
  * Single host process for every BullMQ queue.
@@ -145,14 +145,18 @@ console.log(
     .join(', ')}`
 )
 
-/**
- * Reminders are only ever enqueued by a write, so appointments booked before
- * reminder delivery shipped have no job. This schedules them once, guarded by a
- * Redis key, on the first boot of whichever container hosts the queue. Not
- * awaited and never throws: the workers above are already consuming.
- */
+// The sweep's scheduler lives in Redis, so re-register on reconnect too: a wiped Redis lost it.
 if (active.some((definition) => definition.name === NOTIFICATION_QUEUE)) {
-  void reconcileAppointmentReminders()
+  void registerNotificationSweep()
+
+  let connectedBefore = redisConnection.status === 'ready'
+  redisConnection.on('ready', () => {
+    if (connectedBefore) {
+      console.log('[notifications] Redis reconnected; re-registering the notification sweep')
+      void registerNotificationSweep()
+    }
+    connectedBefore = true
+  })
 }
 
 /**

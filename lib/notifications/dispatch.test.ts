@@ -15,11 +15,19 @@ import {
   POST_CALL_SUMMARY_DELAY_MS,
 } from '@/lib/queue/queues/notification'
 
-const { addMock, removeMock } = vi.hoisted(() => ({ addMock: vi.fn(), removeMock: vi.fn() }))
+const { addMock, removeMock, getJobMock } = vi.hoisted(() => ({
+  addMock: vi.fn(),
+  removeMock: vi.fn(),
+  // Default: no job parked under the id. Overridden where a test needs one.
+  getJobMock: vi.fn<(jobId: string) => Promise<unknown>>(async () => undefined),
+}))
 
 vi.mock('@/lib/queue/lazy-queue', () => ({
-  lazyQueue: () => ({ add: addMock, remove: removeMock }),
+  lazyQueue: () => ({ add: addMock, remove: removeMock, getJob: getJobMock }),
 }))
+
+/** Inside the look-ahead: its reminder fires in ~6h, so the job is installed now. */
+const nearFuture = () => new Date(Date.now() + 30 * 3_600_000).toISOString()
 
 vi.mock('@/lib/supabase/service-role', () => ({
   createServiceRoleClient: vi.fn(),
@@ -167,10 +175,11 @@ describe('dispatchNotification', () => {
 describe('scheduleAppointmentReminder', () => {
   const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
 
-  it('schedules a delayed job when reminders are on', async () => {
+  it('schedules a delayed job, tagged with its start, when the fire time is near', async () => {
     await mockClient()
+    const startsAt = nearFuture()
 
-    await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+    await scheduleAppointmentReminder('org-1', 'appt-1', startsAt)
 
     expect(addMock).toHaveBeenCalledTimes(1)
     const [name, payload, options] = addMock.mock.calls[0]
@@ -179,9 +188,21 @@ describe('scheduleAppointmentReminder', () => {
       organizationId: 'org-1',
       type: 'appointment_reminder',
       subjectId: 'appt-1',
+      startsAt,
     })
     expect(options.jobId).toBe('notify:appointment_reminder:appt-1')
     expect(options.delay).toBeGreaterThan(0)
+  })
+
+  // Round-3 issue 3: weeks-out Redis jobs could not be rebuilt; the sweep installs these later.
+  it('installs nothing for an appointment beyond the look-ahead, leaving it to the sweep', async () => {
+    await mockClient()
+
+    await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+
+    expect(addMock).not.toHaveBeenCalled()
+    // A job from an earlier, nearer time must not stand either.
+    expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
   })
 
   // Round-2 issue 2: "Appointment reminders — Email · 24h before" switched off
@@ -191,7 +212,7 @@ describe('scheduleAppointmentReminder', () => {
       settings: { data: { ...ALL_ON, notify_appointment_reminders: false }, error: null },
     })
 
-    await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+    await scheduleAppointmentReminder('org-1', 'appt-1', nearFuture())
 
     expect(addMock).toHaveBeenCalledTimes(1)
     expect(from).not.toHaveBeenCalled()
@@ -213,14 +234,22 @@ describe('scheduleAppointmentReminder', () => {
    * Issue 1, the trap. The job id is fixed at
    * `notify:appointment_reminder:<id>`, so BullMQ treats a re-add as a no-op
    * while the original delayed job is still pending: calling this from the
-   * reschedule paths *looks* like it works and does not. The old job has to go
-   * first.
+   * reschedule paths *looks* like it works and does not. A job for another
+   * start has to go first; one for the same start is left alone.
    */
   describe('rescheduling an appointment that already has a pending reminder', () => {
-    it('removes the pending job before installing one at the new delay', async () => {
-      await mockClient()
+    function parkedJob(startsAt: string, state = 'delayed') {
+      getJobMock.mockResolvedValueOnce({
+        data: { organizationId: 'org-1', type: 'appointment_reminder', subjectId: 'appt-1', startsAt },
+        getState: async () => state,
+      })
+    }
 
-      const movedLater = new Date(Date.now() + 10 * 86_400_000).toISOString()
+    it('replaces a job installed for the earlier start, at the new delay', async () => {
+      await mockClient()
+      parkedJob(new Date(Date.now() + 26 * 3_600_000).toISOString())
+
+      const movedLater = new Date(Date.now() + 40 * 3_600_000).toISOString()
       await scheduleAppointmentReminder('org-1', 'appt-1', movedLater)
 
       expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
@@ -230,8 +259,33 @@ describe('scheduleAppointmentReminder', () => {
 
       const delay = addMock.mock.calls[0][2].delay
       const expected = Date.parse(movedLater) - 24 * 3_600_000 - Date.now()
-      // ~9 days out, not the ~4 days the original job was holding.
+      // ~16 hours out, not the ~2 hours the original job was holding.
       expect(Math.abs(delay - expected)).toBeLessThan(2_000)
+    })
+
+    it('leaves a job already installed for the same start untouched', async () => {
+      await mockClient()
+      const startsAt = nearFuture()
+      // The database's `+00:00` spelling of the same instant.
+      parkedJob(startsAt.replace('Z', '+00:00'))
+
+      await scheduleAppointmentReminder('org-1', 'appt-1', startsAt)
+
+      expect(removeMock).not.toHaveBeenCalled()
+      expect(addMock).not.toHaveBeenCalled()
+    })
+
+    it('removes the pending job when the appointment moves beyond the look-ahead', async () => {
+      await mockClient()
+
+      await scheduleAppointmentReminder(
+        'org-1',
+        'appt-1',
+        new Date(Date.now() + 10 * 86_400_000).toISOString()
+      )
+
+      expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
+      expect(addMock).not.toHaveBeenCalled()
     })
 
     it('removes the pending job when the appointment moves inside the 24h window', async () => {
@@ -279,7 +333,7 @@ describe('cancelAppointmentReminder', () => {
 })
 
 describe('dispatchConversationCompletedNotifications', () => {
-  const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
+  const farFuture = nearFuture()
 
   it('dispatches the summary plus a booking per appointment, reading no preferences', async () => {
     const { from } = await mockClient({
@@ -354,7 +408,7 @@ describe('dispatchConversationCompletedNotifications', () => {
  * `lib/queue/processors/notification.test.ts`.)
  */
 describe('a voice booking dispatched at creation and again by the call-end seam', () => {
-  const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
+  const farFuture = nearFuture()
 
   it('leaves exactly one job per notification', async () => {
     const jobs = new Map<string, unknown>()
@@ -364,6 +418,9 @@ describe('a voice booking dispatched at creation and again by the call-end seam'
     removeMock.mockImplementation(async (jobId: string) => {
       jobs.delete(jobId)
     })
+    getJobMock.mockImplementation(async (jobId: string) =>
+      jobs.has(jobId) ? { data: jobs.get(jobId), getState: async () => 'delayed' } : undefined
+    )
 
     try {
       await mockClient({
@@ -388,6 +445,8 @@ describe('a voice booking dispatched at creation and again by the call-end seam'
     } finally {
       addMock.mockReset()
       removeMock.mockReset()
+      getJobMock.mockReset()
+      getJobMock.mockImplementation(async () => undefined)
     }
   })
 })

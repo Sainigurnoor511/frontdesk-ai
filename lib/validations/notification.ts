@@ -16,6 +16,9 @@ export const notificationJobSchema = z.object({
    * cannot re-enqueue the same booking forever.
    */
   capDeferrals: z.number().int().min(0).max(10).optional(),
+  /** Informational: the processor always re-reads the appointment. */
+  startsAt: z.string().max(64).optional(),
+  sweepAttempt: z.number().int().min(1).max(20).optional(),
 })
 export type NotificationJobInput = z.infer<typeof notificationJobSchema>
 

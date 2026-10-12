@@ -37,6 +37,10 @@ vi.mock('@/lib/queue/lazy-queue', () => ({
   lazyQueue: () => ({ add: queueAddMock, remove: queueRemoveMock }),
 }))
 
+// The sweep has its own suite; only the routing of the scheduler's job matters here.
+const { runNotificationSweepMock } = vi.hoisted(() => ({ runNotificationSweepMock: vi.fn() }))
+vi.mock('@/lib/notifications/sweep', () => ({ runNotificationSweep: runNotificationSweepMock }))
+
 const ORG = '11111111-1111-1111-1111-111111111111'
 const OTHER_ORG = '99999999-9999-9999-9999-999999999999'
 const CONVERSATION = '22222222-2222-2222-2222-222222222222'
@@ -179,6 +183,7 @@ function fakeNotificationsTable() {
         const row: FakeRow = {
           id: `notif-${nextId++}`,
           email_sent_at: null,
+          email_status: 'pending',
           email_claimed_at: null,
           email_claim_token: null,
           superseded_at: null,
@@ -218,7 +223,11 @@ async function mockClient(options: ClientOptions = {}) {
   // That is what makes the issue-2 regression reproducible: with the old
   // ordering, attempt 1 stamped `email_sent_at` and attempt 2 returned at step 9
   // without ever calling Resend.
-  const row = { id: 'notif-1', email_sent_at: null as string | null }
+  const row = {
+    id: 'notif-1',
+    email_sent_at: null as string | null,
+    email_status: 'pending' as string,
+  }
   const notificationsInsert = vi.fn(() =>
     chain(claimInsert ?? { data: { ...row }, error: null })
   )
@@ -227,6 +236,7 @@ async function mockClient(options: ClientOptions = {}) {
   // (`email_claim_token`), releasing it (both lease columns null), and the
   // durable `email_sent_at` stamp. Only the lease claim is conditional.
   const notificationsUpdate = vi.fn((patch: Record<string, unknown>) => {
+    // Status is untracked here (one row shared across types); see fakeNotificationsTable.
     if (typeof patch.email_sent_at === 'string') row.email_sent_at = patch.email_sent_at
     return chain(
       'email_claim_token' in patch && patch.email_claim_token
@@ -367,9 +377,25 @@ describe('processNotification', () => {
         expect.objectContaining({ type: 'post_call_summary', dedupe_key: CONVERSATION })
       )
       expect(batchSendMock).not.toHaveBeenCalled()
-      // Not marked sent and not leased: switching the email back on before a
-      // retry could still deliver it.
-      expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
+      // Round 3: terminal `skipped`, so the sweep (pending-only) never mails an opted-out org.
+      expect(mocks.notificationsUpdate).toHaveBeenCalledTimes(1)
+      expect(mocks.notificationsUpdate).toHaveBeenCalledWith({ email_status: 'skipped' })
+    })
+
+    it('never sends a row already settled as skipped when a job re-delivers it', async () => {
+      const table = fakeNotificationsTable()
+      const settings = { data: { ...ALL_ON, notify_post_call_summary: false }, error: null }
+      await mockClient({ notificationsTable: table, settings })
+
+      await processNotification(job())
+      expect(table.rows[0].email_status).toBe('skipped')
+
+      // Preference back on, same notification re-delivered: the settled row stays settled.
+      settings.data = ALL_ON
+      await processNotification(job({ sweepAttempt: 1 }, 'job-2'))
+
+      expect(batchSendMock).not.toHaveBeenCalled()
+      expect(table.rows).toHaveLength(1)
     })
 
     it('does the same for a reminder', async () => {
@@ -463,13 +489,33 @@ describe('processNotification', () => {
     await expect(processNotification(job())).rejects.toThrow('Failed to resolve recipients')
   })
 
-  it('completes without sending when the org has no resolvable recipients', async () => {
-    await mockClient({ members: { data: [], error: null } })
+  it('completes without sending, and settles as skipped, when the org has no resolvable recipients', async () => {
+    const mocks = await mockClient({ members: { data: [], error: null } })
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
 
     await expect(processNotification(job())).resolves.toBeUndefined()
     expect(batchSendMock).not.toHaveBeenCalled()
+    expect(mocks.notificationsUpdate).toHaveBeenCalledWith({ email_status: 'skipped' })
     warn.mockRestore()
+  })
+
+  it('marks the row sent with an explicit status once Resend accepts', async () => {
+    const mocks = await mockClient()
+
+    await processNotification(job())
+
+    expect(mocks.notificationsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ email_sent_at: expect.any(String), email_status: 'sent' })
+    )
+  })
+
+  it('runs the sweep, not a delivery, for the scheduler job', async () => {
+    const mocks = await mockClient()
+
+    await processNotification({ id: 'repeat:1', name: 'notification-sweep', data: {} } as never)
+
+    expect(runNotificationSweepMock).toHaveBeenCalledTimes(1)
+    expect(mocks.notificationsInsert).not.toHaveBeenCalled()
   })
 
   it('throws UnrecoverableError on a malformed payload', async () => {

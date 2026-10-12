@@ -18,6 +18,17 @@ export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
  */
 export const NOTIFICATION_PANEL_LIMIT = 10
 
+// The one copy: scheduler, sweep and the processor's early-fire guard must agree on it.
+export const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
+
+// Reminder jobs exist in Redis only this close to firing; further out, Postgres is the record.
+export const REMINDER_LOOKAHEAD_MS = 48 * 60 * 60 * 1000
+
+// Only `pending` is still owed; `sent`, `skipped` (none owed) and `abandoned` are terminal.
+export const NOTIFICATION_EMAIL_STATUSES = ['pending', 'sent', 'skipped', 'abandoned'] as const
+
+export type NotificationEmailStatus = (typeof NOTIFICATION_EMAIL_STATUSES)[number]
+
 /**
  * Dedupe key for an appointment reminder: the appointment *and* the start time
  * it reminds about. A moved appointment is a new deliverable, so its reminder

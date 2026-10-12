@@ -11,19 +11,28 @@ import {
   getOrganizationName,
   getOrgRecipients,
   markNotificationEmailSent,
+  markNotificationEmailSkipped,
   releaseNotificationEmailClaim,
+  skipPendingNotificationEmails,
   supersedeAppointmentReminders,
 } from '@/lib/data/notifications-service'
 import { buildNotificationContent, type NotificationSubject } from '@/lib/notifications/content'
+import { runNotificationSweep } from '@/lib/notifications/sweep'
 import {
   appointmentReminderDedupeKey,
   NOTIFICATION_TYPE_TO_PREFERENCE,
+  REMINDER_LEAD_MS,
 } from '@/lib/notifications/types'
 import {
   assertNotificationEmailConfigured,
   sendNotificationEmails,
 } from '@/lib/email/send-notification-email'
-import { addNotificationJob, type NotificationJobData } from '@/lib/queue/queues/notification'
+import {
+  addNotificationJob,
+  MAX_CAP_DEFERRALS,
+  NOTIFICATION_SWEEP_JOB,
+  type NotificationJobData,
+} from '@/lib/queue/queues/notification'
 import { notificationJobSchema } from '@/lib/validations/notification'
 import {
   checkAndConsumeRateLimit,
@@ -54,21 +63,14 @@ const CLIENT_BOOKING_WINDOW_SECONDS = 3_600
 const CLIENT_BOOKING_CHARGE_TTL_SECONDS = 6 * 3_600
 
 /**
- * How many times a capped booking email is pushed into a later window before it
- * is given up on. A cap that is still exhausted four hours later is a flood, not
- * a busy afternoon, and re-enqueueing forever would leak jobs.
+ * How far past the 24h lead (`REMINDER_LEAD_MS`, shared with the scheduler and
+ * the sweep) a reminder may still be delivered. A reminder job fires at
+ * `startsAt - 24h` or later (cap deferrals only ever push it later), so an
+ * appointment further out than this means the job is not this appointment's
+ * current reminder: the appointment moved later, and the job for the new time
+ * is still to come. Delivering here would send the new time's reminder days
+ * early and leave the real one to find it already sent.
  */
-const MAX_CAP_DEFERRALS = 3
-
-/**
- * How far past the 24h lead a reminder may still be delivered. A reminder job
- * fires at `startsAt - 24h` or later (cap deferrals only ever push it later), so
- * an appointment further out than this means the job is not this appointment's
- * current reminder: the appointment moved later, and the job installed for the
- * new time is still pending. Delivering here would send the new time's reminder
- * days early and leave the real one to find it already sent.
- */
-const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
 const REMINDER_EARLY_SLACK_MS = 5 * 60 * 1000
 
 /**
@@ -82,6 +84,12 @@ const REMINDER_EARLY_SLACK_MS = 5 * 60 * 1000
  * email (never the in-app row).
  */
 export async function processNotification(job: Job<NotificationJobData>): Promise<void> {
+  // 0. The periodic sweep shares this queue and carries no payload.
+  if (job.name === NOTIFICATION_SWEEP_JOB) {
+    await runNotificationSweep()
+    return
+  }
+
   // 1. Validate the payload.
   const parsed = notificationJobSchema.safeParse(job.data)
   if (!parsed.success) {
@@ -100,6 +108,8 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
 
   if (!row) {
     console.warn(`[notifications] ${type} subject ${subjectId} no longer exists; skipping`)
+    // A row claimed before the subject was deleted owes nothing any more.
+    await skipPendingNotificationEmails(organizationId, type, subjectId)
     return
   }
 
@@ -136,13 +146,16 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
     // suppresses them. The two booking types are deliberately not suppressed on
     // cancellation: they record an event that did happen.
     if (type === 'appointment_reminder') {
-      if (row.status === 'cancelled') return
       const untilStartMs = Date.parse(row.startsAt) - Date.now()
-      if (untilStartMs <= 0) return
-      if (untilStartMs > REMINDER_LEAD_MS + REMINDER_EARLY_SLACK_MS) {
-        console.warn(
-          `[notifications] reminder job for ${subjectId} fired more than 24h before the appointment; it was moved later, skipping`
-        )
+      const earlyFire = untilStartMs > REMINDER_LEAD_MS + REMINDER_EARLY_SLACK_MS
+      if (row.status === 'cancelled' || untilStartMs <= 0 || earlyFire) {
+        if (earlyFire) {
+          console.warn(
+            `[notifications] reminder job for ${subjectId} fired more than 24h before the appointment; it was moved later, skipping`
+          )
+        }
+        // Left `pending`, the sweep would re-queue these rows until it abandoned them.
+        await skipPendingNotificationEmails(organizationId, type, subjectId)
         return
       }
 
@@ -193,9 +206,8 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
     await supersedeAppointmentReminders(organizationId, subjectId, dedupeKey)
   }
 
-  // 8. A completed duplicate: one email per (org, type, dedupe key), across
-  //    retries and across process restarts.
-  if (notification.emailSentAt !== null) return
+  // 8. A settled row (anything but `pending`): one email per (org, type, dedupe key).
+  if (notification.emailSentAt !== null || notification.emailStatus !== 'pending') return
 
   // 9. The preference gates the email only. DECISION (easy to reverse): the
   //    settings toggles are labelled by channel — "Post-call summary — Email",
@@ -205,8 +217,12 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
   //    here, at delivery time, so a toggle flipped between enqueue and delivery
   //    is still honoured. To make the toggles cover both channels instead, move
   //    this back above step 6 and relabel them "Notify me about …".
+  //    Off is recorded as `skipped`, so the sweep never mails an org that opted out.
   const preferences = await getNotificationPreferences(organizationId)
-  if (!preferences[NOTIFICATION_TYPE_TO_PREFERENCE[type]]) return
+  if (!preferences[NOTIFICATION_TYPE_TO_PREFERENCE[type]]) {
+    await markNotificationEmailSkipped(notification.id)
+    return
+  }
 
   // 10. Bound the anonymous-booking fan-out: booking emails, and the reminder
   //     emails that public-page bookings earn a day later — otherwise a flood
@@ -234,9 +250,9 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
         await releaseRateLimitCharge(chargeKey)
         console.warn(`[notifications] ${type} email cap reached for org ${organizationId}`)
         // The row already exists, so the in-app center still shows the booking.
-        // The email is re-attempted past the window boundary rather than
-        // dropped: the window reopens minutes later, and nothing else in the
-        // system ever scans for unsent rows.
+        // The email is re-attempted past the window boundary: the window
+        // reopens minutes later. Past `MAX_CAP_DEFERRALS` the row stays
+        // `pending` and the periodic sweep owns it, up to its own bound.
         await deferPastCapWindow(parsed.data, capKey, capDeferrals ?? 0)
         return
       }
@@ -254,8 +270,10 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
   const recipients = await getOrgRecipients(organizationId)
   if (recipients.length === 0) {
     console.warn(
-      `[notifications] org ${organizationId} has no resolvable recipients; notification ${notification.id} stays unsent`
+      `[notifications] org ${organizationId} has no resolvable recipients; notification ${notification.id} skipped`
     )
+    // Nobody to send to is a settled outcome, not a failure to retry.
+    await markNotificationEmailSkipped(notification.id)
     return
   }
 
@@ -300,6 +318,7 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
   }
 
   if (outcome.status === 'permanent') {
+    // No fast retry; the row stays `pending` for the sweep's slower, bounded schedule.
     await releaseNotificationEmailClaim(notification.id)
     throw new UnrecoverableError(outcome.message)
   }
@@ -345,8 +364,9 @@ async function deferPastCapWindow(
 ): Promise<void> {
   const next = deferrals + 1
   if (next > MAX_CAP_DEFERRALS) {
+    // Not dropped: the row stays `pending`, and the sweep re-queues it up to its own bound.
     console.error(
-      `[notifications] giving up on the ${data.type} email for ${data.subjectId} after ${MAX_CAP_DEFERRALS} capped windows`
+      `[notifications] stopped deferring the ${data.type} email for ${data.subjectId} after ${MAX_CAP_DEFERRALS} capped windows; leaving it to the sweep`
     )
     return
   }
@@ -360,5 +380,6 @@ async function deferPastCapWindow(
 }
 
 export function describeNotificationJob(job: Job<NotificationJobData>): string {
+  if (job.name === NOTIFICATION_SWEEP_JOB) return 'sweep'
   return `type=${job.data.type} subject=${job.data.subjectId}`
 }

@@ -1,7 +1,17 @@
 import { lazyQueue } from '@/lib/queue/lazy-queue'
-import type { NotificationType } from '@/lib/notifications/types'
+import {
+  appointmentReminderDedupeKey,
+  type NotificationType,
+} from '@/lib/notifications/types'
 
 export const NOTIFICATION_QUEUE = 'notification-deliver'
+
+// The sweep rides this queue (not its own) so it runs wherever deliveries run.
+export const NOTIFICATION_SWEEP_JOB = 'notification-sweep'
+export const NOTIFICATION_SWEEP_SCHEDULER_ID = 'notification-sweep'
+
+// Past this many capped windows the row stays `pending` and the sweep owns it.
+export const MAX_CAP_DEFERRALS = 3
 
 /**
  * The post-call-summary job is enqueued from `updateConversationStatus` *before*
@@ -19,6 +29,10 @@ export type NotificationJobData = {
   subjectId: string
   /** Set only on a delivery deferred past a `client_booking` cap window. */
   capDeferrals?: number
+  /** Reminders only: the start this job was installed for, so a stale one is detectable. */
+  startsAt?: string
+  /** Set only on the sweep's Nth re-queue of an owed email. */
+  sweepAttempt?: number
 }
 
 /**
@@ -67,6 +81,39 @@ export function notificationDeferralJobId(
   return `${notificationJobId(type, subjectId)}:defer${deferral}`
 }
 
+/** Own id, like a deferral: the original is usually parked, making `add()` a no-op. */
+export function notificationSweepJobId(
+  type: NotificationType,
+  subjectId: string,
+  attempt: number
+): string {
+  return `${notificationJobId(type, subjectId)}:sweep${attempt}`
+}
+
+/** Every job id that may carry this subject's delivery: original, deferrals, latest re-queue. */
+export function notificationDeliveryJobIds(
+  type: NotificationType,
+  subjectId: string,
+  sweepAttempts: number
+): string[] {
+  const ids = [notificationJobId(type, subjectId)]
+  for (let deferral = 1; deferral <= MAX_CAP_DEFERRALS; deferral += 1) {
+    ids.push(notificationDeferralJobId(type, subjectId, deferral))
+  }
+  if (sweepAttempts > 0) ids.push(notificationSweepJobId(type, subjectId, sweepAttempts))
+  return ids
+}
+
+const LIVE_STATES = new Set(['waiting', 'delayed', 'active', 'prioritized', 'waiting-children'])
+
+/** True when any of these jobs is still going to run (or is running). */
+export async function anyNotificationJobLive(jobIds: string[]): Promise<boolean> {
+  for (const jobId of jobIds) {
+    if (LIVE_STATES.has(await notificationQueue.getJobState(jobId))) return true
+  }
+  return false
+}
+
 /**
  * The one place a notification job is installed under its fixed job id.
  *
@@ -91,10 +138,45 @@ export async function addNotificationJob(
   // be swallowed by a failed `:deferN` job still sitting in the failed set.
   const jobId = data.capDeferrals
     ? notificationDeferralJobId(data.type, data.subjectId, data.capDeferrals)
-    : notificationJobId(data.type, data.subjectId)
+    : data.sweepAttempt
+      ? notificationSweepJobId(data.type, data.subjectId, data.sweepAttempt)
+      : notificationJobId(data.type, data.subjectId)
 
   await removeJob(jobId)
   await notificationQueue.add(data.type, data, { jobId, ...options })
+}
+
+export type ReminderJobOutcome = 'added' | 'kept' | 'replaced'
+
+/** Add-if-absent by dedupe key: same start is never reset; another start or a failed job is replaced. */
+export async function ensureAppointmentReminderJob(
+  organizationId: string,
+  appointmentId: string,
+  startsAt: string,
+  delay: number
+): Promise<ReminderJobOutcome> {
+  const jobId = notificationJobId('appointment_reminder', appointmentId)
+  const existing = await notificationQueue.getJob(jobId)
+
+  if (existing) {
+    const state = await existing.getState()
+    const wanted = appointmentReminderDedupeKey(appointmentId, startsAt)
+    const installed = existing.data?.startsAt
+      ? appointmentReminderDedupeKey(appointmentId, existing.data.startsAt)
+      : null
+
+    if (state === 'active') return 'kept'
+    if (installed !== null && installed === wanted && state !== 'failed') return 'kept'
+
+    await removeJob(jobId)
+  }
+
+  await notificationQueue.add(
+    'appointment_reminder',
+    { organizationId, type: 'appointment_reminder', subjectId: appointmentId, startsAt },
+    { jobId, delay: Math.max(0, delay) }
+  )
+  return existing ? 'replaced' : 'added'
 }
 
 /**

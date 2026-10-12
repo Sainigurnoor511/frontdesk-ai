@@ -27,6 +27,13 @@ create table notifications (
   -- still excluding a different worker until the lease ages out.
   email_claimed_at timestamptz,
   email_claim_token text,
+  -- Only `pending` is still owed (and swept); `sent`, `skipped`, `abandoned` are terminal.
+  email_status text not null default 'pending' check (
+    email_status in ('pending', 'sent', 'skipped', 'abandoned')
+  ),
+  -- The sweep's bounded, spaced-out re-queues of an owed email. Worker-written only.
+  email_sweep_count integer not null default 0,
+  email_last_swept_at timestamptz,
   -- Set on an appointment reminder once a reminder for the appointment's *new*
   -- time has been claimed (the dedupe key carries the start time, so a moved
   -- appointment gets a row of its own). The bell and the unread badge hide
@@ -46,6 +53,16 @@ create index notifications_org_created_idx
 create index notifications_org_unread_idx
   on notifications (organization_id, is_read)
   where is_read = false and superseded_at is null;
+
+-- The sweep pages owed emails oldest-first and counts the abandoned ones.
+create index notifications_email_sweep_idx
+  on notifications (email_status, created_at, id)
+  where email_status in ('pending', 'abandoned');
+
+-- The reminder sweep keyset-pages near-term appointments on (starts_at, id), every few minutes.
+create index if not exists appointments_reminder_sweep_idx
+  on appointments (starts_at, id)
+  where status <> 'cancelled';
 
 -- The conversation-completed seam looks up appointments booked during a call.
 create index if not exists appointments_conversation_id_idx

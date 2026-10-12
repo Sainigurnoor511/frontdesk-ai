@@ -10,13 +10,16 @@
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import {
   addNotificationJob,
+  ensureAppointmentReminderJob,
   removeNotificationJob,
   POST_CALL_SUMMARY_ATTEMPTS,
   POST_CALL_SUMMARY_DELAY_MS,
 } from '@/lib/queue/queues/notification'
-import type { NotificationEvent } from '@/lib/notifications/types'
-
-const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
+import {
+  REMINDER_LEAD_MS,
+  REMINDER_LOOKAHEAD_MS,
+  type NotificationEvent,
+} from '@/lib/notifications/types'
 
 /**
  * Budget for the conversation seam when it is awaited. `lib/queue/connection.ts`
@@ -53,27 +56,7 @@ export async function dispatchNotification(event: NotificationEvent): Promise<vo
   }
 }
 
-/**
- * Installs the ~24h-before reminder for an appointment as a delayed job keyed on
- * the appointment, the pattern `lib/voice/providers/assemblyai/enqueue-finalize.ts`
- * already uses.
- *
- * Installed whatever the reminder email preference says: the in-app reminder
- * is always written, and the processor decides about the email at delivery.
- *
- * Safe to call on every write that touches `starts_at`, not just on creation:
- * `addNotificationJob()` drops the job already parked under that id, so a moved
- * appointment ends up with exactly one reminder job, at the new time. Calling it
- * only from the creation paths is what left a rescheduled appointment reminding
- * at its original time. The delivered reminder is keyed on the start time too
- * (`appointmentReminderDedupeKey()`), so a move after the first reminder went
- * out still earns a second one.
- *
- * A booking made less than 24 hours out is skipped: it already produced a
- * booking notification, and a "reminder" seconds later is noise. An appointment
- * *moved* inside that window still has its stale reminder removed first, so
- * "skipped" never means "the old one stands".
- */
+/** Makes the near window right now; beyond it the sweep (Postgres-driven) installs the job later. */
 export async function scheduleAppointmentReminder(
   organizationId: string,
   appointmentId: string,
@@ -89,15 +72,13 @@ export async function scheduleAppointmentReminder(
     }
 
     const delay = startsAtMs - REMINDER_LEAD_MS - Date.now()
-    if (delay <= 0) {
+    // Inside 24h: the booking notification already covers it. Beyond the window: the sweep's.
+    if (delay <= 0 || delay > REMINDER_LOOKAHEAD_MS) {
       await removeNotificationJob('appointment_reminder', appointmentId)
       return
     }
 
-    await addNotificationJob(
-      { organizationId, type: 'appointment_reminder', subjectId: appointmentId },
-      { delay }
-    )
+    await ensureAppointmentReminderJob(organizationId, appointmentId, startsAt, delay)
   } catch (error) {
     console.error(
       `[notifications] failed to schedule reminder for appointment ${appointmentId}:`,
@@ -107,10 +88,10 @@ export async function scheduleAppointmentReminder(
 }
 
 /**
- * Drops a pending reminder. Called from every cancel path: the processor's
- * `status === 'cancelled'` guard is the backstop, but leaving the job pending
- * means a cancelled appointment still holds a delayed job for up to a month and
- * the row still looks deliverable.
+ * Drops a pending reminder. Called from every cancel path: the sweep skips
+ * cancelled appointments and the processor's `status === 'cancelled'` guard is
+ * the backstop, but a job left in place still looks like a reminder that will
+ * go out.
  *
  * Never throws — a cancellation must not fail because Redis is unreachable.
  */
@@ -137,12 +118,12 @@ export async function cancelAppointmentReminder(appointmentId: string): Promise<
  * are notified when they are written (`createAppointmentServiceRole` in
  * `lib/data/booking-service.ts`), so a voice worker killed before its terminal
  * write no longer loses them. Re-dispatching here is idempotent — the same
- * fixed job ids are re-installed, and the row claim on
- * `(org, type, dedupe_key)` plus `email_sent_at` stops a second row or email —
- * and it recovers a creation-time enqueue that was itself lost. No `status`
- * filter: a booking notification records an event that did happen, exactly as
- * the booking call sites do; cancellation only suppresses the *reminder*, at
- * delivery time.
+ * fixed job ids are re-installed (the reminder add-if-absent), and the row
+ * claim on `(org, type, dedupe_key)` plus `email_status` stops a second row or
+ * email — and it recovers a creation-time enqueue that was itself lost. No
+ * `status` filter: a booking notification records an event that did happen,
+ * exactly as the booking call sites do; cancellation only suppresses the
+ * *reminder*, at delivery time.
  */
 export async function dispatchConversationCompletedNotifications(
   organizationId: string,
