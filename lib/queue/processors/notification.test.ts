@@ -29,9 +29,12 @@ vi.mock('@/lib/voice/rate-limit', () => ({
 
 // The cap-deferral re-enqueue (issue 6) is the only queue write the processor
 // makes; mocking at `lazy-queue` keeps the real queue module in the graph.
-const { queueAddMock } = vi.hoisted(() => ({ queueAddMock: vi.fn() }))
+const { queueAddMock, queueRemoveMock } = vi.hoisted(() => ({
+  queueAddMock: vi.fn(),
+  queueRemoveMock: vi.fn(),
+}))
 vi.mock('@/lib/queue/lazy-queue', () => ({
-  lazyQueue: () => ({ add: queueAddMock, remove: vi.fn() }),
+  lazyQueue: () => ({ add: queueAddMock, remove: queueRemoveMock }),
 }))
 
 const ORG = '11111111-1111-1111-1111-111111111111'
@@ -67,10 +70,21 @@ const APPOINTMENT_ROW = {
   status: 'confirmed',
 }
 
+/** An appointment whose 24h reminder is due now: it starts a little under 24h out. */
+function dueReminderRow(overrides: Record<string, unknown> = {}, hoursOut = 23) {
+  const startsAtMs = Date.now() + hoursOut * 3_600_000
+  return {
+    ...APPOINTMENT_ROW,
+    starts_at: new Date(startsAtMs).toISOString(),
+    ends_at: new Date(startsAtMs + 3_600_000).toISOString(),
+    ...overrides,
+  }
+}
+
 /** Minimal PostgREST-shaped chain: thenable, and terminal through single/maybeSingle. */
 function chain(result: unknown) {
   const node: Record<string, unknown> = {}
-  for (const key of ['select', 'eq', 'order', 'limit', 'is', 'in', 'or', 'gt', 'neq']) {
+  for (const key of ['select', 'eq', 'order', 'limit', 'is', 'in', 'or', 'gt', 'neq', 'like']) {
     node[key] = vi.fn(() => node)
   }
   node.maybeSingle = vi.fn(() => Promise.resolve(result))
@@ -96,6 +110,92 @@ type ClientOptions = {
   userErrors?: Record<string, { status?: number; code?: string; message: string }>
   /** Thrown by `getUserById` instead of returned, i.e. a network failure. */
   userThrows?: string[]
+  /** Replaces the single-row `notifications` model with a filterable table. */
+  notificationsTable?: FakeNotificationsTable
+}
+
+type FakeRow = Record<string, unknown>
+type FakeNotificationsTable = ReturnType<typeof fakeNotificationsTable>
+
+/**
+ * A `notifications` table that honours the filters the service module applies
+ * (`eq`, `neq`, `is`, `like 'prefix%'`) and the unique index on
+ * `(organization_id, type, dedupe_key)`. Needed wherever a test is about *which*
+ * row a delivery lands on — the single-row model below cannot tell a reminder
+ * for the old time from one for the new time.
+ *
+ * The lease predicate (`.or(...)`) is treated as matching: lease contention is
+ * covered by the single-row tests.
+ */
+function fakeNotificationsTable() {
+  const rows: FakeRow[] = []
+  let nextId = 1
+
+  function query(patch?: FakeRow) {
+    const filters: ((row: FakeRow) => boolean)[] = []
+    const node: Record<string, unknown> = {}
+    node.eq = (column: string, value: unknown) => {
+      filters.push((row) => row[column] === value)
+      return node
+    }
+    node.neq = (column: string, value: unknown) => {
+      filters.push((row) => row[column] !== value)
+      return node
+    }
+    node.is = (column: string, value: unknown) => {
+      filters.push((row) => (row[column] ?? null) === value)
+      return node
+    }
+    node.like = (column: string, pattern: string) => {
+      const prefix = pattern.replace(/%$/, '')
+      filters.push((row) => String(row[column]).startsWith(prefix))
+      return node
+    }
+    node.or = () => node
+    node.select = () => node
+    const run = () => {
+      const matched = rows.filter((row) => filters.every((filter) => filter(row)))
+      if (patch) for (const row of matched) Object.assign(row, patch)
+      return matched
+    }
+    node.maybeSingle = () => Promise.resolve({ data: run()[0] ?? null, error: null })
+    node.single = node.maybeSingle
+    node.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
+      Promise.resolve({ data: run(), error: null }).then(resolve, reject)
+    return node
+  }
+
+  return {
+    rows,
+    insert: (values: FakeRow) => {
+      const exec = () => {
+        const duplicate = rows.some(
+          (row) =>
+            row.organization_id === values.organization_id &&
+            row.type === values.type &&
+            row.dedupe_key === values.dedupe_key
+        )
+        if (duplicate) return { data: null, error: { code: '23505', message: 'duplicate key' } }
+        const row: FakeRow = {
+          id: `notif-${nextId++}`,
+          email_sent_at: null,
+          email_claimed_at: null,
+          email_claim_token: null,
+          superseded_at: null,
+          is_read: false,
+          ...values,
+        }
+        rows.push(row)
+        return { data: row, error: null }
+      }
+      const node: Record<string, unknown> = {}
+      node.select = () => node
+      node.single = () => Promise.resolve(exec())
+      return node
+    },
+    select: () => query(),
+    update: (patch: FakeRow) => query(patch),
+  }
 }
 
 async function mockClient(options: ClientOptions = {}) {
@@ -110,6 +210,7 @@ async function mockClient(options: ClientOptions = {}) {
     userEmails = { 'user-1': 'owner@example.com' },
     userErrors = {},
     userThrows = [],
+    notificationsTable,
   } = options
 
   // The claimed row is stateful across calls within one `mockClient()`, so a
@@ -150,6 +251,7 @@ async function mockClient(options: ClientOptions = {}) {
       case 'members':
         return membersChain
       case 'notifications':
+        if (notificationsTable) return notificationsTable
         return {
           insert: notificationsInsert,
           select: notificationsSelect,
@@ -248,15 +350,50 @@ describe('processNotification', () => {
     })
   })
 
-  it('sends nothing and writes nothing when the preference is off', async () => {
-    const mocks = await mockClient({
-      settings: { data: { ...ALL_ON, notify_post_call_summary: false }, error: null },
+  // ── Round-2 issue 2 (decided): the toggles control email only ───────────
+  //
+  // They are labelled by channel ("Post-call summary — Email"), so switching
+  // one off must stop the Resend call and leave the bell alone.
+  describe('an email preference switched off', () => {
+    it('still writes the in-app row, and makes no Resend call', async () => {
+      const mocks = await mockClient({
+        settings: { data: { ...ALL_ON, notify_post_call_summary: false }, error: null },
+      })
+
+      await processNotification(job())
+
+      expect(mocks.notificationsInsert).toHaveBeenCalledTimes(1)
+      expect(mocks.notificationsInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'post_call_summary', dedupe_key: CONVERSATION })
+      )
+      expect(batchSendMock).not.toHaveBeenCalled()
+      // Not marked sent and not leased: switching the email back on before a
+      // retry could still deliver it.
+      expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
     })
 
-    await processNotification(job())
+    it('does the same for a reminder', async () => {
+      const mocks = await mockClient({
+        settings: { data: { ...ALL_ON, notify_appointment_reminders: false }, error: null },
+        appointment: { data: dueReminderRow(), error: null },
+      })
 
-    expect(mocks.notificationsInsert).not.toHaveBeenCalled()
-    expect(batchSendMock).not.toHaveBeenCalled()
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+
+      expect(mocks.notificationsInsert).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'appointment_reminder' })
+      )
+      expect(batchSendMock).not.toHaveBeenCalled()
+    })
+
+    it('writes the row and sends the email when the preference is on', async () => {
+      const mocks = await mockClient()
+
+      await processNotification(job())
+
+      expect(mocks.notificationsInsert).toHaveBeenCalledTimes(1)
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+    })
   })
 
   it('does not re-send when the claim already shows an email went out', async () => {
@@ -679,6 +816,200 @@ describe('processNotification', () => {
       warn.mockRestore()
       error.mockRestore()
     })
+  })
+
+  // ── Round-2 issue 1: a rescheduled appointment's second reminder ────────
+  //
+  // The reminder used to be claimed on the appointment id alone, so once the
+  // first reminder was emailed, the job re-installed for the new time found
+  // `email_sent_at` set and returned without contacting Resend.
+  describe('a reminder for an appointment moved after its first reminder went out', () => {
+    it('delivers a second reminder email for the new time', async () => {
+      const table = fakeNotificationsTable()
+      const appointment = { data: dueReminderRow({}, 23), error: null }
+      await mockClient({ notificationsTable: table, appointment })
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+
+      // Moved; the re-installed job fires 24h before the new time.
+      appointment.data = dueReminderRow({}, 20)
+      await processNotification(
+        job({ type: 'appointment_reminder', subjectId: APPOINTMENT }, 'job-2')
+      )
+
+      // Delivered, not merely re-enqueued: Resend was called again, under an
+      // idempotency key of its own so Resend does not fold it into the first.
+      expect(batchSendMock).toHaveBeenCalledTimes(2)
+      const [, first] = batchSendMock.mock.calls[0]
+      const [, second] = batchSendMock.mock.calls[1]
+      expect(second.idempotencyKey).not.toBe(first.idempotencyKey)
+      expect(table.rows).toHaveLength(2)
+      expect(table.rows[1].dedupe_key).toBe(
+        `${APPOINTMENT}:${new Date(appointment.data.starts_at).toISOString()}`
+      )
+    })
+
+    it('keeps the first row as the record of its email, hidden from the bell', async () => {
+      const table = fakeNotificationsTable()
+      const appointment = { data: dueReminderRow({}, 23), error: null }
+      await mockClient({ notificationsTable: table, appointment })
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+      appointment.data = dueReminderRow({}, 20)
+      await processNotification(
+        job({ type: 'appointment_reminder', subjectId: APPOINTMENT }, 'job-2')
+      )
+
+      const [original, moved] = table.rows
+      // Not deleted, not un-sent: the first reminder did go out.
+      expect(original.email_sent_at).not.toBeNull()
+      expect(original.superseded_at).not.toBeNull()
+      // The bell (which filters `superseded_at is null`) shows only this one.
+      expect(moved.superseded_at).toBeNull()
+      expect(moved.email_sent_at).not.toBeNull()
+    })
+
+    it('does not re-send when the same time is delivered twice', async () => {
+      const table = fakeNotificationsTable()
+      await mockClient({
+        notificationsTable: table,
+        appointment: { data: dueReminderRow(), error: null },
+      })
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+      await processNotification(
+        job({ type: 'appointment_reminder', subjectId: APPOINTMENT }, 'job-2')
+      )
+
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+      expect(table.rows).toHaveLength(1)
+      expect(table.rows[0].superseded_at).toBeNull()
+    })
+
+    it('skips a stale job that fires more than 24h before the appointment', async () => {
+      const mocks = await mockClient({ appointment: { data: APPOINTMENT_ROW, error: null } })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      // APPOINTMENT_ROW starts five days out: this job belonged to an earlier,
+      // nearer time, and the job for the current time is still pending.
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+
+      expect(mocks.notificationsInsert).not.toHaveBeenCalled()
+      expect(batchSendMock).not.toHaveBeenCalled()
+      warn.mockRestore()
+    })
+  })
+
+  // ── Round-2 issue 3: a deferral shadowed by a failed job ────────────────
+  it('replaces a failed deferral still parked under the same id', async () => {
+    // BullMQ semantics: `add()` under an id that exists in any state is a no-op.
+    const parked = new Map<string, string>([
+      [`notify:client_booking:${APPOINTMENT}:defer1`, 'failed'],
+    ])
+    queueRemoveMock.mockImplementation(async (jobId: string) => {
+      parked.delete(jobId)
+    })
+    queueAddMock.mockImplementation(
+      async (_name: string, _data: unknown, opts: { jobId: string }) => {
+        if (!parked.has(opts.jobId)) parked.set(opts.jobId, 'delayed')
+      }
+    )
+
+    try {
+      await mockClient({ appointment: { data: APPOINTMENT_ROW, error: null } })
+      const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+      vi.mocked(checkAndConsumeRateLimit).mockResolvedValue({ allowed: false, remaining: 0 })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await processNotification(job({ type: 'client_booking', subjectId: APPOINTMENT }))
+
+      expect(parked.get(`notify:client_booking:${APPOINTMENT}:defer1`)).toBe('delayed')
+      warn.mockRestore()
+    } finally {
+      queueAddMock.mockReset()
+      queueRemoveMock.mockReset()
+    }
+  })
+
+  // ── Round-2 issue 4: a booking announced twice ──────────────────────────
+  it('emails a booking once when creation and the call-end seam both deliver it', async () => {
+    const table = fakeNotificationsTable()
+    await mockClient({
+      notificationsTable: table,
+      appointment: { data: APPOINTMENT_ROW, error: null },
+    })
+
+    // The job from `createAppointmentServiceRole()`, then the seam's re-install.
+    await processNotification(job({ type: 'client_booking', subjectId: APPOINTMENT }))
+    await processNotification(job({ type: 'client_booking', subjectId: APPOINTMENT }, 'job-2'))
+
+    expect(batchSendMock).toHaveBeenCalledTimes(1)
+    expect(table.rows).toHaveLength(1)
+  })
+
+  // ── Round-2 issue 6: reminders from public bookings are capped too ──────
+  describe('the reminder cap for public-page bookings', () => {
+    const PUBLIC = { agent_id: null, conversation_id: null, client_id: 'client-1' }
+
+    it('charges a public booking reminder against its own window', async () => {
+      await mockClient({ appointment: { data: dueReminderRow(PUBLIC), error: null } })
+      const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+
+      expect(checkAndConsumeRateLimit).toHaveBeenCalledWith(
+        `notify:appointment_reminder:${ORG}`,
+        expect.objectContaining({ max: 20 })
+      )
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+    })
+
+    it('defers the reminder email past the window when the cap is spent', async () => {
+      const mocks = await mockClient({
+        appointment: { data: dueReminderRow(PUBLIC), error: null },
+      })
+      const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+      vi.mocked(checkAndConsumeRateLimit).mockResolvedValue({ allowed: false, remaining: 0 })
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+
+      expect(mocks.notificationsInsert).toHaveBeenCalledTimes(1)
+      expect(batchSendMock).not.toHaveBeenCalled()
+      expect(queueAddMock).toHaveBeenCalledWith(
+        'appointment_reminder',
+        expect.objectContaining({ capDeferrals: 1 }),
+        expect.objectContaining({ jobId: `notify:appointment_reminder:${APPOINTMENT}:defer1` })
+      )
+      warn.mockRestore()
+    })
+
+    it('does not cap a reminder for a voice or dashboard booking', async () => {
+      await mockClient({
+        appointment: {
+          data: dueReminderRow({ agent_id: 'agent-1', conversation_id: null, client_id: 'c-1' }),
+          error: null,
+        },
+      })
+      const { checkAndConsumeRateLimit } = await import('@/lib/voice/rate-limit')
+
+      await processNotification(job({ type: 'appointment_reminder', subjectId: APPOINTMENT }))
+
+      expect(checkAndConsumeRateLimit).not.toHaveBeenCalled()
+      expect(batchSendMock).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  // ── Round-2 issue 13: the lease token is interpolated into a filter ─────
+  it('refuses a lease token that could widen the PostgREST filter', async () => {
+    const mocks = await mockClient()
+
+    await expect(
+      processNotification(job({}, 'x",email_claim_token.is.null'))
+    ).rejects.toThrow('malformed notification lease token')
+    expect(mocks.notificationsUpdate).not.toHaveBeenCalled()
+    expect(batchSendMock).not.toHaveBeenCalled()
   })
 
   // ── Issue 9: a worker with no NEXT_PUBLIC_SITE_URL ──────────────────────

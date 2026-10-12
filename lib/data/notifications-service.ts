@@ -30,6 +30,12 @@ export type AppointmentSubjectRow = {
   startsAt: string
   endsAt: string
   status: string
+  /**
+   * Booked through the anonymous public booking page. That is the only writer
+   * that sets `client_id` with neither an agent nor a conversation: the voice
+   * tool sets `agent_id`, and the dashboard form sets no `client_id` at all.
+   */
+  publicBooking: boolean
 }
 
 /**
@@ -85,7 +91,39 @@ export async function claimNotification(input: {
 
   // Deliberately *not* refreshing title/body: the inbox is a log of what was
   // announced. The email always re-reads the subject, so it shows current state.
+  // A moved appointment does not need a refresh either: its reminder dedupe key
+  // carries the start time, so the new time claims a row of its own.
   return { id: existing.id, emailSentAt: existing.email_sent_at }
+}
+
+/**
+ * Hides the reminder rows for an appointment's *earlier* start times once a
+ * reminder for its current time has been claimed, so the bell never lists the
+ * old date beside the new one.
+ *
+ * Marked rather than deleted: a superseded row keeps its `email_sent_at`, which
+ * is the record that the first reminder did go out. Only the bell and the unread
+ * badge filter on `superseded_at`.
+ *
+ * Throws on failure so BullMQ retries: the row for the new time already exists
+ * by now, and the retry re-reads it without sending twice.
+ */
+export async function supersedeAppointmentReminders(
+  organizationId: string,
+  appointmentId: string,
+  currentDedupeKey: string
+): Promise<void> {
+  const { error } = await createServiceRoleClient()
+    .from('notifications')
+    .update({ superseded_at: new Date().toISOString() })
+    .eq('organization_id', organizationId)
+    .eq('type', 'appointment_reminder')
+    // Appointment ids are uuids, so the prefix carries no LIKE wildcard.
+    .like('dedupe_key', `${appointmentId}:%`)
+    .neq('dedupe_key', currentDedupeKey)
+    .is('superseded_at', null)
+
+  if (error) throw new Error(`Failed to supersede earlier reminders: ${error.message}`)
 }
 
 /**
@@ -97,6 +135,13 @@ export async function claimNotification(input: {
  * presents the same token and re-takes its own lease.
  */
 export const EMAIL_LEASE_MS = 2 * 60 * 1000
+
+/**
+ * What a lease token may contain: the characters of `job:<bullmq job id>`,
+ * where job ids are `notify:<type>:<uuid>[:deferN]`. Nothing that PostgREST's
+ * filter grammar treats as syntax.
+ */
+const LEASE_TOKEN_PATTERN = /^[A-Za-z0-9:_-]{1,200}$/
 
 /**
  * Takes (or re-takes) the delivery lease. True means "send now".
@@ -118,6 +163,14 @@ export async function claimNotificationEmailLease(
   token: string,
   nowMs: number = Date.now()
 ): Promise<boolean> {
+  // The token is interpolated into the PostgREST `.or()` filter below, so the
+  // predicate is caller-trusted: a comma, quote or parenthesis would *widen* the
+  // filter rather than fail, letting two workers both believe they hold the
+  // lease. Today it is always `job:<bullmq id>`; refuse anything else outright.
+  if (!LEASE_TOKEN_PATTERN.test(token)) {
+    throw new Error(`Refusing malformed notification lease token: ${JSON.stringify(token)}`)
+  }
+
   const expired = new Date(nowMs - EMAIL_LEASE_MS).toISOString()
   const { data, error } = await createServiceRoleClient()
     .from('notifications')
@@ -149,9 +202,17 @@ export async function markNotificationEmailSent(id: string): Promise<void> {
     .eq('id', id)
 
   if (error) {
-    // The email is out. Failing the job here would re-send it on the retry,
-    // which is worse than a row whose lease simply expires — the retry then
-    // re-submits under the same idempotency key and Resend dedupes it.
+    // The email is out, and this throw fails the job. The retry re-submits
+    // under the same idempotency key (`notify:<notification id>`) and Resend
+    // dedupes it — but only for as long as Resend keeps the key, which its docs
+    // put at 24 hours (resend.com/docs/dashboard/emails/idempotency-keys).
+    //
+    // Residual state, accepted: if every attempt fails at this write, the row is
+    // left delivered but unstamped (`email_sent_at` null, lease set). The retries
+    // themselves land well inside the 24h window (10s exponential backoff, at
+    // most five attempts), so they cannot duplicate. A *re-install* of the same
+    // job id more than 24 hours later — the conversation seam firing again, a
+    // backfill re-run — would re-send it once.
     throw new Error(`Failed to record notification email send: ${error.message}`)
   }
 }
@@ -303,7 +364,9 @@ export async function getAppointmentSubject(
 ): Promise<AppointmentSubjectRow | null> {
   const { data, error } = await createServiceRoleClient()
     .from('appointments')
-    .select('id, organization_id, title, client_name, client_phone, starts_at, ends_at, status')
+    .select(
+      'id, organization_id, title, client_name, client_phone, starts_at, ends_at, status, agent_id, conversation_id, client_id'
+    )
     .eq('id', appointmentId)
     .maybeSingle()
 
@@ -319,5 +382,6 @@ export async function getAppointmentSubject(
     startsAt: data.starts_at,
     endsAt: data.ends_at,
     status: data.status,
+    publicBooking: data.agent_id == null && data.conversation_id == null && data.client_id != null,
   }
 }

@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase/server', () => ({
 
 function chain(result: unknown) {
   const node: Record<string, unknown> = {}
-  for (const key of ['select', 'eq', 'order', 'limit']) {
+  for (const key of ['select', 'eq', 'is', 'order', 'limit']) {
     node[key] = vi.fn(() => node)
   }
   node.then = (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
@@ -49,6 +49,8 @@ describe('getRecentNotifications', () => {
     expect(from).toHaveBeenCalledWith('notifications')
     expect(node.eq).toHaveBeenCalledWith('organization_id', 'org-1')
     expect(node.limit).toHaveBeenCalledWith(10)
+    // A reminder for an appointment's earlier time is never listed.
+    expect(node.is).toHaveBeenCalledWith('superseded_at', null)
     expect(result).toEqual([
       {
         id: 'notif-1',
@@ -79,6 +81,7 @@ describe('getUnreadNotificationCount', () => {
     await expect(getUnreadNotificationCount('org-1')).resolves.toBe(3)
     expect(node.eq).toHaveBeenCalledWith('organization_id', 'org-1')
     expect(node.eq).toHaveBeenCalledWith('is_read', false)
+    expect(node.is).toHaveBeenCalledWith('superseded_at', null)
   })
 
   it('degrades to zero when the query errors', async () => {

@@ -12,7 +12,38 @@ export const NOTIFICATION_TYPES = [
 
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number]
 
-/** The four org-level toggles persisted in `organization_settings`. */
+/**
+ * How many rows the header panel lists. The unread badge is capped one below
+ * this (`9+`), so any exact number it shows is a number the panel can display.
+ */
+export const NOTIFICATION_PANEL_LIMIT = 10
+
+/**
+ * Dedupe key for an appointment reminder: the appointment *and* the start time
+ * it reminds about. A moved appointment is a new deliverable, so its reminder
+ * gets a row and an email of its own, while the row for the original time keeps
+ * its `email_sent_at` as an honest record that the first reminder went out.
+ *
+ * Normalized through `Date`, so the database's `+00:00` form and a caller's
+ * `.000Z` form of the same instant produce the same key. Returns null for an
+ * unparseable time.
+ */
+export function appointmentReminderDedupeKey(
+  appointmentId: string,
+  startsAt: string
+): string | null {
+  const ms = Date.parse(startsAt)
+  if (!Number.isFinite(ms)) return null
+  return `${appointmentId}:${new Date(ms).toISOString()}`
+}
+
+/**
+ * The org-level toggles persisted in `organization_settings`.
+ *
+ * They control **email only**. The in-app row is written whatever they say,
+ * because the settings labels name the channel ("Post-call summary — Email"),
+ * and a toggle labelled "Email" must not empty the bell as well.
+ */
 export type NotificationPreferences = {
   notifyPostCallSummary: boolean
   notifyAppointmentReminders: boolean

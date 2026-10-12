@@ -10,8 +10,10 @@ create table notifications (
   title text not null,
   body text not null,
   link_path text not null,
-  -- Natural key of the subject: a conversation id or an appointment id. With
-  -- `type` it is what makes delivery idempotent.
+  -- Natural key of the subject: a conversation id or an appointment id, and for
+  -- `appointment_reminder` the appointment id plus the start time reminded
+  -- about (`<id>:<iso>`), so a rescheduled appointment earns a second reminder.
+  -- With `type` it is what makes delivery idempotent.
   dedupe_key text not null,
   is_read boolean not null default false,
   -- Durable: stamped only once Resend has accepted the submission (or told us
@@ -25,6 +27,13 @@ create table notifications (
   -- still excluding a different worker until the lease ages out.
   email_claimed_at timestamptz,
   email_claim_token text,
+  -- Set on an appointment reminder once a reminder for the appointment's *new*
+  -- time has been claimed (the dedupe key carries the start time, so a moved
+  -- appointment gets a row of its own). The bell and the unread badge hide
+  -- superseded rows, so they never show the old time beside the new one; the
+  -- row itself is kept, because its `email_sent_at` is the record that the
+  -- first reminder went out. Written by the worker only.
+  superseded_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -36,7 +45,7 @@ create index notifications_org_created_idx
 
 create index notifications_org_unread_idx
   on notifications (organization_id, is_read)
-  where is_read = false;
+  where is_read = false and superseded_at is null;
 
 -- The conversation-completed seam looks up appointments booked during a call.
 create index if not exists appointments_conversation_id_idx

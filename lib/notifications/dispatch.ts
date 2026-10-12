@@ -1,23 +1,20 @@
 // Service-role-safe notification dispatch, importable from both server actions
 // and standalone worker processes (no `next/headers`, no `server-only`-tainted
-// imports). Mirrors `dispatchWebhook()`: read the org's preference, enqueue, and
-// never throw into the caller — a call or a booking must not fail because a
-// notification could not be enqueued.
+// imports). Mirrors `dispatchWebhook()`: enqueue, and never throw into the
+// caller — a call or a booking must not fail because a notification could not
+// be enqueued.
+//
+// No preference is read here. The org's toggles control email only, and the
+// in-app row is written regardless, so every event is enqueued; the processor
+// reads the email preference at delivery time and decides only whether to send.
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
-import {
-  getNotificationPreferences,
-  type NotificationPreferences,
-} from '@/lib/data/organization-settings-service'
 import {
   addNotificationJob,
   removeNotificationJob,
   POST_CALL_SUMMARY_ATTEMPTS,
   POST_CALL_SUMMARY_DELAY_MS,
 } from '@/lib/queue/queues/notification'
-import {
-  NOTIFICATION_TYPE_TO_PREFERENCE,
-  type NotificationEvent,
-} from '@/lib/notifications/types'
+import type { NotificationEvent } from '@/lib/notifications/types'
 
 const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
 
@@ -30,19 +27,13 @@ const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
 const SEAM_BUDGET_MS = 3_000
 
 /**
- * Enqueue a notification job when the org's preference for that type is on.
- *
- * `preferences` can be preloaded so a caller dispatching several notifications
- * pays for one settings read instead of one per event.
+ * Enqueue a notification job. Always — whatever the org's email preference for
+ * the type says, because the in-app row is written either way (see the
+ * decision comment at the preference check in
+ * `lib/queue/processors/notification.ts`).
  */
-export async function dispatchNotification(
-  event: NotificationEvent,
-  preferences?: NotificationPreferences
-): Promise<void> {
+export async function dispatchNotification(event: NotificationEvent): Promise<void> {
   try {
-    const resolved = preferences ?? (await getNotificationPreferences(event.organizationId))
-    if (!resolved[NOTIFICATION_TYPE_TO_PREFERENCE[event.type]]) return
-
     const subjectId =
       event.type === 'post_call_summary' ? event.conversationId : event.appointmentId
 
@@ -67,11 +58,16 @@ export async function dispatchNotification(
  * the appointment, the pattern `lib/voice/providers/assemblyai/enqueue-finalize.ts`
  * already uses.
  *
+ * Installed whatever the reminder email preference says: the in-app reminder
+ * is always written, and the processor decides about the email at delivery.
+ *
  * Safe to call on every write that touches `starts_at`, not just on creation:
  * `addNotificationJob()` drops the job already parked under that id, so a moved
- * appointment ends up with exactly one reminder, at the new time. Calling it
+ * appointment ends up with exactly one reminder job, at the new time. Calling it
  * only from the creation paths is what left a rescheduled appointment reminding
- * at its original time.
+ * at its original time. The delivered reminder is keyed on the start time too
+ * (`appointmentReminderDedupeKey()`), so a move after the first reminder went
+ * out still earns a second one.
  *
  * A booking made less than 24 hours out is skipped: it already produced a
  * booking notification, and a "reminder" seconds later is noise. An appointment
@@ -81,17 +77,9 @@ export async function dispatchNotification(
 export async function scheduleAppointmentReminder(
   organizationId: string,
   appointmentId: string,
-  startsAt: string,
-  preferences?: NotificationPreferences
+  startsAt: string
 ): Promise<void> {
   try {
-    const resolved = preferences ?? (await getNotificationPreferences(organizationId))
-    if (!resolved.notifyAppointmentReminders) {
-      // The preference may have been on when this appointment was booked.
-      await removeNotificationJob('appointment_reminder', appointmentId)
-      return
-    }
-
     const startsAtMs = Date.parse(startsAt)
     if (!Number.isFinite(startsAtMs)) {
       console.warn(
@@ -145,11 +133,15 @@ export async function cancelAppointmentReminder(appointmentId: string): Promise<
  * is enqueued before the seam spends any further round trips, because on LiveKit
  * the whole function races the job process's exit.
  *
- * The appointment lookup is a seam: AI-call bookings are notified at call end
- * because the right home (`createAppointmentServiceRole` in
- * `lib/data/booking-service.ts`) is owned by a concurrent run. No `status`
- * filter — a booking notification records an event that did happen, exactly as
- * the two booking call sites do; cancellation only suppresses the *reminder*, at
+ * The appointment half is a backstop, not the primary path: AI-call bookings
+ * are notified when they are written (`createAppointmentServiceRole` in
+ * `lib/data/booking-service.ts`), so a voice worker killed before its terminal
+ * write no longer loses them. Re-dispatching here is idempotent — the same
+ * fixed job ids are re-installed, and the row claim on
+ * `(org, type, dedupe_key)` plus `email_sent_at` stops a second row or email —
+ * and it recovers a creation-time enqueue that was itself lost. No `status`
+ * filter: a booking notification records an event that did happen, exactly as
+ * the booking call sites do; cancellation only suppresses the *reminder*, at
  * delivery time.
  */
 export async function dispatchConversationCompletedNotifications(
@@ -158,15 +150,8 @@ export async function dispatchConversationCompletedNotifications(
   status: 'completed' | 'failed'
 ): Promise<void> {
   try {
-    // One preferences read for the whole seam, passed down, so the booking half
-    // costs no extra round trip.
-    const preferences = await getNotificationPreferences(organizationId)
-
     if (status === 'completed') {
-      await dispatchNotification(
-        { type: 'post_call_summary', organizationId, conversationId },
-        preferences
-      )
+      await dispatchNotification({ type: 'post_call_summary', organizationId, conversationId })
     }
 
     const supabase = createServiceRoleClient()
@@ -177,11 +162,8 @@ export async function dispatchConversationCompletedNotifications(
       .eq('conversation_id', conversationId)
 
     for (const row of (data ?? []) as { id: string; starts_at: string }[]) {
-      await dispatchNotification(
-        { type: 'client_booking', organizationId, appointmentId: row.id },
-        preferences
-      )
-      await scheduleAppointmentReminder(organizationId, row.id, row.starts_at, preferences)
+      await dispatchNotification({ type: 'client_booking', organizationId, appointmentId: row.id })
+      await scheduleAppointmentReminder(organizationId, row.id, row.starts_at)
     }
   } catch (error) {
     console.error(`[notifications] conversation ${conversationId} dispatch failed:`, error)

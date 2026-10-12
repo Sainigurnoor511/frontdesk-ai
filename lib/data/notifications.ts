@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import type { NotificationType } from '@/lib/notifications/types'
+import { NOTIFICATION_PANEL_LIMIT, type NotificationType } from '@/lib/notifications/types'
 
 export type NotificationRow = {
   id: string
@@ -11,8 +11,6 @@ export type NotificationRow = {
   createdAt: string
 }
 
-const DEFAULT_LIMIT = 10
-
 /**
  * The org's newest notifications, bounded. Degrades to `[]` with a logged error
  * — an unapplied migration 047 must not 500 the dashboard layout, the same
@@ -22,7 +20,7 @@ const DEFAULT_LIMIT = 10
  */
 export async function getRecentNotifications(
   organizationId: string,
-  limit: number = DEFAULT_LIMIT
+  limit: number = NOTIFICATION_PANEL_LIMIT
 ): Promise<NotificationRow[]> {
   try {
     const supabase = await createClient()
@@ -30,6 +28,10 @@ export async function getRecentNotifications(
       .from('notifications')
       .select('id, type, title, body, link_path, is_read, created_at')
       .eq('organization_id', organizationId)
+      // A reminder for an appointment's earlier start time, replaced by one for
+      // its current time. Kept as the record of the email that went out; never
+      // listed beside the new one.
+      .is('superseded_at', null)
       .order('created_at', { ascending: false })
       .limit(limit)
 
@@ -62,6 +64,8 @@ export async function getUnreadNotificationCount(organizationId: string): Promis
       .select('id', { count: 'exact', head: true })
       .eq('organization_id', organizationId)
       .eq('is_read', false)
+      // Same filter as the list: a hidden row must not hold the badge up.
+      .is('superseded_at', null)
 
     if (error) {
       console.error('[notifications] unread count failed:', error)

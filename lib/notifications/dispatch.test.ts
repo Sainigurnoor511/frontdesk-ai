@@ -95,13 +95,22 @@ describe('dispatchNotification', () => {
     )
   })
 
-  it.each(PREFERENCE_CASES)('enqueues nothing for $type when off', async ({ type, column }) => {
-    await mockClient({ settings: { data: { ...ALL_ON, [column]: false }, error: null } })
+  // Round-2 issue 2 (decided): the toggles are labelled "Email", so they gate
+  // the email only. The in-app row needs the job whatever they say; the
+  // processor reads the preference at delivery and decides only about Resend.
+  it.each(PREFERENCE_CASES)(
+    'still enqueues $type with its email preference off, without reading it',
+    async ({ type, column }) => {
+      const { from } = await mockClient({
+        settings: { data: { ...ALL_ON, [column]: false }, error: null },
+      })
 
-    await dispatchNotification(eventFor(type))
+      await dispatchNotification(eventFor(type))
 
-    expect(addMock).not.toHaveBeenCalled()
-  })
+      expect(addMock).toHaveBeenCalledTimes(1)
+      expect(from).not.toHaveBeenCalled()
+    }
+  )
 
   it('delays only the post-call summary, and widens its attempt window', async () => {
     await mockClient()
@@ -145,40 +154,13 @@ describe('dispatchNotification', () => {
     warn.mockRestore()
   })
 
-  it('falls back to the schema defaults when the org has no settings row', async () => {
-    await mockClient({ settings: { data: null, error: null } })
-
-    await dispatchNotification(eventFor('post_call_summary'))
-
-    expect(addMock).toHaveBeenCalledTimes(1)
-  })
-
   it('swallows a failing enqueue instead of throwing into the caller', async () => {
     await mockClient()
     addMock.mockRejectedValueOnce(new Error('redis down'))
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await expect(dispatchNotification(eventFor('post_call_summary'))).resolves.toBeUndefined()
-  })
-
-  it('swallows a failing settings read instead of throwing into the caller', async () => {
-    await mockClient({ settings: { data: null, error: { message: 'boom' } } })
-
-    await expect(dispatchNotification(eventFor('post_call_summary'))).resolves.toBeUndefined()
-    expect(addMock).not.toHaveBeenCalled()
-  })
-
-  it('uses preloaded preferences without reading settings', async () => {
-    const { from } = await mockClient()
-
-    await dispatchNotification(eventFor('client_booking'), {
-      notifyPostCallSummary: true,
-      notifyAppointmentReminders: true,
-      notifyClientBookings: true,
-      notifyStaffBookings: true,
-    })
-
-    expect(from).not.toHaveBeenCalled()
-    expect(addMock).toHaveBeenCalledTimes(1)
+    error.mockRestore()
   })
 })
 
@@ -202,16 +184,17 @@ describe('scheduleAppointmentReminder', () => {
     expect(options.delay).toBeGreaterThan(0)
   })
 
-  it('schedules nothing when reminders are off', async () => {
-    await mockClient({
+  // Round-2 issue 2: "Appointment reminders — Email · 24h before" switched off
+  // stops the email, not the in-app reminder, so the job is still installed.
+  it('still schedules the reminder when the reminder email is off', async () => {
+    const { from } = await mockClient({
       settings: { data: { ...ALL_ON, notify_appointment_reminders: false }, error: null },
     })
 
     await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
 
-    expect(addMock).not.toHaveBeenCalled()
-    // Still clears a job scheduled while the preference was on.
-    expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
+    expect(addMock).toHaveBeenCalledTimes(1)
+    expect(from).not.toHaveBeenCalled()
   })
 
   it('skips a booking less than 24 hours out', async () => {
@@ -298,7 +281,7 @@ describe('cancelAppointmentReminder', () => {
 describe('dispatchConversationCompletedNotifications', () => {
   const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
 
-  it('reads preferences once and dispatches the summary plus a booking per appointment', async () => {
+  it('dispatches the summary plus a booking per appointment, reading no preferences', async () => {
     const { from } = await mockClient({
       appointments: {
         data: [
@@ -314,7 +297,7 @@ describe('dispatchConversationCompletedNotifications', () => {
     await dispatchConversationCompletedNotifications('org-1', 'conv-1', 'completed')
 
     const settingsReads = from.mock.calls.filter(([table]) => table === 'organization_settings')
-    expect(settingsReads).toHaveLength(1)
+    expect(settingsReads).toHaveLength(0)
 
     const names = addMock.mock.calls.map(([name]) => name)
     expect(names).toEqual([
@@ -362,17 +345,59 @@ describe('dispatchConversationCompletedNotifications', () => {
   })
 })
 
+/**
+ * Round-2 issue 4. A voice booking is now dispatched where it is written, and
+ * the call-end seam re-dispatches it as a backstop. The repeat must collapse:
+ * same fixed job ids, so a queue modelled on BullMQ's "add under an existing id
+ * is a no-op" ends with one job per notification. (The processor half — a
+ * second delivery of the same row sends no second email — is in
+ * `lib/queue/processors/notification.test.ts`.)
+ */
+describe('a voice booking dispatched at creation and again by the call-end seam', () => {
+  const farFuture = new Date(Date.now() + 5 * 86_400_000).toISOString()
+
+  it('leaves exactly one job per notification', async () => {
+    const jobs = new Map<string, unknown>()
+    addMock.mockImplementation(async (_name: string, data: unknown, opts: { jobId: string }) => {
+      if (!jobs.has(opts.jobId)) jobs.set(opts.jobId, data)
+    })
+    removeMock.mockImplementation(async (jobId: string) => {
+      jobs.delete(jobId)
+    })
+
+    try {
+      await mockClient({
+        appointments: { data: [{ id: 'appt-1', starts_at: farFuture }], error: null },
+      })
+
+      // `createAppointmentServiceRole()`, mid-call.
+      await dispatchNotification({
+        type: 'client_booking',
+        organizationId: 'org-1',
+        appointmentId: 'appt-1',
+      })
+      await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
+      // The terminal conversation write.
+      await dispatchConversationCompletedNotifications('org-1', 'conv-1', 'completed')
+
+      expect([...jobs.keys()].sort()).toEqual([
+        'notify:appointment_reminder:appt-1',
+        'notify:client_booking:appt-1',
+        'notify:post_call_summary:conv-1',
+      ])
+    } finally {
+      addMock.mockReset()
+      removeMock.mockReset()
+    }
+  })
+})
+
 describe('dispatchConversationCompletedNotificationsBounded', () => {
   it('resolves on the budget when the enqueue never settles', async () => {
     vi.useFakeTimers()
-    const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
-    const hanging: Record<string, unknown> = {}
-    hanging.select = vi.fn(() => hanging)
-    hanging.eq = vi.fn(() => hanging)
-    hanging.maybeSingle = vi.fn(() => new Promise(() => {}))
-    vi.mocked(createServiceRoleClient).mockReturnValue({
-      from: vi.fn(() => hanging),
-    } as never)
+    await mockClient()
+    // Redis unreachable: ioredis queues the command and never settles it.
+    addMock.mockImplementationOnce(() => new Promise(() => {}))
 
     let settled = false
     const promise = dispatchConversationCompletedNotificationsBounded(

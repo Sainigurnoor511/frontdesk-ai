@@ -85,9 +85,15 @@ export async function addNotificationJob(
   data: NotificationJobData,
   options: { delay?: number; attempts?: number } = {}
 ): Promise<void> {
-  const jobId = notificationJobId(data.type, data.subjectId)
+  // The id follows the payload: a cap deferral carries `capDeferrals`, and gets
+  // its own `:deferN` id, so it is cleared and installed through exactly the
+  // same remove-before-add as the original. A deferral that skipped this used to
+  // be swallowed by a failed `:deferN` job still sitting in the failed set.
+  const jobId = data.capDeferrals
+    ? notificationDeferralJobId(data.type, data.subjectId, data.capDeferrals)
+    : notificationJobId(data.type, data.subjectId)
 
-  await removeNotificationJob(data.type, data.subjectId)
+  await removeJob(jobId)
   await notificationQueue.add(data.type, data, { jobId, ...options })
 }
 
@@ -99,7 +105,10 @@ export async function removeNotificationJob(
   type: NotificationType,
   subjectId: string
 ): Promise<void> {
-  const jobId = notificationJobId(type, subjectId)
+  await removeJob(notificationJobId(type, subjectId))
+}
+
+async function removeJob(jobId: string): Promise<void> {
   try {
     await notificationQueue.remove(jobId)
   } catch (error) {

@@ -12,18 +12,18 @@ import {
   getOrgRecipients,
   markNotificationEmailSent,
   releaseNotificationEmailClaim,
+  supersedeAppointmentReminders,
 } from '@/lib/data/notifications-service'
 import { buildNotificationContent, type NotificationSubject } from '@/lib/notifications/content'
-import { NOTIFICATION_TYPE_TO_PREFERENCE } from '@/lib/notifications/types'
+import {
+  appointmentReminderDedupeKey,
+  NOTIFICATION_TYPE_TO_PREFERENCE,
+} from '@/lib/notifications/types'
 import {
   assertNotificationEmailConfigured,
   sendNotificationEmails,
 } from '@/lib/email/send-notification-email'
-import {
-  notificationDeferralJobId,
-  notificationQueue,
-  type NotificationJobData,
-} from '@/lib/queue/queues/notification'
+import { addNotificationJob, type NotificationJobData } from '@/lib/queue/queues/notification'
 import { notificationJobSchema } from '@/lib/validations/notification'
 import {
   checkAndConsumeRateLimit,
@@ -38,6 +38,9 @@ import {
  * by `canUseBookingPage` and 5 bookings/hour/IP), so each booking there now
  * produces externally visible email. A single IP can only produce 5 of these 20,
  * so the cap engages for distributed floods and not for a real business.
+ *
+ * The same bound, in a window of its own, applies to the reminder emails those
+ * public-page bookings earn (step 10).
  */
 const MAX_CLIENT_BOOKING_NOTIFICATIONS_PER_HOUR = 20
 
@@ -58,12 +61,25 @@ const CLIENT_BOOKING_CHARGE_TTL_SECONDS = 6 * 3_600
 const MAX_CAP_DEFERRALS = 3
 
 /**
- * Delivers one notification: re-reads the preference, loads the subject, claims
- * the row and the send, and fans the email out to the org's members.
+ * How far past the 24h lead a reminder may still be delivered. A reminder job
+ * fires at `startsAt - 24h` or later (cap deferrals only ever push it later), so
+ * an appointment further out than this means the job is not this appointment's
+ * current reminder: the appointment moved later, and the job installed for the
+ * new time is still pending. Delivering here would send the new time's reminder
+ * days early and leave the real one to find it already sent.
+ */
+const REMINDER_LEAD_MS = 24 * 60 * 60 * 1000
+const REMINDER_EARLY_SLACK_MS = 5 * 60 * 1000
+
+/**
+ * Delivers one notification: loads the subject, claims the row, re-reads the
+ * email preference, claims the send, and fans the email out to the org's
+ * members.
  *
  * Everything is re-read at delivery time — nothing but ids travels in the job
  * payload — so a reminder enqueued 24 hours earlier renders the appointment's
- * current state, and a preference flipped off in between suppresses the send.
+ * current state, and an email preference flipped off in between suppresses the
+ * email (never the in-app row).
  */
 export async function processNotification(job: Job<NotificationJobData>): Promise<void> {
   // 1. Validate the payload.
@@ -76,12 +92,7 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
 
   const { organizationId, type, subjectId, capDeferrals } = parsed.data
 
-  // 2. Re-read the preference. This is the authority; the enqueue-time check
-  //    only keeps the queue quiet.
-  const preferences = await getNotificationPreferences(organizationId)
-  if (!preferences[NOTIFICATION_TYPE_TO_PREFERENCE[type]]) return
-
-  // 3. Load the subject.
+  // 2. Load the subject.
   const row =
     type === 'post_call_summary'
       ? await getConversationSubject(subjectId)
@@ -98,9 +109,11 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
     )
   }
 
-  // 4. Map the row onto the content builder's input, and 5. apply the
+  // 3. Map the row onto the content builder's input, and apply the
   //    type-specific suppression that row allows.
   let subject: NotificationSubject
+  let dedupeKey = subjectId
+  let publicBooking = false
 
   if ('summary' in row) {
     if (row.status === 'active') {
@@ -124,8 +137,21 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
     // cancellation: they record an event that did happen.
     if (type === 'appointment_reminder') {
       if (row.status === 'cancelled') return
-      if (Date.parse(row.startsAt) <= Date.now()) return
+      const untilStartMs = Date.parse(row.startsAt) - Date.now()
+      if (untilStartMs <= 0) return
+      if (untilStartMs > REMINDER_LEAD_MS + REMINDER_EARLY_SLACK_MS) {
+        console.warn(
+          `[notifications] reminder job for ${subjectId} fired more than 24h before the appointment; it was moved later, skipping`
+        )
+        return
+      }
+
+      // The start time is part of the key, so a moved appointment is a new
+      // deliverable rather than a duplicate of the reminder already emailed.
+      dedupeKey = appointmentReminderDedupeKey(subjectId, row.startsAt) ?? subjectId
     }
+
+    publicBooking = row.publicBooking
 
     subject = {
       kind: 'appointment',
@@ -139,39 +165,63 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
     }
   }
 
-  // 6. Org name and timezone.
+  // 4. Org name and timezone.
   const [organizationName, timeZone] = await Promise.all([
     getOrganizationName(organizationId),
     getOrgTimezone(organizationId),
   ])
 
-  // 7. Build content.
+  // 5. Build content.
   const content = buildNotificationContent({ type, subject, organizationName, timeZone })
 
-  // 8. Claim the notification row. `dedupeKey` is always the job's subject id;
-  //    `type` is what separates a booking row from its reminder row.
+  // 6. Claim the notification row. `dedupeKey` is the job's subject id, plus the
+  //    start time for a reminder; `type` is what separates a booking row from
+  //    its reminder row.
   const notification = await claimNotification({
     organizationId,
     type,
-    dedupeKey: subjectId,
+    dedupeKey,
     title: content.title,
     body: content.body,
     linkPath: content.linkPath,
   })
 
-  // 9. A completed duplicate: one email per (org, type, subject), across retries
-  //    and across process restarts.
+  // 7. The row for the current time exists, so the rows for earlier times stop
+  //    showing in the bell. Idempotent, so it runs on every attempt — including
+  //    one that finds the email already sent below.
+  if (type === 'appointment_reminder' && dedupeKey !== subjectId) {
+    await supersedeAppointmentReminders(organizationId, subjectId, dedupeKey)
+  }
+
+  // 8. A completed duplicate: one email per (org, type, dedupe key), across
+  //    retries and across process restarts.
   if (notification.emailSentAt !== null) return
 
-  // 10. Bound the anonymous-booking fan-out.
+  // 9. The preference gates the email only. DECISION (easy to reverse): the
+  //    settings toggles are labelled by channel — "Post-call summary — Email",
+  //    "Appointment reminders — Email · 24h before" — so switching one off must
+  //    not also empty the bell. That is why this check sits *after* the row
+  //    claim above, and why `dispatchNotification()` enqueues regardless. Read
+  //    here, at delivery time, so a toggle flipped between enqueue and delivery
+  //    is still honoured. To make the toggles cover both channels instead, move
+  //    this back above step 6 and relabel them "Notify me about …".
+  const preferences = await getNotificationPreferences(organizationId)
+  if (!preferences[NOTIFICATION_TYPE_TO_PREFERENCE[type]]) return
+
+  // 10. Bound the anonymous-booking fan-out: booking emails, and the reminder
+  //     emails that public-page bookings earn a day later — otherwise a flood
+  //     capped today simply arrives 24 hours shifted. Each type has its own
+  //     window, so a burst of reminders cannot starve booking emails. Voice and
+  //     dashboard reminders are not capped: a phone call or a signed-in member
+  //     made each of those.
   //
   //     Charged once per notification, not once per attempt: the limiter is a
   //     bare INCR and this processor re-enters at step 1 on every retry, so a
   //     booking that flapped three times used to burn three of the twenty
   //     hourly tokens and shrink the effective cap to about six bookings.
-  if (type === 'client_booking') {
-    const capKey = `notify:client_booking:${organizationId}`
-    const chargeKey = `notify:client_booking:charged:${notification.id}`
+  if (type === 'client_booking' || (type === 'appointment_reminder' && publicBooking)) {
+    const capKey = `notify:${type}:${organizationId}`
+    const chargeKey = `notify:${type}:charged:${notification.id}`
     const firstCharge = await claimRateLimitCharge(chargeKey, CLIENT_BOOKING_CHARGE_TTL_SECONDS)
 
     if (firstCharge) {
@@ -182,9 +232,7 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
       if (!allowed) {
         // Not charged after all — the next window re-evaluates from scratch.
         await releaseRateLimitCharge(chargeKey)
-        console.warn(
-          `[notifications] client_booking email cap reached for org ${organizationId}`
-        )
+        console.warn(`[notifications] ${type} email cap reached for org ${organizationId}`)
         // The row already exists, so the in-app center still shows the booking.
         // The email is re-attempted past the window boundary rather than
         // dropped: the window reopens minutes later, and nothing else in the
@@ -278,13 +326,17 @@ export async function processNotification(job: Job<NotificationJobData>): Promis
 }
 
 /**
- * Re-enqueues a capped booking email just past the current window boundary.
+ * Re-enqueues a capped email just past the current window boundary.
  *
  * The job id carries the deferral count instead of reusing
  * `notificationJobId()`: that id belongs to the job running this code, which is
  * active and therefore cannot be removed or re-added. The notification row is
  * already claimed, so the deferred attempt picks up exactly where this one
  * stopped.
+ *
+ * Through `addNotificationJob()`, never a bare `add()`: a failed `:deferN` job
+ * from an earlier attempt stays in the failed set for up to an hour, and BullMQ
+ * treats an `add()` under its id as a no-op — the booking email would vanish.
  */
 async function deferPastCapWindow(
   data: NotificationJobData,
@@ -304,14 +356,7 @@ async function deferPastCapWindow(
   // no readable TTL.
   const delaySeconds = Math.max(remaining + 5, 60)
 
-  await notificationQueue.add(
-    data.type,
-    { ...data, capDeferrals: next },
-    {
-      jobId: notificationDeferralJobId(data.type, data.subjectId, next),
-      delay: delaySeconds * 1_000,
-    }
-  )
+  await addNotificationJob({ ...data, capDeferrals: next }, { delay: delaySeconds * 1_000 })
 }
 
 export function describeNotificationJob(job: Job<NotificationJobData>): string {
