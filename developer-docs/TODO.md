@@ -233,11 +233,17 @@ are **awaiting a product decision**, so neither has been started.
 
 ## P2 - UX + Platform
 
-- [ ] **E2E / load testing pass** (moved from root `TODO.md`, audited 2026-08-25, rechecked
-      2026-10-12) — nothing exists beyond unit tests and the voice-latency instrumentation.
-      `@playwright/test` is a devDependency but there is no Playwright config and no spec
-      files, so the harness has to be set up from scratch. Scope TBD; the obvious first
-      targets are the signup → onboarding → agent-create path and the public booking page.
+- [ ] **E2E / load testing pass** (moved from root `TODO.md`, audited 2026-08-25, re-audited
+      2026-10-13) — the Playwright harness exists and is not part of this item any more:
+      `playwright.config.ts`, five specs in `e2e/` (login form, unauthenticated redirect,
+      booking-page 404 and configured slug, live sign-in, the MFA Server Action redirect),
+      and a `workflow_dispatch`-only `.github/workflows/e2e.yml` that has not yet been run
+      with real secrets (see `e2e/README.md`). What is genuinely missing: **load testing**
+      (no tool, script or target numbers exist — the obvious candidates are the public
+      booking page, `/api/assistant` streaming and concurrent voice sessions), and the
+      **signup → onboarding → agent-create journey**, which no spec drives; the booking
+      flow itself (pick a slot, book, reschedule, cancel) is also only covered as far as
+      the page loading.
 - [ ] Calendar per-slot buffer time support
 - [ ] Notification center UI (header popover currently shell)
 - [ ] Billing/upgrade flow behind sidebar upgrade card

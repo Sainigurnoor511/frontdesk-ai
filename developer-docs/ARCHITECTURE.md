@@ -481,7 +481,7 @@ Never inline validation in actions or components — always import from these mo
 - **Convention:** test files sit next to the code they test (e.g. `actions.test.ts`, `crawl.test.ts`, `booking-flow.test.tsx`)
 - **Run:** `pnpm test` (once) or `pnpm test:watch`; typecheck with `pnpm exec tsc --noEmit`
 - **E2E:** Playwright suite under `e2e/` (`pnpm test:e2e`); prerequisites and env-gated specs are in `e2e/README.md`
-- `lib/auth/mfa-attempts.test.ts` uses real sockets, never a mocked Redis client: the outage cases (refused port, silent server) always run; the Lua-script cases need a disposable Redis at `MFA_REDIS_TEST_URL` (default `redis://127.0.0.1:6379/15`) and skip with that reason when none answers
+- `lib/auth/mfa-attempts.test.ts` uses real sockets, never a mocked Redis client: the outage cases (refused port, silent server) and the slow-connect cases (against a minimal in-test RESP server) always run; the Lua-script cases need a disposable Redis at `MFA_REDIS_TEST_URL` (default `redis://127.0.0.1:6379/15`) and skip with that reason when none answers. `.github/workflows/mfa-attempts.yml` runs that one file against a `redis:7-alpine` service on pull requests touching `lib/auth/**`, so those cases run somewhere other than a developer box. Locally, make sure the default URL is a real Redis ≥ 6, not another server that happens to listen on 6379
 
 ### Known Baseline (2026-10-08)
 
@@ -531,7 +531,9 @@ docker compose --env-file .env.local up --build
 
 ## CI
 
-`.github/workflows/migrations.yml` runs `supabase db push --linked` on pushes to `main` that touch `supabase/migrations/**` or `supabase/config.toml` (also manual dispatch). Requires repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`. There is no build/test workflow yet.
+`.github/workflows/migrations.yml` runs `supabase db push --linked` on pushes to `main` that touch `supabase/migrations/**` or `supabase/config.toml` (also manual dispatch). Requires repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`.
+
+`.github/workflows/e2e.yml` runs the Playwright suite on manual dispatch only, with a `redis:7-alpine` service for the MFA spec; see `e2e/README.md`. `.github/workflows/mfa-attempts.yml` runs only `lib/auth/mfa-attempts.test.ts` against a `redis:7-alpine` service, on pull requests touching `lib/auth/**` and on dispatch. There is no full build or Vitest workflow yet: the full suite still carries known failures (see `developer-docs/TODO.md`), so it would not be a usable gate.
 
 ---
 
