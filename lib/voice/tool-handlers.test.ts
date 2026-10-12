@@ -28,6 +28,7 @@ describe('buildVoiceToolHandlers', () => {
       'cancel_appointment',
       'reschedule_appointment',
       'search_knowledge',
+      'take_message',
     ])
   })
 
@@ -39,6 +40,7 @@ describe('buildVoiceToolHandlers', () => {
     expect(names).not.toContain('search_knowledge')
     expect(names).toContain('cancel_appointment')
     expect(names).toContain('reschedule_appointment')
+    expect(names).toContain('take_message')
   })
 
   // The security gate. Email is the only caller credential these three tools
@@ -53,8 +55,14 @@ describe('buildVoiceToolHandlers', () => {
     expect(names).not.toContain('cancel_appointment')
     expect(names).not.toContain('reschedule_appointment')
     // Booking a new appointment discloses nothing about an existing client, so
-    // it stays.
-    expect(names).toEqual(['check_availability', 'book_appointment', 'search_knowledge'])
+    // it stays. `take_message` stays for the same reason, and because the
+    // secure-mode prompt tells the agent to offer exactly that instead.
+    expect(names).toEqual([
+      'check_availability',
+      'book_appointment',
+      'search_knowledge',
+      'take_message',
+    ])
   })
 
   it('withholds them for identity verification alone, which is a separate toggle', () => {

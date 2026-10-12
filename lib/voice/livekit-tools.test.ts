@@ -27,6 +27,7 @@ describe('buildLiveKitTools', () => {
       'cancel_appointment',
       'reschedule_appointment',
       'search_knowledge',
+      'take_message',
     ])
   })
 

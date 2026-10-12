@@ -57,7 +57,6 @@ Use this as the completion gate before marking a feature item done.
       through the server action, and the browser capture/playback path itself. Test in
       Firefox and Safari specifically — the in-worklet resampling exists because those two
       break the forced-24 kHz shortcut, and that code has never run.
-- [ ] Enforce `answering_mode`/routing logic in `workers/voice-agent.ts`
 - [ ] Wire feature flags to sidebar visibility and route guards
 - [ ] Implement notification delivery from stored prefs (`organization_settings`)
 
@@ -129,6 +128,45 @@ both surfaces.
 
 - [ ] Twilio inbound phone path to LiveKit SIP flow
 - [ ] Plivo inbound phone path to LiveKit SIP flow
+- [ ] **Enforce `answering_mode` / call routing in `workers/voice-agent.ts`** (moved here
+      from P0 on 2026-10-13, after the feasibility investigation in
+      `.agents/tasks/answering-mode-feasibility.md`) — **a dependent of the two LiveKit SIP
+      items above, not a worker bug.** `staff_first` means "ring a human on the PSTN before
+      the AI answers", and there is no PSTN leg to ring or intercept: every call today is a
+      browser WebRTC session the caller started by clicking a button. Verified blockers:
+      - No **LiveKit SIP outbound trunk**. `livekit-server-sdk@^2.17.0` already exports
+        `SipClient` and `TransferSipParticipantOptions`, so no new dependency is needed —
+        but LiveKit Cloud SIP (or a self-hosted `sip` service) has to be enabled, a trunk
+        created via `createSipOutboundTrunk`, and its id added as a new env var. No SIP env
+        var exists in `.env.example` and no `SipClient` call site exists in the repo.
+      - No **SIP trunk provider account with outbound voice** and no verified outbound
+        caller ID, which is what dialling `staff_phone_number` would need.
+      - No **inbound path at all**: `provisionTwilioNumber` only *purchases* a number and
+        never sets a `VoiceUrl` or SIP origination URI, and there is no
+        `createSipInboundTrunk` / `createSipDispatchRule`. Without inbound there is no call
+        to route, so `answering_mode` has nothing to decide.
+      - Cost is a product decision, not a blocker: Interpretation A (dial the staff number
+        into the room on every call) bills a PSTN leg per web visitor.
+      The setting is already labelled inactive in the UI (the `bg-warning-subtle` banner at
+      `agent-detail-client.tsx:827`), so this is parked rather than dishonest. The adjacent
+      fields in the same cluster are inert for the same reason and ship with it:
+      `max_ring_seconds`, `hold_music` *and* `hold_sound` (two overlapping fields, no
+      playback path and no assets for either — pick `hold_sound`, the enum one), and
+      `blocked_phone_numbers` (CRUD only; a browser call carries no caller number to match).
+      The unblocked half of this story — taking a message for a human — shipped; see
+      Completed Recently.
+- [ ] **Notify the org about a new caller message by email** (added: 2026-10-13) —
+      `take_message` dispatches the `caller_message.created` outbound webhook, which is the
+      only org-wide delivery path that exists. An org that has not configured a webhook
+      learns about an escalated caller only by opening the Messages tab. When the
+      notification-delivery item lands, add a `dispatchNotification()` call alongside the
+      webhook in `lib/voice/tools/escalation-handlers.ts` — alongside, not instead of, and
+      not a second email sender of its own.
+- [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13, found
+      during the `answering_mode` investigation) — honoured on the AssemblyAI path
+      (`session-config.ts` sends `voice_focus` + `voice_focus_threshold`), but
+      `workers/voice-agent.ts` never reads the field. A per-provider gap, unrelated to
+      routing.
 - [ ] Add outbound API/webhook key model for external automation
 
 ## P2 - UX + Platform
@@ -181,6 +219,30 @@ both surfaces.
 
 ## Completed Recently
 
+- [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
+      receptionist promised a human handoff it had no tool to perform. The UI advertises
+      transfers (the Transfer rules section on the agent detail page, the "Handoff to a
+      human" rule card) and `agent_rules` reach the model as free prose, so the model could
+      already *say* it would put a caller through. New
+      `lib/voice/tools/escalation-handlers.ts` captures caller name, callback number,
+      reason, and caller-expressed urgency (`lib/validations/caller-message.ts`, a bare
+      `ZodObject` so both providers accept it; the digit-count check on the callback number
+      is in `execute`, where a `.refine()` cannot break the schema). Registered last and
+      ungated in `buildVoiceToolHandlers()`, so both engines pick it up — LiveKit through
+      `livekit-tools.ts`, AssemblyAI through `session.tools` — and a secure-mode agent with
+      no manage-booking tools still has it, which is what makes the existing "offer to take
+      a message" sentence in `buildSystemPrompt()` true. Persisted to `caller_messages`
+      against the call's `conversation_id` rather than a new table: that row already drives
+      the Messages tab, the sidebar unread badge, mark-as-read, and
+      `createContactFromMessage`, so a parallel `escalations` table would have been a second
+      inbox nobody opens. Migration `046` adds `urgency` and `source` to the table (existing
+      rows backfill to `call_followup`, the inferred end-of-call message) and the Messages
+      tab now labels and badges the two apart. `buildSystemPrompt()` gained a paragraph
+      stating there is no live transfer and that a handoff rule means take a message —
+      without it the model narrates a transfer that cannot happen. Notification reuses
+      `dispatchWebhook` with a new `caller_message.created` event; the email gap is the P1
+      item above. Explicitly **not** built: ringing a staff phone, SIP, warm transfer,
+      bridging, any `answering_mode` enforcement — all blocked on telephony, see P1.
 - [x] Added `find_appointment`, `cancel_appointment`, and `reschedule_appointment` voice
       tools in a new sibling module `lib/voice/tools/manage-booking-handlers.ts` (not
       `booking-handlers.ts`), reusing the public manage-booking service path so calendar

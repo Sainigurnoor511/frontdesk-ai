@@ -1,6 +1,7 @@
 import { buildBookingToolHandlers } from './tools/booking-handlers'
 import { buildManageBookingToolHandlers } from './tools/manage-booking-handlers'
 import { buildKnowledgeToolHandlers } from './tools/knowledge-handlers'
+import { buildEscalationToolHandlers } from './tools/escalation-handlers'
 import type { VoiceToolContext, VoiceToolHandler } from './tools/types'
 
 export type { VoiceToolContext, VoiceToolHandler }
@@ -48,6 +49,10 @@ export function buildVoiceToolHandlers(context: VoiceToolContext): VoiceToolHand
   if (!context.skipKnowledgeRetrieval) {
     handlers.push(...buildKnowledgeToolHandlers(context))
   }
+  // Last, and never gated. It is the fallback for every other tool failing or
+  // being withheld, including on a secure-mode agent that has no manage-booking
+  // tools at all — see `buildEscalationToolHandlers`.
+  handlers.push(...buildEscalationToolHandlers(context))
   return handlers
 }
 
