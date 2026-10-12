@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import { ShieldAlert } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { resolveMfaGate, POST_LOGIN_PATH } from '@/lib/auth/mfa'
 import { cancelMfaChallenge } from '@/app/(auth)/actions'
@@ -27,6 +28,28 @@ export default async function VerifyPage() {
   }
   if (mfa.state === 'unauthenticated') {
     redirect('/login')
+  }
+
+  if (mfa.state === 'indeterminate' && mfa.reason === 'unsupported_factor') {
+    // Not transient, so "try again" copy would send the user round the loop forever. Say what is
+    // wrong and who can fix it: on a self-hosted install that is whoever runs it, using the
+    // procedure in developer-docs/ARCHITECTURE.md (Auth Flow, operator recovery).
+    return (
+      <div className="space-y-4 text-center">
+        <ShieldAlert aria-hidden className="mx-auto size-8 text-warning" />
+        <h1 className="text-2xl font-semibold">This sign-in method is not supported</h1>
+        <p className="text-sm text-muted-foreground">
+          Your account uses a two-factor method other than an authenticator app. This app can only
+          check authenticator app codes, so signing in again will not help.
+        </p>
+        <p className="rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning">
+          Ask the person who runs your Frontdesk.ai workspace to remove the other two-factor method
+          from your account. Then sign in with your password and set up an authenticator app in
+          settings.
+        </p>
+        <CancelForm label="Sign out" />
+      </div>
+    )
   }
 
   if (mfa.state === 'indeterminate') {
