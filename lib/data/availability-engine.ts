@@ -90,6 +90,23 @@ function subtractInterval(
   })
 }
 
+/**
+ * Turns a resolved PostgREST error into a throw.
+ *
+ * supabase-js *resolves* with `{ data: null, error }` on a query error rather
+ * than rejecting, so reading only `data` makes every failed read look like an
+ * empty table — which in this function means "nothing blocks that time". A
+ * failed appointments, time-off, or exception read would silently remove
+ * blockers and a failed staff-hours read would fall back to business hours, so
+ * a transient database error could authorize a double booking and report it as
+ * confirmed. Every read here therefore fails closed, loudly.
+ */
+function assertReadOk(label: string, error: { message: string } | null): void {
+  if (error) {
+    throw new Error(`availability read failed (${label}): ${error.message}`)
+  }
+}
+
 export async function getAvailableSlots(
   organizationId: string,
   input: {
@@ -100,7 +117,7 @@ export async function getAvailableSlots(
     /**
      * Treats this appointment as if it did not exist, so an appointment being
      * moved does not block the slots it is about to vacate. Used by the voice
-     * `reschedule_appointment` tool.
+     * `reschedule_appointment` tool and the public reschedule action.
      */
     excludeAppointmentId?: string
   }
@@ -108,13 +125,13 @@ export async function getAvailableSlots(
   const supabase = createServiceRoleClient()
 
   const [
-    { data: profile },
-    { data: serviceRow },
-    { data: hoursRows },
-    { data: staffHoursRows },
-    { data: exceptionRows },
-    { data: timeOffRows },
-    { data: appointmentRows },
+    { data: profile, error: profileError },
+    { data: serviceRow, error: serviceError },
+    { data: hoursRows, error: hoursError },
+    { data: staffHoursRows, error: staffHoursError },
+    { data: exceptionRows, error: exceptionError },
+    { data: timeOffRows, error: timeOffError },
+    { data: appointmentRows, error: appointmentError },
   ] = await Promise.all([
     supabase
       .from('business_profile')
@@ -123,7 +140,13 @@ export async function getAvailableSlots(
       )
       .eq('organization_id', organizationId)
       .maybeSingle(),
-    supabase.from('services').select('duration_minutes').eq('id', input.serviceId).maybeSingle(),
+    // Skipped rather than queried with `''`: `services.id` is a uuid, so
+    // `.eq('id', '')` is a Postgres cast error, and the callers that have no
+    // service (the voice reschedule tool, the public reschedule action, the
+    // service-less slot preview) all pass the empty string deliberately.
+    input.serviceId
+      ? supabase.from('services').select('duration_minutes').eq('id', input.serviceId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from('business_hours')
       .select('day_of_week, is_open, start_time, end_time')
@@ -133,7 +156,7 @@ export async function getAvailableSlots(
           .from('staff_hours')
           .select('day_of_week, is_open, start_time, end_time')
           .eq('staff_id', input.staffId)
-      : Promise.resolve({ data: [] as BusinessHoursRow[] }),
+      : Promise.resolve({ data: [] as BusinessHoursRow[], error: null }),
     supabase
       .from('availability_exceptions')
       .select('type, start_date, end_date, start_time, end_time')
@@ -154,6 +177,14 @@ export async function getAvailableSlots(
       .lt('starts_at', `${input.rangeEnd}T23:59:59.999Z`)
       .gt('ends_at', `${input.rangeStart}T00:00:00.000Z`),
   ])
+
+  assertReadOk('business_profile', profileError)
+  assertReadOk('services', serviceError)
+  assertReadOk('business_hours', hoursError)
+  assertReadOk('staff_hours', staffHoursError)
+  assertReadOk('availability_exceptions', exceptionError)
+  assertReadOk('time_off', timeOffError)
+  assertReadOk('appointments', appointmentError)
 
   const businessProfile = (profile ?? {
     timezone: 'UTC',
