@@ -6,7 +6,7 @@ import type { VoiceToolHandler } from './tools/types'
  * `AgentSession` wants: a plain object keyed by tool name, each value produced by
  * the framework's own `tool()` helper (which accepts Zod schemas directly).
  *
- * `lib/voice/booking-tools.test.ts` mocks `@livekit/agents`, and because Vitest
+ * `lib/voice/livekit-tools.test.ts` mocks `@livekit/agents`, and because Vitest
  * mocks apply across the whole module graph, importing `tool` here still resolves
  * to the mock.
  */

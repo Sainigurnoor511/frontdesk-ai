@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { buildBookingTools } from './booking-tools'
-
-vi.mock('@livekit/agents', () => ({
-  tool: (def: unknown) => def,
-}))
+import { buildBookingToolHandlers } from './booking-handlers'
 
 vi.mock('@/lib/data/booking-service', () => ({
   findOrCreateClientServiceRole: vi.fn(),
@@ -30,14 +26,15 @@ import { getAvailableSlots } from '@/lib/data/availability-engine'
 import { getAgentByIdServiceRole } from '@/lib/data/agents-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 
-const executeOpts = {} as never
-
-function buildTools() {
-  return buildBookingTools({
+/** The handlers are a flat list now, not a map keyed by name. */
+function tool(name: string) {
+  const handler = buildBookingToolHandlers({
     organizationId: 'org-1',
     agentId: 'agent-1',
     conversationId: 'conv-1',
-  })
+  }).find((entry) => entry.name === name)
+  if (!handler) throw new Error(`no such tool: ${name}`)
+  return handler
 }
 
 describe('check_availability', () => {
@@ -50,10 +47,10 @@ describe('check_availability', () => {
       { date: '2026-08-03', slots: [{ startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' }] },
     ])
 
-    const result = await buildTools().check_availability.execute(
-      { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
-      executeOpts
-    )
+    const result = await tool('check_availability').execute({
+      startsAt: '2026-08-03T14:00:00Z',
+      endsAt: '2026-08-03T15:00:00Z',
+    })
 
     expect(result).toEqual({ available: true })
   })
@@ -61,10 +58,10 @@ describe('check_availability', () => {
   it('returns available: false when the slot is not open', async () => {
     vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-03', slots: [] }])
 
-    const result = await buildTools().check_availability.execute(
-      { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
-      executeOpts
-    )
+    const result = await tool('check_availability').execute({
+      startsAt: '2026-08-03T14:00:00Z',
+      endsAt: '2026-08-03T15:00:00Z',
+    })
 
     expect(result).toEqual({ available: false, conflictingTitle: null })
   })
@@ -72,10 +69,10 @@ describe('check_availability', () => {
   it('returns an error result instead of throwing when the check fails', async () => {
     vi.mocked(getAvailableSlots).mockRejectedValue(new Error('db down'))
 
-    const result = await buildTools().check_availability.execute(
-      { startsAt: '2026-08-03T14:00:00Z', endsAt: '2026-08-03T15:00:00Z' },
-      executeOpts
-    )
+    const result = await tool('check_availability').execute({
+      startsAt: '2026-08-03T14:00:00Z',
+      endsAt: '2026-08-03T15:00:00Z',
+    })
 
     expect(result).toEqual({ error: 'availability_check_failed' })
   })
@@ -105,7 +102,7 @@ describe('book_appointment', () => {
   }
 
   it('books the appointment and returns success with the new ids', async () => {
-    const result = await buildTools().book_appointment.execute(args, executeOpts)
+    const result = await tool('book_appointment').execute(args)
 
     expect(result).toEqual({ success: true, appointmentId: 'appt-1', isNewClient: true })
     expect(findOrCreateClientServiceRole).toHaveBeenCalledWith('org-1', {
@@ -132,10 +129,7 @@ describe('book_appointment', () => {
   })
 
   it('normalizes an empty client phone to null', async () => {
-    await buildTools().book_appointment.execute(
-      { ...args, clientPhone: '  ' },
-      executeOpts
-    )
+    await tool('book_appointment').execute({ ...args, clientPhone: '  ' })
 
     expect(findOrCreateClientServiceRole).toHaveBeenCalledWith('org-1', {
       name: 'Ada Lovelace',
@@ -149,7 +143,7 @@ describe('book_appointment', () => {
   it('hard-blocks when the slot is unavailable and never inserts', async () => {
     vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-03', slots: [] }])
 
-    const result = await buildTools().book_appointment.execute(args, executeOpts)
+    const result = await tool('book_appointment').execute(args)
 
     expect(result).toEqual({ error: 'slot_unavailable', conflictingTitle: null })
     expect(findOrCreateClientServiceRole).not.toHaveBeenCalled()
@@ -159,7 +153,7 @@ describe('book_appointment', () => {
   it('still reports success when the confirmation email fails', async () => {
     vi.mocked(sendAppointmentConfirmationEmail).mockRejectedValue(new Error('smtp down'))
 
-    const result = await buildTools().book_appointment.execute(args, executeOpts)
+    const result = await tool('book_appointment').execute(args)
 
     expect(result).toEqual({ success: true, appointmentId: 'appt-1', isNewClient: true })
   })
@@ -167,7 +161,7 @@ describe('book_appointment', () => {
   it('returns an error result instead of throwing when booking fails', async () => {
     vi.mocked(createAppointmentServiceRole).mockRejectedValue(new Error('db down'))
 
-    const result = await buildTools().book_appointment.execute(args, executeOpts)
+    const result = await tool('book_appointment').execute(args)
 
     expect(result).toEqual({ error: 'booking_failed' })
   })

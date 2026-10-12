@@ -34,8 +34,8 @@ import {
   findOrCreateClientServiceRole,
   createAppointmentServiceRole,
   getUpcomingAppointmentsByEmailServiceRole,
-  reschedulePublicAppointmentServiceRole,
-  cancelPublicAppointmentServiceRole,
+  rescheduleAppointmentByEmailServiceRole,
+  cancelAppointmentByEmailServiceRole,
 } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
@@ -58,6 +58,18 @@ const ROOM_EMPTY_TIMEOUT_SECONDS = 30
 const ROOM_DEPARTURE_TIMEOUT_SECONDS = 5
 const MAX_CALLS_PER_HOUR_PER_IP = 5
 const MAX_BOOKINGS_PER_HOUR_PER_IP = 5
+
+/**
+ * What the booking page says when a read fails.
+ *
+ * `getAvailableSlots()` and `getUpcomingAppointmentsByEmailServiceRole()` both
+ * throw on a Postgres error now, rather than treating a failed read as an empty
+ * table — a silently incomplete availability read could otherwise authorize a
+ * double booking, and an empty appointments list renders as "you have nothing
+ * booked". These actions catch the throw so the page shows a real failure
+ * instead of a 500 or a wrong answer.
+ */
+const BOOKING_PAGE_READ_FAILED = 'Something went wrong on our end. Please try again.'
 
 export async function startPublicCall(input: StartPublicCallInput): Promise<StartCallResult> {
   const parsed = startPublicCallSchema.safeParse(input)
@@ -292,14 +304,18 @@ export async function getPublicAvailableSlots(
     return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
-  const days = await getAvailableSlots(parsed.data.organizationId, {
-    serviceId: parsed.data.serviceId ?? '',
-    staffId: parsed.data.staffId ?? null,
-    rangeStart: parsed.data.date,
-    rangeEnd: parsed.data.date,
-  })
-
-  return { slots: days[0]?.slots ?? [] }
+  try {
+    const days = await getAvailableSlots(parsed.data.organizationId, {
+      serviceId: parsed.data.serviceId ?? '',
+      staffId: parsed.data.staffId ?? null,
+      rangeStart: parsed.data.date,
+      rangeEnd: parsed.data.date,
+    })
+    return { slots: days[0]?.slots ?? [] }
+  } catch (error) {
+    console.error('[smb/actions] getPublicAvailableSlots failed:', error)
+    return { error: BOOKING_PAGE_READ_FAILED }
+  }
 }
 
 export async function createPublicAppointment(
@@ -360,12 +376,20 @@ export async function createPublicAppointment(
   }
 
   const date = parsed.data.startsAt.slice(0, 10)
-  const days = await getAvailableSlots(parsed.data.organizationId, {
-    serviceId: parsed.data.serviceId,
-    staffId: parsed.data.staffId ?? null,
-    rangeStart: date,
-    rangeEnd: date,
-  })
+  let days
+  try {
+    days = await getAvailableSlots(parsed.data.organizationId, {
+      serviceId: parsed.data.serviceId,
+      staffId: parsed.data.staffId ?? null,
+      rangeStart: date,
+      rangeEnd: date,
+    })
+  } catch (error) {
+    // Fails closed: an incomplete availability read must never be read as "that
+    // slot is free" and turned into a booking.
+    console.error('[smb/actions] availability read failed before booking:', error)
+    return { error: BOOKING_PAGE_READ_FAILED }
+  }
   const stillOpen = (days[0]?.slots ?? []).some(
     (slot) => slot.startsAt === parsed.data.startsAt && slot.endsAt === parsed.data.endsAt
   )
@@ -438,7 +462,19 @@ export async function lookupPublicAppointments(
     return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
-  const rows = await getUpcomingAppointmentsByEmailServiceRole(parsed.data.organizationId, parsed.data.email)
+  let rows
+  try {
+    rows = await getUpcomingAppointmentsByEmailServiceRole(
+      parsed.data.organizationId,
+      parsed.data.email
+    )
+  } catch (error) {
+    // A failed read used to come back as `[]`, which this page renders as "no
+    // upcoming appointments found for that email" — the visitor would rebook or
+    // give up over a transient database error.
+    console.error('[smb/actions] lookupPublicAppointments failed:', error)
+    return { error: BOOKING_PAGE_READ_FAILED }
+  }
 
   return {
     appointments: rows.map((row) => ({
@@ -465,13 +501,24 @@ export async function reschedulePublicAppointment(
 
   // Re-check the new slot is still open before moving the appointment onto
   // it — no serviceId is known here, so this checks the org-wide gap the
-  // same way the voice-booking tool does (see lib/voice/booking-tools.ts).
+  // same way the voice-booking tool does (see
+  // lib/voice/tools/booking-handlers.ts).
   const date = parsed.data.startsAt.slice(0, 10)
-  const days = await getAvailableSlots(parsed.data.organizationId, {
-    serviceId: '',
-    rangeStart: date,
-    rangeEnd: date,
-  })
+  let days
+  try {
+    days = await getAvailableSlots(parsed.data.organizationId, {
+      serviceId: '',
+      rangeStart: date,
+      rangeEnd: date,
+      // Without this the appointment blocks its own slots, so moving a booking
+      // within its own footprint (a 15-minute shift, say) fails here with
+      // `slot_taken` while the identical move succeeds by voice.
+      excludeAppointmentId: parsed.data.appointmentId,
+    })
+  } catch (error) {
+    console.error('[smb/actions] availability read failed before reschedule:', error)
+    return { error: BOOKING_PAGE_READ_FAILED }
+  }
   const stillOpen = (days[0]?.slots ?? []).some(
     (slot) => slot.startsAt === parsed.data.startsAt && slot.endsAt === parsed.data.endsAt
   )
@@ -479,7 +526,7 @@ export async function reschedulePublicAppointment(
     return { error: 'slot_taken' }
   }
 
-  return reschedulePublicAppointmentServiceRole(
+  return rescheduleAppointmentByEmailServiceRole(
     parsed.data.organizationId,
     parsed.data.appointmentId,
     parsed.data.email,
@@ -500,7 +547,7 @@ export async function cancelPublicAppointment(
     return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
-  return cancelPublicAppointmentServiceRole(
+  return cancelAppointmentByEmailServiceRole(
     parsed.data.organizationId,
     parsed.data.appointmentId,
     parsed.data.email

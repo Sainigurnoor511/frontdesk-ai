@@ -13,6 +13,11 @@
 # testing
 /coverage
 
+# playwright
+test-results/
+playwright-report/
+.playwright/
+
 # next.js
 /.next/
 /out/
@@ -51,3 +56,8 @@ __pycache__/
 
 # social launch posts, kept local
 /launch-posts/
+
+# parallel agent worktrees and run artifacts, never commit
+/.worktrees/
+/.agents/pipeline/
+/.agents/tasks/

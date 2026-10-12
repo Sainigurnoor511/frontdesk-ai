@@ -11,6 +11,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "dev:jobs": "tsx watch workers/jobs.ts",
     "start:jobs": "tsx workers/jobs.ts",
     "dev:voice": "tsx scripts/dev-voice.ts",

@@ -32,7 +32,13 @@ type TimeOffRow = {
   ends_at: string
 }
 
-type AppointmentRow = { staff_id: string | null; status: string; starts_at: string; ends_at: string }
+type AppointmentRow = {
+  id: string
+  staff_id: string | null
+  status: string
+  starts_at: string
+  ends_at: string
+}
 
 function enumerateDates(rangeStart: string, rangeEnd: string): string[] {
   const dates: string[] = []
@@ -84,6 +90,23 @@ function subtractInterval(
   })
 }
 
+/**
+ * Turns a resolved PostgREST error into a throw.
+ *
+ * supabase-js *resolves* with `{ data: null, error }` on a query error rather
+ * than rejecting, so reading only `data` makes every failed read look like an
+ * empty table — which in this function means "nothing blocks that time". A
+ * failed appointments, time-off, or exception read would silently remove
+ * blockers and a failed staff-hours read would fall back to business hours, so
+ * a transient database error could authorize a double booking and report it as
+ * confirmed. Every read here therefore fails closed, loudly.
+ */
+function assertReadOk(label: string, error: { message: string } | null): void {
+  if (error) {
+    throw new Error(`availability read failed (${label}): ${error.message}`)
+  }
+}
+
 export async function getAvailableSlots(
   organizationId: string,
   input: {
@@ -91,18 +114,24 @@ export async function getAvailableSlots(
     staffId?: string | null
     rangeStart: string
     rangeEnd: string
+    /**
+     * Treats this appointment as if it did not exist, so an appointment being
+     * moved does not block the slots it is about to vacate. Used by the voice
+     * `reschedule_appointment` tool and the public reschedule action.
+     */
+    excludeAppointmentId?: string
   }
 ): Promise<DaySlots[]> {
   const supabase = createServiceRoleClient()
 
   const [
-    { data: profile },
-    { data: serviceRow },
-    { data: hoursRows },
-    { data: staffHoursRows },
-    { data: exceptionRows },
-    { data: timeOffRows },
-    { data: appointmentRows },
+    { data: profile, error: profileError },
+    { data: serviceRow, error: serviceError },
+    { data: hoursRows, error: hoursError },
+    { data: staffHoursRows, error: staffHoursError },
+    { data: exceptionRows, error: exceptionError },
+    { data: timeOffRows, error: timeOffError },
+    { data: appointmentRows, error: appointmentError },
   ] = await Promise.all([
     supabase
       .from('business_profile')
@@ -111,7 +140,13 @@ export async function getAvailableSlots(
       )
       .eq('organization_id', organizationId)
       .maybeSingle(),
-    supabase.from('services').select('duration_minutes').eq('id', input.serviceId).maybeSingle(),
+    // Skipped rather than queried with `''`: `services.id` is a uuid, so
+    // `.eq('id', '')` is a Postgres cast error, and the callers that have no
+    // service (the voice reschedule tool, the public reschedule action, the
+    // service-less slot preview) all pass the empty string deliberately.
+    input.serviceId
+      ? supabase.from('services').select('duration_minutes').eq('id', input.serviceId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
     supabase
       .from('business_hours')
       .select('day_of_week, is_open, start_time, end_time')
@@ -121,7 +156,7 @@ export async function getAvailableSlots(
           .from('staff_hours')
           .select('day_of_week, is_open, start_time, end_time')
           .eq('staff_id', input.staffId)
-      : Promise.resolve({ data: [] as BusinessHoursRow[] }),
+      : Promise.resolve({ data: [] as BusinessHoursRow[], error: null }),
     supabase
       .from('availability_exceptions')
       .select('type, start_date, end_date, start_time, end_time')
@@ -136,12 +171,20 @@ export async function getAvailableSlots(
       .gt('ends_at', `${input.rangeStart}T00:00:00.000Z`),
     supabase
       .from('appointments')
-      .select('staff_id, status, starts_at, ends_at')
+      .select('id, staff_id, status, starts_at, ends_at')
       .eq('organization_id', organizationId)
       .neq('status', 'cancelled')
       .lt('starts_at', `${input.rangeEnd}T23:59:59.999Z`)
       .gt('ends_at', `${input.rangeStart}T00:00:00.000Z`),
   ])
+
+  assertReadOk('business_profile', profileError)
+  assertReadOk('services', serviceError)
+  assertReadOk('business_hours', hoursError)
+  assertReadOk('staff_hours', staffHoursError)
+  assertReadOk('availability_exceptions', exceptionError)
+  assertReadOk('time_off', timeOffError)
+  assertReadOk('appointments', appointmentError)
 
   const businessProfile = (profile ?? {
     timezone: 'UTC',
@@ -156,6 +199,10 @@ export async function getAvailableSlots(
   )
   const staffHoursByDay = new Map<number, BusinessHoursRow>(
     ((staffHoursRows ?? []) as BusinessHoursRow[]).map((row) => [row.day_of_week, row])
+  )
+
+  const blockingAppointments = ((appointmentRows ?? []) as AppointmentRow[]).filter(
+    (appt) => !input.excludeAppointmentId || appt.id !== input.excludeAppointmentId
   )
 
   const dates = enumerateDates(input.rangeStart, input.rangeEnd)
@@ -191,7 +238,7 @@ export async function getAvailableSlots(
       slots = subtractInterval(slots, block.starts_at, block.ends_at)
     }
 
-    const relevantAppointments = ((appointmentRows ?? []) as AppointmentRow[]).filter(
+    const relevantAppointments = blockingAppointments.filter(
       (appt) => !input.staffId || appt.staff_id === input.staffId || appt.staff_id === null
     )
     for (const appt of relevantAppointments) {

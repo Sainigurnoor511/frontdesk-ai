@@ -15,6 +15,10 @@ import {
   buildCallerMessageContent,
   shouldCreateCallerMessage,
 } from '@/lib/voice/caller-message-from-conversation'
+import type {
+  CallerMessageSource,
+  CallerMessageUrgency,
+} from '@/lib/validations/caller-message'
 import type { Conversation, TranscriptMessage, CallGoal } from './conversations'
 
 export type { Conversation, TranscriptMessage, CallGoal }
@@ -174,10 +178,16 @@ export async function updateConversationStatus(
     patch.outcome &&
     shouldCreateCallerMessage(patch.outcome, patch.callGoals ?? [])
   ) {
+    // `limit(1)` because a conversation can now hold more than one caller
+    // message: the `take_message` voice tool writes one mid-call, and a caller
+    // can ask for a human twice. Without the limit, `maybeSingle()` errors on
+    // multiple rows, `existing` comes back empty, and this path appends an
+    // inferred duplicate on top of the message the agent actually took.
     const { data: existing } = await supabase
       .from('caller_messages')
       .select('id')
       .eq('conversation_id', id)
+      .limit(1)
       .maybeSingle()
 
     if (!existing) {
@@ -203,6 +213,58 @@ export async function updateConversationStatus(
       }
     }
   }
+}
+
+export type CreateCallerMessageInput = {
+  organizationId: string
+  conversationId: string | null
+  callerName: string | null
+  callerPhone: string | null
+  summary: string
+  quotedLine: string | null
+  urgency: CallerMessageUrgency
+  source: CallerMessageSource
+}
+
+/**
+ * Writes a caller message directly, for producers that know what the message
+ * says instead of inferring it from a finished transcript.
+ *
+ * The `take_message` voice tool is the first such producer: it runs mid-call,
+ * while the caller is still on the line to confirm their own callback number,
+ * so it cannot wait for `updateConversationStatus` to synthesize something out
+ * of the transcript afterwards.
+ *
+ * `organizationId` is the caller's server-resolved org (from
+ * `VoiceToolContext`), never a model argument. Throws on failure — unlike the
+ * inferred path above, the message is the whole point of the tool call, so a
+ * failed insert must not be reported to the caller as a message taken.
+ */
+export async function createCallerMessageServiceRole(
+  input: CreateCallerMessageInput
+): Promise<{ id: string }> {
+  const supabase = createServiceRoleClient()
+  const { data, error } = await supabase
+    .from('caller_messages')
+    .insert({
+      organization_id: input.organizationId,
+      conversation_id: input.conversationId,
+      caller_name: input.callerName,
+      caller_phone: input.callerPhone,
+      summary: input.summary,
+      quoted_line: input.quotedLine,
+      urgency: input.urgency,
+      source: input.source,
+      is_read: false,
+    })
+    .select('id')
+    .single()
+
+  if (error || !data) {
+    throw new Error(`Failed to create caller message: ${error?.message ?? 'unknown error'}`)
+  }
+
+  return { id: data.id }
 }
 
 /**

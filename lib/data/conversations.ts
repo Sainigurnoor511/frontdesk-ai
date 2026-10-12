@@ -1,4 +1,8 @@
 import { normalizeRecordingPath } from '@/lib/conversations/recording-path'
+import type {
+  CallerMessageSource,
+  CallerMessageUrgency,
+} from '@/lib/validations/caller-message'
 import { createClient } from '@/lib/supabase/server'
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { getEgressRecordingForRoom } from '@/lib/voice/recording'
@@ -45,13 +49,21 @@ export type CallerMessage = {
   isRead: boolean
   convertedToClientId: string | null
   createdAt: string
+  /** How urgent the caller said it was. Only meaningful on `agent_escalation`. */
+  urgency: CallerMessageUrgency
+  /**
+   * `agent_escalation` is a message the receptionist took on purpose because
+   * the caller asked for a human; `call_followup` is inferred after the fact
+   * from a failed call. The Messages tab labels them differently.
+   */
+  source: CallerMessageSource
 }
 
 const CONVERSATION_COLUMNS =
   'id, organization_id, agent_id, channel, outcome, category, summary, duration_seconds, ended_reason, transcript, call_goals, is_read, created_at, room_name, recording_path, agents(name)'
 
 const CALLER_MESSAGE_COLUMNS =
-  'id, organization_id, conversation_id, caller_name, caller_phone, summary, quoted_line, is_read, converted_to_client_id, created_at'
+  'id, organization_id, conversation_id, caller_name, caller_phone, summary, quoted_line, is_read, converted_to_client_id, created_at, urgency, source'
 
 type ConversationRow = {
   id: string
@@ -83,6 +95,8 @@ type CallerMessageRow = {
   is_read: boolean
   converted_to_client_id: string | null
   created_at: string
+  urgency: CallerMessageUrgency | null
+  source: CallerMessageSource | null
 }
 
 function mapConversation(row: ConversationRow): Conversation {
@@ -119,6 +133,13 @@ function mapCallerMessage(row: CallerMessageRow): CallerMessage {
     isRead: row.is_read,
     convertedToClientId: row.converted_to_client_id,
     createdAt: row.created_at,
+    // Both columns are `not null default` as of migration `046`, so these
+    // fallbacks only cover a row read back by an older client. Note the select
+    // above does name them: a database without `046` applied makes PostgREST
+    // reject the query, and `getCallerMessagesForOrg` then returns an empty
+    // list rather than throwing. Run `npx supabase db push`.
+    urgency: row.urgency ?? 'normal',
+    source: row.source ?? 'call_followup',
   }
 }
 

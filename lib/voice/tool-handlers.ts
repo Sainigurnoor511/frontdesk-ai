@@ -1,23 +1,58 @@
 import { buildBookingToolHandlers } from './tools/booking-handlers'
+import { buildManageBookingToolHandlers } from './tools/manage-booking-handlers'
 import { buildKnowledgeToolHandlers } from './tools/knowledge-handlers'
+import { buildEscalationToolHandlers } from './tools/escalation-handlers'
 import type { VoiceToolContext, VoiceToolHandler } from './tools/types'
 
 export type { VoiceToolContext, VoiceToolHandler }
 
 /**
- * The full set of tools available on a call, honoring the agent's
- * `skip_knowledge_retrieval` setting.
+ * Whether this agent may look up, cancel, and move the caller's existing
+ * appointments.
  *
- * This is the provider-neutral composition point. The AssemblyAI path uses it
- * to build `session.tools` and to dispatch `tool.call` events; the LiveKit
- * worker uses it to build its `AgentSession` tool map. See `tools/types.ts` for
- * the invariants every handler upholds.
+ * The manage-booking tools authorize on organization + a caller-spoken email
+ * address, which makes `find_appointment` an email-keyed read of appointment
+ * titles and times and `cancel_appointment` / `reschedule_appointment` writes
+ * behind the same single factor. An org that turned on secure mode or identity
+ * verification asked for exactly that to stop, so the two flags withhold the
+ * tools outright rather than asking the model to decline — a sentence in the
+ * system prompt is guidance, not an access control, and the earlier version of
+ * this feature had nothing else.
+ *
+ * Lifting the restriction needs a verification tool in this handler set (caller
+ * ID on `conversations`, or an OTP flow); until one exists there is nothing for
+ * a secure-mode agent to verify *with*, so "withhold" is the only honest
+ * option. Backlogged in `developer-docs/TODO.md`.
+ */
+export function manageBookingToolsAllowed(context: VoiceToolContext): boolean {
+  return !context.secureMode && !context.identityVerificationEnabled
+}
+
+/**
+ * The full set of tools available on a call, honoring the agent's
+ * `skip_knowledge_retrieval`, `secure_mode`, and
+ * `identity_verification_enabled` settings.
+ *
+ * This is the provider-neutral composition point, and it is the *only* one:
+ * the AssemblyAI path uses it to build `session.tools` and to dispatch
+ * `tool.call` events, and the LiveKit worker reaches it through
+ * `lib/voice/livekit-tools.ts`. Both providers therefore see the same list by
+ * construction, including every gate above, which used to be expressed
+ * separately in the worker. See `tools/types.ts` for the invariants every
+ * handler upholds.
  */
 export function buildVoiceToolHandlers(context: VoiceToolContext): VoiceToolHandler[] {
-  const handlers = buildBookingToolHandlers(context)
+  const handlers = [...buildBookingToolHandlers(context)]
+  if (manageBookingToolsAllowed(context)) {
+    handlers.push(...buildManageBookingToolHandlers(context))
+  }
   if (!context.skipKnowledgeRetrieval) {
     handlers.push(...buildKnowledgeToolHandlers(context))
   }
+  // Last, and never gated. It is the fallback for every other tool failing or
+  // being withheld, including on a secure-mode agent that has no manage-booking
+  // tools at all — see `buildEscalationToolHandlers`.
+  handlers.push(...buildEscalationToolHandlers(context))
   return handlers
 }
 

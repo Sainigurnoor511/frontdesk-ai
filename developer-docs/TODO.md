@@ -1,6 +1,9 @@
 # Frontdesk.ai Shared TODO
 
-Use this as the team-wide feature and technical backlog.
+The single team-wide feature and technical backlog. The old root `TODO.md` (a phase-by-phase
+audit against the original design document, 2026-08-25) was folded in here on 2026-10-12 —
+10 of its 11 items had shipped; the one that had not is the E2E/load testing pass under
+P2 below.
 
 ## How to use
 
@@ -34,8 +37,9 @@ Use this as the completion gate before marking a feature item done.
       `getAgentById` returns null, and **every call fails with "Agent not found" —
       including LiveKit ones**. The agent detail page breaks too. Agent lists, the
       dashboard, and the public booking page are unaffected (`getAgentsForOrg` /
-      `getPublicAgentsForOrg` were not touched). CI applies it on merge to main; locally
-      run `supabase db push`.
+      `getPublicAgentsForOrg` were not touched). The migration file is committed on `main`
+      (`8404deb`) and CI applies it on merge, so this is now only an action for local and
+      self-hosted databases provisioned before `044`: run `npx supabase db push`.
 - [ ] **Run the AssemblyAI session worker wherever the app is deployed** (added: 2026-09-06) —
       `pnpm start:jobs`, or the `worker-jobs` service in `docker-compose.yml`, which
       hosts the `assemblyai-session-finalize` queue along with the other three.
@@ -53,17 +57,13 @@ Use this as the completion gate before marking a feature item done.
       through the server action, and the browser capture/playback path itself. Test in
       Firefox and Safari specifically — the in-worklet resampling exists because those two
       break the forced-24 kHz shortcut, and that code has never run.
-- [ ] Enforce `answering_mode`/routing logic in `workers/voice-agent.ts`
-- [ ] Add voice tools: cancel appointment, reschedule appointment
-      (now provider-neutral: add to `lib/voice/tools/booking-handlers.ts` once and both
-      the LiveKit and AssemblyAI paths pick it up)
 - [ ] Wire feature flags to sidebar visibility and route guards
 - [ ] Implement notification delivery from stored prefs (`organization_settings`)
 
 ## P1 - Knowledge + Conversations
 
-- [ ] **Revisit multi-language support for AssemblyAI agents** (added: 2026-09-06) — root
-      `TODO.md` item 4 closed "Additional languages" as infeasible because Groq Whisper
+- [ ] **Revisit multi-language support for AssemblyAI agents** (added: 2026-09-06) — the
+      "Additional languages" control was removed in `beacf87` as infeasible because Groq Whisper
       offers only one fixed language or auto-detect. That constraint does not apply to
       AssemblyAI, which recognizes 18 input languages with native code-switching. There is
       now a real backend for a discrete multi-language control, for agents on that
@@ -77,14 +77,105 @@ Use this as the completion gate before marking a feature item done.
 - [ ] Move conversations filters to server-side query params for scale
 - [ ] Improve `phone` and `chat` channel coverage in conversation flows
 
+## P1 - Public booking page hardening
+
+Opened 2026-10-12 out of the semantic review of the voice cancel/reschedule tools. The
+voice tools' identification rule (organization + a caller-confirmed email) is justified by
+parity with the public manage-booking page, so the page's own controls are load-bearing for
+both surfaces.
+
+- [ ] **Rate-limit the public manage-booking actions** (added: 2026-10-12) —
+      `lookupPublicAppointments`, `reschedulePublicAppointment`, and
+      `cancelPublicAppointment` in `app/smb/actions.ts` carry no
+      `checkAndConsumeRateLimit`, unlike `createPublicAppointment`
+      (`MAX_BOOKINGS_PER_HOUR_PER_IP`). Email is the only credential, so the lookup is an
+      unthrottled email-keyed enumeration oracle for appointment titles and times. An
+      earlier docstring on `getUpcomingAppointmentsByEmailServiceRole` claimed these were
+      "rate-limited by caller"; the comment has been corrected, the rate limit has not been
+      added.
+- [ ] **The Turnstile guard on the booking actions is dead code** (added: 2026-10-12) —
+      both blocks run under `if (false && turnstileSecret)` (see the `showTurnstile` note in
+      `booking-page-public-client.tsx`). Either revive it or delete it; leaving a disabled
+      bot check that reads as enabled is worse than neither.
+- [ ] **Concurrent *new* bookings can still overlap a reschedule** (added: 2026-10-12) —
+      migration `045`'s `reschedule_appointment_atomic` takes an org-scoped advisory lock
+      and re-checks the destination, which closes reschedule-vs-reschedule and
+      reschedule-vs-cancel. `createAppointmentServiceRole` does not take that lock, so an
+      insert committing between a reschedule's overlap check and its write is still
+      invisible. Closing it means routing inserts through the same lock, or an overlap
+      exclusion constraint on `appointments` — note the latter would also forbid overlaps
+      that existing data may already contain, since nothing enforces non-overlap today.
+- [ ] **No email when an appointment is cancelled or moved** (added: 2026-10-12, explicit
+      decision) — a new booking sends `sendAppointmentConfirmationEmail`; cancel and
+      reschedule send nothing on either the voice or the web path, so a caller whose
+      appointment moved has only the spoken confirmation and no record of the new time. Not
+      an oversight as of this entry, but it should be a deliberate omission on the record
+      rather than an implicit one. Fix by adding templates under `lib/email/`.
+- [ ] **`appointment.updated` is not an outbound webhook event** (added: 2026-10-12) — it
+      is absent from `WEBHOOK_EVENT_TYPES`, so a reschedule dispatches no webhook at all
+      while a cancel dispatches `appointment.cancelled`. Downstream integrations see a move
+      as nothing happening. Adding it is a standalone change.
+- [ ] **No verification tool exists for secure-mode agents** (added: 2026-10-12) —
+      `manageBookingToolsAllowed()` in `lib/voice/tool-handlers.ts` withholds
+      `find_appointment` / `cancel_appointment` / `reschedule_appointment` from any agent
+      with `secure_mode` or `identity_verification_enabled` on, because a caller-spoken
+      email is the only credential those tools have and nothing in the shared handler set
+      can verify a caller. Those agents therefore cannot manage existing appointments by
+      voice at all. Lifting the restriction needs caller ID on `conversations` or an OTP
+      flow as a real voice tool, not a sentence in the system prompt.
+
 ## P1 - Telephony + Integrations
 
 - [ ] Twilio inbound phone path to LiveKit SIP flow
 - [ ] Plivo inbound phone path to LiveKit SIP flow
+- [ ] **Enforce `answering_mode` / call routing in `workers/voice-agent.ts`** (moved here
+      from P0 on 2026-10-13, after the feasibility investigation in
+      `.agents/tasks/answering-mode-feasibility.md`) — **a dependent of the two LiveKit SIP
+      items above, not a worker bug.** `staff_first` means "ring a human on the PSTN before
+      the AI answers", and there is no PSTN leg to ring or intercept: every call today is a
+      browser WebRTC session the caller started by clicking a button. Verified blockers:
+      - No **LiveKit SIP outbound trunk**. `livekit-server-sdk@^2.17.0` already exports
+        `SipClient` and `TransferSipParticipantOptions`, so no new dependency is needed —
+        but LiveKit Cloud SIP (or a self-hosted `sip` service) has to be enabled, a trunk
+        created via `createSipOutboundTrunk`, and its id added as a new env var. No SIP env
+        var exists in `.env.example` and no `SipClient` call site exists in the repo.
+      - No **SIP trunk provider account with outbound voice** and no verified outbound
+        caller ID, which is what dialling `staff_phone_number` would need.
+      - No **inbound path at all**: `provisionTwilioNumber` only *purchases* a number and
+        never sets a `VoiceUrl` or SIP origination URI, and there is no
+        `createSipInboundTrunk` / `createSipDispatchRule`. Without inbound there is no call
+        to route, so `answering_mode` has nothing to decide.
+      - Cost is a product decision, not a blocker: Interpretation A (dial the staff number
+        into the room on every call) bills a PSTN leg per web visitor.
+      The setting is already labelled inactive in the UI (the `bg-warning-subtle` banner at
+      `agent-detail-client.tsx:827`), so this is parked rather than dishonest. The adjacent
+      fields in the same cluster are inert for the same reason and ship with it:
+      `max_ring_seconds`, `hold_music` *and* `hold_sound` (two overlapping fields, no
+      playback path and no assets for either — pick `hold_sound`, the enum one), and
+      `blocked_phone_numbers` (CRUD only; a browser call carries no caller number to match).
+      The unblocked half of this story — taking a message for a human — shipped; see
+      Completed Recently.
+- [ ] **Notify the org about a new caller message by email** (added: 2026-10-13) —
+      `take_message` dispatches the `caller_message.created` outbound webhook, which is the
+      only org-wide delivery path that exists. An org that has not configured a webhook
+      learns about an escalated caller only by opening the Messages tab. When the
+      notification-delivery item lands, add a `dispatchNotification()` call alongside the
+      webhook in `lib/voice/tools/escalation-handlers.ts` — alongside, not instead of, and
+      not a second email sender of its own.
+- [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13, found
+      during the `answering_mode` investigation) — honoured on the AssemblyAI path
+      (`session-config.ts` sends `voice_focus` + `voice_focus_threshold`), but
+      `workers/voice-agent.ts` never reads the field. A per-provider gap, unrelated to
+      routing.
 - [ ] Add outbound API/webhook key model for external automation
 
 ## P2 - UX + Platform
 
+- [ ] **E2E / load testing pass** (moved from root `TODO.md`, audited 2026-08-25, rechecked
+      2026-10-12) — nothing exists beyond unit tests and the voice-latency instrumentation.
+      `@playwright/test` is a devDependency but there is no Playwright config and no spec
+      files, so the harness has to be set up from scratch. Scope TBD; the obvious first
+      targets are the signup → onboarding → agent-create path and the public booking page.
 - [ ] Calendar per-slot buffer time support
 - [ ] Notification center UI (header popover currently shell)
 - [ ] Billing/upgrade flow behind sidebar upgrade card
@@ -96,11 +187,15 @@ Use this as the completion gate before marking a feature item done.
 
 ## Known Technical Issues
 
-- [ ] **Pre-existing test failures** (recorded 2026-10-08): 10 tests across
-      `app/smb/actions.test.ts`, `lib/data/analytics.test.ts`,
-      `lib/data/availability-engine.test.ts` (date/timezone fixtures), and
-      `lib/voice/adapters/fish-audio-tts.test.ts`. Present on `main` since at least
-      `9dfb2d8`.
+- [ ] **Pre-existing test failures** (recorded 2026-10-08, narrowed 2026-10-12): now **4**
+      tests — 2 in `lib/data/analytics.test.ts` and 2 in
+      `lib/voice/adapters/fish-audio-tts.test.ts`. The 6 in
+      `lib/data/availability-engine.test.ts` were fixed on 2026-10-12: they were not a
+      timezone problem but a stale clock, asserting slot lists that the engine's
+      `minimum_booking_notice_minutes` filter empties once the 2026-08-10 fixture date is in
+      the past. Pinning the system time in that suite's `beforeEach` restored them, and
+      they now cover staff scoping and service duration as well. `app/smb/actions.test.ts`
+      passes and had already stopped failing before this.
 - [ ] **Pre-existing lint errors** (recorded 2026-10-08): `pnpm lint` reports 29 errors,
       4 warnings — down from ~2100 in August. Clear them so full-repo lint becomes a gate again.
 - [ ] Fix TypeScript errors in `app/smb/actions.ts` (`parsed.data` undefined cases)
@@ -124,6 +219,57 @@ Use this as the completion gate before marking a feature item done.
 
 ## Completed Recently
 
+- [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
+      receptionist promised a human handoff it had no tool to perform. The UI advertises
+      transfers (the Transfer rules section on the agent detail page, the "Handoff to a
+      human" rule card) and `agent_rules` reach the model as free prose, so the model could
+      already *say* it would put a caller through. New
+      `lib/voice/tools/escalation-handlers.ts` captures caller name, callback number,
+      reason, and caller-expressed urgency (`lib/validations/caller-message.ts`, a bare
+      `ZodObject` so both providers accept it; the digit-count check on the callback number
+      is in `execute`, where a `.refine()` cannot break the schema). Registered last and
+      ungated in `buildVoiceToolHandlers()`, so both engines pick it up — LiveKit through
+      `livekit-tools.ts`, AssemblyAI through `session.tools` — and a secure-mode agent with
+      no manage-booking tools still has it, which is what makes the existing "offer to take
+      a message" sentence in `buildSystemPrompt()` true. Persisted to `caller_messages`
+      against the call's `conversation_id` rather than a new table: that row already drives
+      the Messages tab, the sidebar unread badge, mark-as-read, and
+      `createContactFromMessage`, so a parallel `escalations` table would have been a second
+      inbox nobody opens. Migration `046` adds `urgency` and `source` to the table (existing
+      rows backfill to `call_followup`, the inferred end-of-call message) and the Messages
+      tab now labels and badges the two apart. `buildSystemPrompt()` gained a paragraph
+      stating there is no live transfer and that a handoff rule means take a message —
+      without it the model narrates a transfer that cannot happen. Notification reuses
+      `dispatchWebhook` with a new `caller_message.created` event; the email gap is the P1
+      item above. Explicitly **not** built: ringing a staff phone, SIP, warm transfer,
+      bridging, any `answering_mode` enforcement — all blocked on telephony, see P1.
+- [x] Added `find_appointment`, `cancel_appointment`, and `reschedule_appointment` voice
+      tools in a new sibling module `lib/voice/tools/manage-booking-handlers.ts` (not
+      `booking-handlers.ts`), reusing the public manage-booking service path so calendar
+      sync and the `appointment.cancelled` webhook fire identically, and routed the LiveKit
+      worker through `buildVoiceToolHandlers()` (new `lib/voice/livekit-tools.ts`, replacing
+      `booking-tools.ts` + `knowledge-tools.ts`) so both providers share one tool list by
+      construction. Authorization is organization + a caller-confirmed email, the same
+      strength the public manage-booking page already offers. Deliberately left out:
+      caller-ID/OTP identification, and `appointment.updated` as an outbound webhook event
+      (not in `WEBHOOK_EVENT_TYPES`, so reschedule fires none — parity with the public page).
+- [x] Fixed the review findings on those tools (2026-10-12). The four High items:
+      the manage-booking tools are now **withheld in code** from any agent with
+      `secure_mode` or `identity_verification_enabled` on
+      (`manageBookingToolsAllowed()` in `lib/voice/tool-handlers.ts`) rather than
+      discouraged by a prompt sentence that said the opposite; reschedule passes the
+      appointment's stored `service_id` and `staff_id` to the availability engine instead of
+      blanks; `getAvailableSlots()` throws on any Postgres read error instead of reading a
+      failed query as an empty table and quietly removing blockers; and both mutations are
+      now conditional on the start time the caller confirmed, with reschedule going through
+      `reschedule_appointment_atomic` (migration `045`) so the destination overlap check and
+      the write share one transaction and an org-scoped advisory lock. Also: the lookup
+      splits into a forward query plus a bounded lookback so recent history cannot crowd out
+      real upcoming appointments; disambiguation candidates exclude cancelled and past rows;
+      offered alternatives exclude the appointment's own current time; and the public
+      reschedule passes `excludeAppointmentId` so the same move no longer succeeds by voice
+      and fails on the web. The residual gaps are the P1 "Public booking page hardening"
+      section above.
 - [x] Google Calendar OAuth + encrypted token storage + sync on appointment
       create/update/cancel (`lib/integrations/google-calendar-sync.ts`, migration `038`);
       Microsoft Calendar, Cal.com, and Calendly followed the same pattern (`039`, `040`)
