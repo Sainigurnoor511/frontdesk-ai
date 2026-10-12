@@ -1,0 +1,68 @@
+# Runs the MFA attempt-budget tests against a real Redis, so the Lua script's
+# guarantees (atomic reservation, a TTL on every write, release never below
+# zero) are checked somewhere reproducible and not only on a developer box.
+#
+# Deliberately one file, not the whole Vitest suite: the full suite still has
+# known pre-existing failures (developer-docs/TODO.md, "Known Technical
+# Issues"), so a full-suite job would be red for reasons unrelated to auth.
+#
+# No secrets needed. The service is redis:7-alpine, matching docker-compose.yml
+# (the release script's SET ... KEEPTTL needs Redis >= 6.0).
+name: MFA attempt budget
+on:
+  pull_request:
+    paths:
+      - "lib/auth/**"
+      - ".github/workflows/mfa-attempts.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mfa-attempts-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  vitest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      # A dedicated DB so the test's keys never share a keyspace with anything.
+      MFA_REDIS_TEST_URL: redis://127.0.0.1:6379/15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          # package.json has no `packageManager` field, so the action needs an
+          # explicit version or it errors out.
+          version: 10
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check the Redis service answers
+        # The live cases skip when no server answers, so a broken service would
+        # otherwise show up as a green run that proved nothing.
+        run: |
+          node -e "
+          const net = require('node:net');
+          const socket = net.connect(6379, '127.0.0.1', () => socket.write('PING\r\n'));
+          socket.setTimeout(5000, () => { console.error('Redis did not answer'); process.exit(1); });
+          socket.on('data', (d) => { if (!String(d).startsWith('+PONG')) process.exit(1); socket.end(); });
+          socket.on('error', (e) => { console.error(e.message); process.exit(1); });
+          "
+      - name: Run the attempt-budget tests
+        run: pnpm exec vitest run lib/auth/mfa-attempts.test.ts
