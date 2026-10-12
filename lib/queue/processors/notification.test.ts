@@ -104,22 +104,35 @@ async function mockClient(options: ClientOptions = {}) {
     conversation = { data: CONVERSATION_ROW, error: null },
     appointment = { data: APPOINTMENT_ROW, error: null },
     members = { data: [{ user_id: 'user-1' }], error: null },
-    claimInsert = { data: { id: 'notif-1', email_sent_at: null }, error: null },
-    claimRead = { data: { id: 'notif-1', email_sent_at: null }, error: null },
+    claimInsert,
+    claimRead,
     emailClaim = { data: { id: 'notif-1' }, error: null },
     userEmails = { 'user-1': 'owner@example.com' },
     userErrors = {},
     userThrows = [],
   } = options
 
-  const notificationsInsert = vi.fn(() => chain(claimInsert))
-  const notificationsSelect = vi.fn(() => chain(claimRead))
-  // Three distinct writes now share this table: taking the lease
+  // The claimed row is stateful across calls within one `mockClient()`, so a
+  // second `processNotification()` sees what the first attempt actually wrote.
+  // That is what makes the issue-2 regression reproducible: with the old
+  // ordering, attempt 1 stamped `email_sent_at` and attempt 2 returned at step 9
+  // without ever calling Resend.
+  const row = { id: 'notif-1', email_sent_at: null as string | null }
+  const notificationsInsert = vi.fn(() =>
+    chain(claimInsert ?? { data: { ...row }, error: null })
+  )
+  const notificationsSelect = vi.fn(() => chain(claimRead ?? { data: { ...row }, error: null }))
+  // Three distinct writes share this table: taking the lease
   // (`email_claim_token`), releasing it (both lease columns null), and the
   // durable `email_sent_at` stamp. Only the lease claim is conditional.
-  const notificationsUpdate = vi.fn((patch: Record<string, unknown>) =>
-    chain('email_claim_token' in patch && patch.email_claim_token ? emailClaim : { data: null, error: null })
-  )
+  const notificationsUpdate = vi.fn((patch: Record<string, unknown>) => {
+    if (typeof patch.email_sent_at === 'string') row.email_sent_at = patch.email_sent_at
+    return chain(
+      'email_claim_token' in patch && patch.email_claim_token
+        ? emailClaim
+        : { data: null, error: null }
+    )
+  })
   const membersChain = chain(members)
 
   const from = vi.fn((table: string) => {
@@ -590,8 +603,15 @@ describe('processNotification', () => {
       const { checkAndConsumeRateLimit, claimRateLimitCharge } = await import(
         '@/lib/voice/rate-limit'
       )
-      // Attempt 1 takes the marker; the retry finds it already taken.
-      vi.mocked(claimRateLimitCharge).mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+      // Attempt 1 takes the marker; every later attempt finds it already taken.
+      // Stateful rather than `mockResolvedValueOnce`, so an attempt that never
+      // reaches the cap cannot leave a queued value behind for another test.
+      const taken = new Set<string>()
+      vi.mocked(claimRateLimitCharge).mockImplementation(async (key: string) => {
+        if (taken.has(key)) return false
+        taken.add(key)
+        return true
+      })
       batchSendMock.mockResolvedValueOnce({
         data: null,
         error: { name: 'rate_limit_exceeded', message: 'slow down', statusCode: 429 },
