@@ -22,6 +22,7 @@ import {
   describeNotificationJob,
   processNotification,
 } from '@/lib/queue/processors/notification'
+import { reconcileAppointmentReminders } from '@/lib/notifications/reconcile-reminders'
 
 /**
  * Single host process for every BullMQ queue.
@@ -143,6 +144,16 @@ console.log(
     .map((q) => `${q.name}(x${q.concurrency})`)
     .join(', ')}`
 )
+
+/**
+ * Reminders are only ever enqueued by a write, so appointments booked before
+ * reminder delivery shipped have no job. This schedules them once, guarded by a
+ * Redis key, on the first boot of whichever container hosts the queue. Not
+ * awaited and never throws: the workers above are already consuming.
+ */
+if (active.some((definition) => definition.name === NOTIFICATION_QUEUE)) {
+  void reconcileAppointmentReminders()
+}
 
 /**
  * Closing each Worker lets in-flight jobs finish and returns anything unstarted to

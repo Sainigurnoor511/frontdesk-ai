@@ -16,6 +16,7 @@ vi.mock('@/lib/integrations/webhook', () => ({
 vi.mock('@/lib/notifications/dispatch', () => ({
   dispatchNotification: vi.fn(),
   scheduleAppointmentReminder: vi.fn(),
+  cancelAppointmentReminder: vi.fn(),
 }))
 
 // The calendar-sync fan-out is `void`-ed at the call site and is not what these
@@ -90,10 +91,13 @@ const VALID_INPUT = {
   internalNotes: 'VIP',
 }
 
+// File-wide: the reminder assertions below are about what *this* action did, so
+// no call can be allowed to leak in from the previous test.
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
 describe('createAppointment', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
 
   it('notifies the organization about the staff booking and schedules a reminder', async () => {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
@@ -171,6 +175,21 @@ describe('updateAppointment', () => {
     expect(supabase.__mocks.updateEqOrg).toHaveBeenCalledWith('organization_id', 'org-42')
   })
 
+  // Issue 1: this write can move `starts_at`, and before the fix nothing
+  // re-pointed the reminder, so a moved appointment reminded at its old time.
+  it('re-installs the reminder against the new start time', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const { scheduleAppointmentReminder } = await import('@/lib/notifications/dispatch')
+    vi.mocked(createSupabaseClient).mockResolvedValue(
+      mockSupabase({ organizationId: 'org-42' }) as never
+    )
+
+    const moved = new Date('2026-08-11T09:00:00.000Z').toISOString()
+    await updateAppointment('appt-1', { ...VALID_INPUT, startsAt: moved })
+
+    expect(scheduleAppointmentReminder).toHaveBeenCalledWith('org-42', 'appt-1', moved)
+  })
+
   it('returns an error when the update fails', async () => {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
     vi.mocked(createSupabaseClient).mockResolvedValue(
@@ -194,5 +213,28 @@ describe('cancelAppointment', () => {
     expect(supabase.__mocks.update).toHaveBeenCalledWith({ status: 'cancelled' })
     expect(supabase.__mocks.updateEqId).toHaveBeenCalledWith('id', 'appt-1')
     expect(supabase.__mocks.updateEqOrg).toHaveBeenCalledWith('organization_id', 'org-42')
+  })
+
+  // Issue 1: a cancelled appointment must not keep a pending reminder.
+  it('drops the pending reminder', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+    vi.mocked(createSupabaseClient).mockResolvedValue(mockSupabase() as never)
+
+    await cancelAppointment('appt-1')
+
+    expect(cancelAppointmentReminder).toHaveBeenCalledWith('appt-1')
+  })
+
+  it('leaves the reminder alone when the cancel write fails', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+    vi.mocked(createSupabaseClient).mockResolvedValue(
+      mockSupabase({ updateError: { message: 'boom' } }) as never
+    )
+
+    await cancelAppointment('appt-1')
+
+    expect(cancelAppointmentReminder).not.toHaveBeenCalled()
   })
 })

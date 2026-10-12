@@ -16,6 +16,11 @@ vi.mock('@/lib/integrations/webhook', () => ({
   dispatchWebhook: vi.fn(),
 }))
 
+vi.mock('@/lib/notifications/dispatch', () => ({
+  scheduleAppointmentReminder: vi.fn(),
+  cancelAppointmentReminder: vi.fn(),
+}))
+
 vi.mock('@/lib/integrations/google-calendar-sync', () => ({
   handleAppointmentCreated: vi.fn(),
   handleAppointmentUpdated: vi.fn(),
@@ -644,6 +649,26 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     expect(handleCalendlyAppointmentCancelled).toHaveBeenCalled()
   })
 
+  // Issue 1: a cancelled appointment must not keep a pending reminder, and this
+  // is the cancel write behind both the public page and the voice tool.
+  it('drops the pending reminder', async () => {
+    await useMock(mockCancel({}))
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com')
+
+    expect(cancelAppointmentReminder).toHaveBeenCalledWith('appt-1')
+  })
+
+  it('keeps the reminder when the cancel matched no rows', async () => {
+    await useMock(mockCancel({ updatedRows: [] }))
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com')
+
+    expect(cancelAppointmentReminder).not.toHaveBeenCalled()
+  })
+
   it('returns code not_found and never updates when the email does not own the appointment', async () => {
     const mock = mockCancel({ owner: { client_id: 'client-9', clients: { email: 'eve@example.com' } } })
     await useMock(mock)
@@ -764,6 +789,47 @@ describe('rescheduleAppointmentByEmailServiceRole', () => {
 
     const { handleAppointmentUpdated } = await import('@/lib/integrations/google-calendar-sync')
     expect(handleAppointmentUpdated).toHaveBeenCalledWith('org-1', 'appt-1')
+  })
+
+  /**
+   * Issue 1. This function is the only reschedule write in the product — the
+   * public booking page and the `reschedule_appointment` voice tool both land
+   * here — so the reminder has to move from here or not at all.
+   */
+  it('re-points the reminder at the new start time', async () => {
+    const mock = mockReschedule({})
+    await useRescheduleMock(mock)
+    const { scheduleAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+      'org-1',
+      'appt-1',
+      '2026-08-06T09:00:00.000Z'
+    )
+  })
+
+  it('leaves the reminder where it is when the move does not land', async () => {
+    const mock = mockReschedule({ rpc: { data: 'destination_conflict', error: null } })
+    await useRescheduleMock(mock)
+    const { scheduleAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(scheduleAppointmentReminder).not.toHaveBeenCalled()
   })
 
   it('sends a null expected start for the public path, which has no confirmed time', async () => {

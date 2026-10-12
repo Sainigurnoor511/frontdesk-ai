@@ -9,8 +9,9 @@ import {
   type NotificationPreferences,
 } from '@/lib/data/organization-settings-service'
 import {
-  notificationJobId,
-  notificationQueue,
+  addNotificationJob,
+  removeNotificationJob,
+  POST_CALL_SUMMARY_ATTEMPTS,
   POST_CALL_SUMMARY_DELAY_MS,
 } from '@/lib/queue/queues/notification'
 import {
@@ -45,14 +46,13 @@ export async function dispatchNotification(
     const subjectId =
       event.type === 'post_call_summary' ? event.conversationId : event.appointmentId
 
-    await notificationQueue.add(
-      event.type,
+    await addNotificationJob(
       { organizationId: event.organizationId, type: event.type, subjectId },
-      {
-        jobId: notificationJobId(event.type, subjectId),
-        // Only the summary is enqueued before its subject row commits.
-        ...(event.type === 'post_call_summary' ? { delay: POST_CALL_SUMMARY_DELAY_MS } : {}),
-      }
+      // Only the summary is enqueued before its subject row commits, so only it
+      // needs the delay and the wider attempt window.
+      event.type === 'post_call_summary'
+        ? { delay: POST_CALL_SUMMARY_DELAY_MS, attempts: POST_CALL_SUMMARY_ATTEMPTS }
+        : {}
     )
   } catch (error) {
     console.error(
@@ -63,12 +63,20 @@ export async function dispatchNotification(
 }
 
 /**
- * Schedule the ~24h-before reminder for an appointment as a delayed job keyed on
+ * Installs the ~24h-before reminder for an appointment as a delayed job keyed on
  * the appointment, the pattern `lib/voice/providers/assemblyai/enqueue-finalize.ts`
  * already uses.
  *
+ * Safe to call on every write that touches `starts_at`, not just on creation:
+ * `addNotificationJob()` drops the job already parked under that id, so a moved
+ * appointment ends up with exactly one reminder, at the new time. Calling it
+ * only from the creation paths is what left a rescheduled appointment reminding
+ * at its original time.
+ *
  * A booking made less than 24 hours out is skipped: it already produced a
- * booking notification, and a "reminder" seconds later is noise.
+ * booking notification, and a "reminder" seconds later is noise. An appointment
+ * *moved* inside that window still has its stale reminder removed first, so
+ * "skipped" never means "the old one stands".
  */
 export async function scheduleAppointmentReminder(
   organizationId: string,
@@ -78,7 +86,11 @@ export async function scheduleAppointmentReminder(
 ): Promise<void> {
   try {
     const resolved = preferences ?? (await getNotificationPreferences(organizationId))
-    if (!resolved.notifyAppointmentReminders) return
+    if (!resolved.notifyAppointmentReminders) {
+      // The preference may have been on when this appointment was booked.
+      await removeNotificationJob('appointment_reminder', appointmentId)
+      return
+    }
 
     const startsAtMs = Date.parse(startsAt)
     if (!Number.isFinite(startsAtMs)) {
@@ -89,16 +101,37 @@ export async function scheduleAppointmentReminder(
     }
 
     const delay = startsAtMs - REMINDER_LEAD_MS - Date.now()
-    if (delay <= 0) return
+    if (delay <= 0) {
+      await removeNotificationJob('appointment_reminder', appointmentId)
+      return
+    }
 
-    await notificationQueue.add(
-      'appointment_reminder',
+    await addNotificationJob(
       { organizationId, type: 'appointment_reminder', subjectId: appointmentId },
-      { jobId: notificationJobId('appointment_reminder', appointmentId), delay }
+      { delay }
     )
   } catch (error) {
     console.error(
       `[notifications] failed to schedule reminder for appointment ${appointmentId}:`,
+      error
+    )
+  }
+}
+
+/**
+ * Drops a pending reminder. Called from every cancel path: the processor's
+ * `status === 'cancelled'` guard is the backstop, but leaving the job pending
+ * means a cancelled appointment still holds a delayed job for up to a month and
+ * the row still looks deliverable.
+ *
+ * Never throws — a cancellation must not fail because Redis is unreachable.
+ */
+export async function cancelAppointmentReminder(appointmentId: string): Promise<void> {
+  try {
+    await removeNotificationJob('appointment_reminder', appointmentId)
+  } catch (error) {
+    console.error(
+      `[notifications] failed to cancel reminder for appointment ${appointmentId}:`,
       error
     )
   }

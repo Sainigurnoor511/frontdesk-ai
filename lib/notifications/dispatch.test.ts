@@ -3,6 +3,7 @@
 // at `lib/queue/lazy-queue`, rather than mocking the queue itself.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
+  cancelAppointmentReminder,
   dispatchConversationCompletedNotifications,
   dispatchConversationCompletedNotificationsBounded,
   dispatchNotification,
@@ -10,13 +11,14 @@ import {
 } from './dispatch'
 import {
   notificationQueue,
+  POST_CALL_SUMMARY_ATTEMPTS,
   POST_CALL_SUMMARY_DELAY_MS,
 } from '@/lib/queue/queues/notification'
 
-const { addMock } = vi.hoisted(() => ({ addMock: vi.fn() }))
+const { addMock, removeMock } = vi.hoisted(() => ({ addMock: vi.fn(), removeMock: vi.fn() }))
 
 vi.mock('@/lib/queue/lazy-queue', () => ({
-  lazyQueue: () => ({ add: addMock }),
+  lazyQueue: () => ({ add: addMock, remove: removeMock, getJob: vi.fn() }),
 }))
 
 vi.mock('@/lib/supabase/service-role', () => ({
@@ -101,15 +103,46 @@ describe('dispatchNotification', () => {
     expect(addMock).not.toHaveBeenCalled()
   })
 
-  it('delays only the post-call summary', async () => {
+  it('delays only the post-call summary, and widens its attempt window', async () => {
     await mockClient()
 
     await dispatchNotification(eventFor('post_call_summary'))
-    expect(addMock.mock.calls[0][2]).toMatchObject({ delay: POST_CALL_SUMMARY_DELAY_MS })
+    expect(addMock.mock.calls[0][2]).toMatchObject({
+      delay: POST_CALL_SUMMARY_DELAY_MS,
+      // Issue 7: the attempt window is the budget the finalize path gets before
+      // the job lands in the failed set.
+      attempts: POST_CALL_SUMMARY_ATTEMPTS,
+    })
 
     addMock.mockClear()
     await dispatchNotification(eventFor('client_booking'))
     expect(addMock.mock.calls[0][2].delay).toBeUndefined()
+    expect(addMock.mock.calls[0][2].attempts).toBeUndefined()
+  })
+
+  // Issue 7: a job parked under the fixed id — failed, delayed or completed —
+  // makes `add()` a no-op, so a re-finalized conversation would never be
+  // announced. Every install clears the stale job first.
+  it('clears any job already parked under the fixed id before adding', async () => {
+    await mockClient()
+
+    await dispatchNotification(eventFor('post_call_summary'))
+
+    expect(removeMock).toHaveBeenCalledWith('notify:post_call_summary:conv-1')
+    expect(removeMock.mock.invocationCallOrder[0]).toBeLessThan(
+      addMock.mock.invocationCallOrder[0]
+    )
+  })
+
+  it('still enqueues when clearing the stale job fails', async () => {
+    await mockClient()
+    removeMock.mockRejectedValueOnce(new Error('locked by another worker'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await dispatchNotification(eventFor('client_booking'))
+
+    expect(addMock).toHaveBeenCalledTimes(1)
+    warn.mockRestore()
   })
 
   it('falls back to the schema defaults when the org has no settings row', async () => {
@@ -177,6 +210,8 @@ describe('scheduleAppointmentReminder', () => {
     await scheduleAppointmentReminder('org-1', 'appt-1', farFuture)
 
     expect(addMock).not.toHaveBeenCalled()
+    // Still clears a job scheduled while the preference was on.
+    expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
   })
 
   it('skips a booking less than 24 hours out', async () => {
@@ -191,6 +226,46 @@ describe('scheduleAppointmentReminder', () => {
     expect(addMock).not.toHaveBeenCalled()
   })
 
+  /**
+   * Issue 1, the trap. The job id is fixed at
+   * `notify:appointment_reminder:<id>`, so BullMQ treats a re-add as a no-op
+   * while the original delayed job is still pending: calling this from the
+   * reschedule paths *looks* like it works and does not. The old job has to go
+   * first.
+   */
+  describe('rescheduling an appointment that already has a pending reminder', () => {
+    it('removes the pending job before installing one at the new delay', async () => {
+      await mockClient()
+
+      const movedLater = new Date(Date.now() + 10 * 86_400_000).toISOString()
+      await scheduleAppointmentReminder('org-1', 'appt-1', movedLater)
+
+      expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
+      expect(removeMock.mock.invocationCallOrder[0]).toBeLessThan(
+        addMock.mock.invocationCallOrder[0]
+      )
+
+      const delay = addMock.mock.calls[0][2].delay
+      const expected = Date.parse(movedLater) - 24 * 3_600_000 - Date.now()
+      // ~9 days out, not the ~4 days the original job was holding.
+      expect(Math.abs(delay - expected)).toBeLessThan(2_000)
+    })
+
+    it('removes the pending job when the appointment moves inside the 24h window', async () => {
+      await mockClient()
+
+      await scheduleAppointmentReminder(
+        'org-1',
+        'appt-1',
+        new Date(Date.now() + 2 * 3_600_000).toISOString()
+      )
+
+      // Nothing to remind about any more — and the old job must not stand.
+      expect(addMock).not.toHaveBeenCalled()
+      expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
+    })
+  })
+
   it('warns and skips an unparseable start time', async () => {
     await mockClient()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -199,6 +274,23 @@ describe('scheduleAppointmentReminder', () => {
 
     expect(addMock).not.toHaveBeenCalled()
     expect(warn).toHaveBeenCalled()
+    warn.mockRestore()
+  })
+})
+
+describe('cancelAppointmentReminder', () => {
+  it('removes the pending reminder job', async () => {
+    await cancelAppointmentReminder('appt-1')
+
+    expect(removeMock).toHaveBeenCalledWith('notify:appointment_reminder:appt-1')
+    expect(addMock).not.toHaveBeenCalled()
+  })
+
+  it('never throws when the queue is unreachable', async () => {
+    removeMock.mockRejectedValueOnce(new Error('redis down'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(cancelAppointmentReminder('appt-1')).resolves.toBeUndefined()
     warn.mockRestore()
   })
 })

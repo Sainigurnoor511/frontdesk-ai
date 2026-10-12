@@ -7,6 +7,10 @@
 import { createServiceRoleClient } from '@/lib/supabase/service-role'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
 import {
+  cancelAppointmentReminder,
+  scheduleAppointmentReminder,
+} from '@/lib/notifications/dispatch'
+import {
   handleAppointmentCreated,
   handleAppointmentUpdated,
   handleAppointmentCancelled,
@@ -385,6 +389,12 @@ export async function rescheduleAppointmentByEmailServiceRole(
       return { error: 'Could not reschedule. Please try again.', code: 'update_failed' }
   }
 
+  // The appointment moved, so the reminder moves with it. This is the only
+  // reschedule write in the product — the public booking page and the
+  // `reschedule_appointment` voice tool both land here — so one call covers
+  // both entry points.
+  void scheduleAppointmentReminder(organizationId, appointmentId, startsAt)
+
   void handleAppointmentUpdated(organizationId, appointmentId)
   void handleCalComAppointmentUpdated(organizationId, appointmentId)
   void handleMicrosoftAppointmentUpdated(organizationId, appointmentId)
@@ -435,6 +445,10 @@ export async function cancelAppointmentByEmailServiceRole(
   }
 
   void dispatchWebhook(organizationId, 'appointment.cancelled', { appointmentId })
+
+  // Same reach as the reschedule above: the public cancel action and the
+  // `cancel_appointment` voice tool both come through here.
+  void cancelAppointmentReminder(appointmentId)
 
   void handleAppointmentCancelled(organizationId, appointmentId)
   void handleCalComAppointmentCancelled(organizationId, appointmentId)
