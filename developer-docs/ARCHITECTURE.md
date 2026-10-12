@@ -94,7 +94,7 @@ frontdesk-ai/
 
 ### Auth Flow
 
-- Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings; login-time AAL2 challenge not yet enforced — see `TODO.md`)
+- Supabase Auth handles signup/login (email + Google OAuth), plus TOTP two-factor via `supabase.auth.mfa.*` (enrolled in settings; login-time AAL2 challenge not yet enforced — see `developer-docs/TODO.md`)
 - `(auth)/callback/route.ts` handles OAuth callbacks
 - Password reset: `/forgot-password` emails a link through `requestPasswordReset`; the link returns to `/callback?flow=recovery`, which signs the user in and sends them to `/reset-password` to choose a new password (`updatePassword`). The callback also sets a 15-minute `fd_password_recovery` cookie; without it `/reset-password` and `updatePassword` refuse, so an ordinary signed-in session cannot change the password without a reset link
 - Next 16 uses `proxy.ts` (not `middleware.ts`): its `proxy()` calls `updateSession()` from `lib/supabase/middleware.ts`, which calls `supabase.auth.getUser()` to refresh session cookies on every non-static request
@@ -353,9 +353,9 @@ Browser side lives in `components/voice/assemblyai/` (WebSocket session, PCM cap
 
 ### Shared Tools
 
-Tools are provider-neutral. `lib/voice/tools/*-handlers.ts` define them with `defineVoiceTool` (Zod-validated args); `buildVoiceToolHandlers()` in `lib/voice/tool-handlers.ts` composes them (honoring `skip_knowledge_retrieval`). LiveKit adapts them via `lib/voice/livekit-tool-adapter.ts`; AssemblyAI sends them as `session.tools` and relays calls through `providers/assemblyai/tool-relay.ts`.
+Tools are provider-neutral. `lib/voice/tools/*-handlers.ts` define them with `defineVoiceTool` (Zod-validated args); `buildVoiceToolHandlers()` in `lib/voice/tool-handlers.ts` composes them (honoring `skip_knowledge_retrieval`). Both providers go through that one composition point: LiveKit via `lib/voice/livekit-tools.ts` (which wraps it in `livekit-tool-adapter.ts` for `AgentSession`), AssemblyAI by sending them as `session.tools` and relaying calls through `providers/assemblyai/tool-relay.ts`. Adding a handler module therefore reaches both engines by construction.
 
-Current tools: `check_availability`, `book_appointment`, `search_knowledge`.
+Current tools: `check_availability`, `book_appointment`, `find_appointment`, `cancel_appointment`, `reschedule_appointment`, `search_knowledge`.
 
 ### Components
 

@@ -8,8 +8,7 @@ import { FishAudioTTS } from '@/lib/voice/adapters/fish-audio-tts'
 import { buildDefaultFirstMessage, buildSystemPrompt, buildToneTag } from '@/lib/voice/agent-context'
 import { createReceptionistAgent } from '@/lib/voice/receptionist-agent'
 import { buildGreetingCacheKey, synthesizeCachedFrames } from '@/lib/voice/say-cached'
-import { buildBookingTools } from '@/lib/voice/booking-tools'
-import { buildKnowledgeTools } from '@/lib/voice/knowledge-tools'
+import { buildLiveKitTools } from '@/lib/voice/livekit-tools'
 import { defaultVoiceIdForLanguage, normalizeLanguageCode } from '@/lib/data/voice-catalog'
 import { resolveGroqModel } from '@/lib/data/agent-advanced-options'
 import { getAgentByIdCached, getEnabledAgentRulesServiceRole } from '@/lib/data/agents-service'
@@ -253,23 +252,19 @@ async function entrypoint(ctx: agents.JobContext<VoiceWorkerUserData>) {
       await finalizeConversation('completed')
     })
 
-    const knowledgeTools = agentDetail.skip_knowledge_retrieval
-      ? {}
-      : buildKnowledgeTools({ organizationId: agentDetail.organization_id })
-
     sessionStartedAt = Date.now()
     await session.start({
       room: ctx.room,
       agent: createReceptionistAgent({
         instructions: buildSystemPrompt(agentDetail, agentRules),
-        tools: {
-          ...buildBookingTools({
-            organizationId: agentDetail.organization_id,
-            agentId,
-            conversationId,
-          }),
-          ...knowledgeTools,
-        },
+        // One list, built from the shared composition point, including the
+        // `skip_knowledge_retrieval` gate — see `lib/voice/livekit-tools.ts`.
+        tools: buildLiveKitTools({
+          organizationId: agentDetail.organization_id,
+          agentId,
+          conversationId,
+          skipKnowledgeRetrieval: agentDetail.skip_knowledge_retrieval,
+        }),
         greetingText,
         tts,
       }),

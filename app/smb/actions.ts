@@ -34,8 +34,8 @@ import {
   findOrCreateClientServiceRole,
   createAppointmentServiceRole,
   getUpcomingAppointmentsByEmailServiceRole,
-  reschedulePublicAppointmentServiceRole,
-  cancelPublicAppointmentServiceRole,
+  rescheduleAppointmentByEmailServiceRole,
+  cancelAppointmentByEmailServiceRole,
 } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 import {
@@ -453,7 +453,8 @@ export async function reschedulePublicAppointment(
 
   // Re-check the new slot is still open before moving the appointment onto
   // it — no serviceId is known here, so this checks the org-wide gap the
-  // same way the voice-booking tool does (see lib/voice/booking-tools.ts).
+  // same way the voice-booking tool does (see
+  // lib/voice/tools/booking-handlers.ts).
   const date = parsed.data.startsAt.slice(0, 10)
   const days = await getAvailableSlots(parsed.data.organizationId, {
     serviceId: '',
@@ -467,7 +468,7 @@ export async function reschedulePublicAppointment(
     return { error: 'slot_taken' }
   }
 
-  return reschedulePublicAppointmentServiceRole(
+  return rescheduleAppointmentByEmailServiceRole(
     parsed.data.organizationId,
     parsed.data.appointmentId,
     parsed.data.email,
@@ -488,7 +489,7 @@ export async function cancelPublicAppointment(
     return { error: BOOKING_PAGE_UNAVAILABLE }
   }
 
-  return cancelPublicAppointmentServiceRole(
+  return cancelAppointmentByEmailServiceRole(
     parsed.data.organizationId,
     parsed.data.appointmentId,
     parsed.data.email

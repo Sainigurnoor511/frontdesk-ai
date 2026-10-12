@@ -1,6 +1,9 @@
 # Frontdesk.ai Shared TODO
 
-Use this as the team-wide feature and technical backlog.
+The single team-wide feature and technical backlog. The old root `TODO.md` (a phase-by-phase
+audit against the original design document, 2026-08-25) was folded in here on 2026-10-12 —
+10 of its 11 items had shipped; the one that had not is the E2E/load testing pass under
+P2 below.
 
 ## How to use
 
@@ -34,8 +37,9 @@ Use this as the completion gate before marking a feature item done.
       `getAgentById` returns null, and **every call fails with "Agent not found" —
       including LiveKit ones**. The agent detail page breaks too. Agent lists, the
       dashboard, and the public booking page are unaffected (`getAgentsForOrg` /
-      `getPublicAgentsForOrg` were not touched). CI applies it on merge to main; locally
-      run `supabase db push`.
+      `getPublicAgentsForOrg` were not touched). The migration file is committed on `main`
+      (`8404deb`) and CI applies it on merge, so this is now only an action for local and
+      self-hosted databases provisioned before `044`: run `npx supabase db push`.
 - [ ] **Run the AssemblyAI session worker wherever the app is deployed** (added: 2026-09-06) —
       `pnpm start:jobs`, or the `worker-jobs` service in `docker-compose.yml`, which
       hosts the `assemblyai-session-finalize` queue along with the other three.
@@ -54,16 +58,13 @@ Use this as the completion gate before marking a feature item done.
       Firefox and Safari specifically — the in-worklet resampling exists because those two
       break the forced-24 kHz shortcut, and that code has never run.
 - [ ] Enforce `answering_mode`/routing logic in `workers/voice-agent.ts`
-- [ ] Add voice tools: cancel appointment, reschedule appointment
-      (now provider-neutral: add to `lib/voice/tools/booking-handlers.ts` once and both
-      the LiveKit and AssemblyAI paths pick it up)
 - [ ] Wire feature flags to sidebar visibility and route guards
 - [ ] Implement notification delivery from stored prefs (`organization_settings`)
 
 ## P1 - Knowledge + Conversations
 
-- [ ] **Revisit multi-language support for AssemblyAI agents** (added: 2026-09-06) — root
-      `TODO.md` item 4 closed "Additional languages" as infeasible because Groq Whisper
+- [ ] **Revisit multi-language support for AssemblyAI agents** (added: 2026-09-06) — the
+      "Additional languages" control was removed in `beacf87` as infeasible because Groq Whisper
       offers only one fixed language or auto-detect. That constraint does not apply to
       AssemblyAI, which recognizes 18 input languages with native code-switching. There is
       now a real backend for a discrete multi-language control, for agents on that
@@ -85,6 +86,11 @@ Use this as the completion gate before marking a feature item done.
 
 ## P2 - UX + Platform
 
+- [ ] **E2E / load testing pass** (moved from root `TODO.md`, audited 2026-08-25, rechecked
+      2026-10-12) — nothing exists beyond unit tests and the voice-latency instrumentation.
+      `@playwright/test` is a devDependency but there is no Playwright config and no spec
+      files, so the harness has to be set up from scratch. Scope TBD; the obvious first
+      targets are the signup → onboarding → agent-create path and the public booking page.
 - [ ] Calendar per-slot buffer time support
 - [ ] Notification center UI (header popover currently shell)
 - [ ] Billing/upgrade flow behind sidebar upgrade card
@@ -124,6 +130,16 @@ Use this as the completion gate before marking a feature item done.
 
 ## Completed Recently
 
+- [x] Added `find_appointment`, `cancel_appointment`, and `reschedule_appointment` voice
+      tools in a new sibling module `lib/voice/tools/manage-booking-handlers.ts` (not
+      `booking-handlers.ts`), reusing the public manage-booking service path so calendar
+      sync and the `appointment.cancelled` webhook fire identically, and routed the LiveKit
+      worker through `buildVoiceToolHandlers()` (new `lib/voice/livekit-tools.ts`, replacing
+      `booking-tools.ts` + `knowledge-tools.ts`) so both providers share one tool list by
+      construction. Authorization is organization + a caller-confirmed email, the same
+      strength the public manage-booking page already offers. Deliberately left out:
+      caller-ID/OTP identification, and `appointment.updated` as an outbound webhook event
+      (not in `WEBHOOK_EVENT_TYPES`, so reschedule fires none — parity with the public page).
 - [x] Google Calendar OAuth + encrypted token storage + sync on appointment
       create/update/cancel (`lib/integrations/google-calendar-sync.ts`, migration `038`);
       Microsoft Calendar, Cal.com, and Calendly followed the same pattern (`039`, `040`)

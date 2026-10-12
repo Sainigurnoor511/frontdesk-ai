@@ -386,6 +386,7 @@ Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server acti
 - [x] Voice receptionist on LiveKit (Groq + Fish Audio) with recordings, transcripts, summaries
 - [x] AssemblyAI Voice Agent as a per-agent alternative engine
 - [x] Booking and knowledge tools on live calls
+- [x] Cancel and reschedule tools on voice calls
 - [x] Website scan, knowledge base, FAQs with hybrid search
 - [x] Public booking page with themes, templates, embed, reschedule/cancel
 - [x] Google, Microsoft, Cal.com, Calendly calendar sync
@@ -394,14 +395,13 @@ Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server acti
 **Next**
 
 - [ ] Inbound phone calls (Twilio / Plivo → LiveKit SIP)
-- [ ] Cancel and reschedule tools on voice calls
 - [ ] Answering modes and call routing enforcement
 - [ ] Enforce two-factor at login
 - [ ] Notification delivery and a notification center
 - [ ] End-to-end and load tests
 - [ ] Billing and plans for hosted deployments
 
-The detailed backlog lives in [developer-docs/TODO.md](./developer-docs/TODO.md). Have an idea? [Open a feature request](https://github.com/Sainigurnoor511/frontdesk-ai/issues/new?labels=enhancement).
+The full backlog — features, known issues, and priorities — lives in a single place: [developer-docs/TODO.md](./developer-docs/TODO.md). Have an idea? [Open a feature request](https://github.com/Sainigurnoor511/frontdesk-ai/issues/new?labels=enhancement).
 
 ---
 

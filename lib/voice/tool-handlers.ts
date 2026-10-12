@@ -1,4 +1,5 @@
 import { buildBookingToolHandlers } from './tools/booking-handlers'
+import { buildManageBookingToolHandlers } from './tools/manage-booking-handlers'
 import { buildKnowledgeToolHandlers } from './tools/knowledge-handlers'
 import type { VoiceToolContext, VoiceToolHandler } from './tools/types'
 
@@ -8,13 +9,19 @@ export type { VoiceToolContext, VoiceToolHandler }
  * The full set of tools available on a call, honoring the agent's
  * `skip_knowledge_retrieval` setting.
  *
- * This is the provider-neutral composition point. The AssemblyAI path uses it
- * to build `session.tools` and to dispatch `tool.call` events; the LiveKit
- * worker uses it to build its `AgentSession` tool map. See `tools/types.ts` for
- * the invariants every handler upholds.
+ * This is the provider-neutral composition point, and it is the *only* one:
+ * the AssemblyAI path uses it to build `session.tools` and to dispatch
+ * `tool.call` events, and the LiveKit worker reaches it through
+ * `lib/voice/livekit-tools.ts`. Both providers therefore see the same list by
+ * construction, including the `skip_knowledge_retrieval` gate, which used to be
+ * expressed separately in the worker. See `tools/types.ts` for the invariants
+ * every handler upholds.
  */
 export function buildVoiceToolHandlers(context: VoiceToolContext): VoiceToolHandler[] {
-  const handlers = buildBookingToolHandlers(context)
+  const handlers = [
+    ...buildBookingToolHandlers(context),
+    ...buildManageBookingToolHandlers(context),
+  ]
   if (!context.skipKnowledgeRetrieval) {
     handlers.push(...buildKnowledgeToolHandlers(context))
   }

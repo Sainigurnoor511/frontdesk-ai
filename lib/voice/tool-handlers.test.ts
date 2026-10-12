@@ -1,0 +1,84 @@
+import { describe, it, expect, vi } from 'vitest'
+
+// Keeps `cheerio` and the crawler out of this suite's module graph (they are
+// static imports of `knowledge-service`), not because they are a load-time
+// hazard — `fastembed`, `pdf-parse`, and `mammoth` are all dynamic imports.
+vi.mock('@/lib/data/knowledge-service', () => ({
+  searchKnowledgeServiceRole: vi.fn(),
+}))
+
+import { buildVoiceToolHandlers, executeVoiceToolHandler } from './tool-handlers'
+
+const CONTEXT = {
+  organizationId: 'org-1',
+  agentId: 'agent-1',
+  conversationId: 'conv-1',
+}
+
+describe('buildVoiceToolHandlers', () => {
+  it('exposes every tool, including cancel and reschedule, with no flags set', () => {
+    expect(buildVoiceToolHandlers(CONTEXT).map((handler) => handler.name)).toEqual([
+      'check_availability',
+      'book_appointment',
+      'find_appointment',
+      'cancel_appointment',
+      'reschedule_appointment',
+      'search_knowledge',
+    ])
+  })
+
+  it('drops only search_knowledge when the agent skips knowledge retrieval', () => {
+    const names = buildVoiceToolHandlers({ ...CONTEXT, skipKnowledgeRetrieval: true }).map(
+      (handler) => handler.name
+    )
+
+    expect(names).not.toContain('search_knowledge')
+    expect(names).toContain('cancel_appointment')
+    expect(names).toContain('reschedule_appointment')
+  })
+
+  it('lets no tool select an organization', () => {
+    for (const handler of buildVoiceToolHandlers(CONTEXT)) {
+      expect(Object.keys(handler.parameters.shape)).not.toContain('organizationId')
+    }
+  })
+})
+
+describe('executeVoiceToolHandler', () => {
+  it('rejects a malformed email before any data access', async () => {
+    const result = (await executeVoiceToolHandler(CONTEXT, 'cancel_appointment', {
+      clientEmail: 'not-an-email',
+      startsAt: '2026-08-05T14:00:00Z',
+    })) as { error: string; details: string }
+
+    expect(result.error).toBe('invalid_arguments')
+    expect(result.details).toContain('clientEmail')
+  })
+
+  it('rejects a naive datetime with no offset', async () => {
+    const result = (await executeVoiceToolHandler(CONTEXT, 'reschedule_appointment', {
+      clientEmail: 'ada@example.com',
+      startsAt: '2026-08-05T14:00:00',
+      newStartsAt: '2026-08-06T09:00:00Z',
+    })) as { error: string; details: string }
+
+    expect(result.error).toBe('invalid_arguments')
+    expect(result.details).toContain('startsAt')
+  })
+
+  it('rejects a missing required argument', async () => {
+    const result = (await executeVoiceToolHandler(CONTEXT, 'reschedule_appointment', {
+      clientEmail: 'ada@example.com',
+      startsAt: '2026-08-05T14:00:00Z',
+    })) as { error: string; details: string }
+
+    expect(result.error).toBe('invalid_arguments')
+    expect(result.details).toContain('newStartsAt')
+  })
+
+  it('returns unknown_tool for a name that does not exist', async () => {
+    expect(await executeVoiceToolHandler(CONTEXT, 'delete_everything', {})).toEqual({
+      error: 'unknown_tool',
+    })
+  })
+})

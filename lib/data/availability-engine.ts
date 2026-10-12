@@ -32,7 +32,13 @@ type TimeOffRow = {
   ends_at: string
 }
 
-type AppointmentRow = { staff_id: string | null; status: string; starts_at: string; ends_at: string }
+type AppointmentRow = {
+  id: string
+  staff_id: string | null
+  status: string
+  starts_at: string
+  ends_at: string
+}
 
 function enumerateDates(rangeStart: string, rangeEnd: string): string[] {
   const dates: string[] = []
@@ -91,6 +97,12 @@ export async function getAvailableSlots(
     staffId?: string | null
     rangeStart: string
     rangeEnd: string
+    /**
+     * Treats this appointment as if it did not exist, so an appointment being
+     * moved does not block the slots it is about to vacate. Used by the voice
+     * `reschedule_appointment` tool.
+     */
+    excludeAppointmentId?: string
   }
 ): Promise<DaySlots[]> {
   const supabase = createServiceRoleClient()
@@ -136,7 +148,7 @@ export async function getAvailableSlots(
       .gt('ends_at', `${input.rangeStart}T00:00:00.000Z`),
     supabase
       .from('appointments')
-      .select('staff_id, status, starts_at, ends_at')
+      .select('id, staff_id, status, starts_at, ends_at')
       .eq('organization_id', organizationId)
       .neq('status', 'cancelled')
       .lt('starts_at', `${input.rangeEnd}T23:59:59.999Z`)
@@ -156,6 +168,10 @@ export async function getAvailableSlots(
   )
   const staffHoursByDay = new Map<number, BusinessHoursRow>(
     ((staffHoursRows ?? []) as BusinessHoursRow[]).map((row) => [row.day_of_week, row])
+  )
+
+  const blockingAppointments = ((appointmentRows ?? []) as AppointmentRow[]).filter(
+    (appt) => !input.excludeAppointmentId || appt.id !== input.excludeAppointmentId
   )
 
   const dates = enumerateDates(input.rangeStart, input.rangeEnd)
@@ -191,7 +207,7 @@ export async function getAvailableSlots(
       slots = subtractInterval(slots, block.starts_at, block.ends_at)
     }
 
-    const relevantAppointments = ((appointmentRows ?? []) as AppointmentRow[]).filter(
+    const relevantAppointments = blockingAppointments.filter(
       (appt) => !input.staffId || appt.staff_id === input.staffId || appt.staff_id === null
     )
     for (const appt of relevantAppointments) {

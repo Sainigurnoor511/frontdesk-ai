@@ -6,7 +6,7 @@ import type { z } from 'zod'
  * Both voice engines consume the same handlers:
  *
  *   - the LiveKit pipeline wraps each one in `@livekit/agents`' `tool()` helper
- *     (see `lib/voice/booking-tools.ts` / `lib/voice/knowledge-tools.ts`), and
+ *     (see `lib/voice/livekit-tools.ts`), and
  *   - the AssemblyAI Voice Agent path converts `parameters` to JSON Schema for
  *     `session.tools`, then runs `execute` from a server action when a
  *     `tool.call` event arrives.

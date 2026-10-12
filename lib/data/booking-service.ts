@@ -156,36 +156,95 @@ export async function createAppointmentServiceRole(
 }
 
 /**
- * Public lookup for the reschedule/cancel flow — upcoming, non-cancelled
- * appointments for the client matching this email within the org. No auth:
- * scoped by organizationId + exact email match only, mirroring the trust
- * model of the rest of the public booking actions (rate-limited by caller).
+ * Every appointment belonging to the client(s) with this email in this org,
+ * from `sinceIso` (default: now) onwards, in every status.
+ *
+ * Shared by the public manage-booking lookup and the voice manage-booking
+ * tools. Two properties the voice path depends on:
+ *
+ *  - **Cancelled and past rows are returned.** That is what lets a caller be
+ *    told "that one was already cancelled" or "that one already happened"
+ *    instead of a flat "no appointment found".
+ *  - **A Postgres error throws; it never comes back as `[]`.** supabase-js
+ *    resolves with `{ data: null, error }` rather than rejecting, so without
+ *    this a dead database would be indistinguishable from "this caller has
+ *    nothing booked" — and the caller would be told they have no appointment.
+ *
+ * No `.maybeSingle()` on the client lookup: two client rows in one org can
+ * share an address (`findOrCreateClientServiceRole` dedupes on phone first), so
+ * every matching id is collected.
  */
-export async function getUpcomingAppointmentsByEmailServiceRole(
+export async function findClientAppointmentsByEmailServiceRole(
   organizationId: string,
-  email: string
+  email: string,
+  options?: { sinceIso?: string; limit?: number }
 ): Promise<AppointmentRow[]> {
-  const supabase = createServiceRoleClient()
-  const { data: client } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('organization_id', organizationId)
-    .eq('email', email.trim())
-    .maybeSingle()
+  const normalized = email.trim()
+  if (!normalized) return []
 
-  if (!client) return []
+  const supabase = createServiceRoleClient()
+
+  // `ilike` rather than `eq` because emails are stored with whatever case the
+  // booking path captured, while a voice model spelling an address back emits
+  // lowercase — exact matching strands those callers.
+  //
+  // '_' is left unescaped on purpose: as a LIKE wildcard it can only widen the
+  // candidate set, and the JS equality check below is what authorizes.
+  const { data: clientRows, error: clientError } = await supabase
+    .from('clients')
+    .select('id, email')
+    .eq('organization_id', organizationId)
+    .ilike('email', normalized)
+
+  if (clientError) throw new Error(`client lookup failed: ${clientError.message}`)
+
+  const wanted = normalized.toLowerCase()
+  const ids = ((clientRows ?? []) as { id: string; email: string | null }[])
+    .filter((row) => row.email?.toLowerCase() === wanted)
+    .map((row) => row.id)
+  if (ids.length === 0) return []
 
   const { data, error } = await supabase
     .from('appointments')
     .select('*')
     .eq('organization_id', organizationId)
-    .eq('client_id', client.id)
-    .neq('status', 'cancelled')
-    .gte('starts_at', new Date().toISOString())
+    .in('client_id', ids)
+    .gte('starts_at', options?.sinceIso ?? new Date().toISOString())
     .order('starts_at', { ascending: true })
+    .limit(options?.limit ?? 50)
 
-  if (error) return []
+  if (error) throw new Error(`appointment lookup failed: ${error.message}`)
   return (data ?? []) as AppointmentRow[]
+}
+
+/**
+ * Public lookup for the reschedule/cancel flow — upcoming, non-cancelled
+ * appointments for the client matching this email within the org. No auth:
+ * scoped by organizationId + email match only, mirroring the trust model of the
+ * rest of the public booking actions (rate-limited by caller).
+ *
+ * The 500-row cap is applied in SQL and the cancelled filter in JS after it, so
+ * the effective ceiling is "500 upcoming rows minus however many are
+ * cancelled". That is far above any real client's upcoming book, and the query
+ * was previously uncapped.
+ */
+export async function getUpcomingAppointmentsByEmailServiceRole(
+  organizationId: string,
+  email: string
+): Promise<AppointmentRow[]> {
+  try {
+    const rows = await findClientAppointmentsByEmailServiceRole(organizationId, email, {
+      limit: 500,
+    })
+    return rows.filter((row) => row.status !== 'cancelled')
+  } catch (error) {
+    // `lookupPublicAppointments` in app/smb/actions.ts has no try/catch and
+    // returns this array straight to the booking page, which renders [] as "no
+    // appointments". Absorb the throw rather than turn a server action into a
+    // 500. Surfacing read failures on that page properly is backlogged.
+    console.error('[booking-service] getUpcomingAppointmentsByEmailServiceRole failed:', error)
+    return []
+  }
 }
 
 /**
@@ -211,15 +270,31 @@ async function assertAppointmentOwnedByEmail(
   return client?.email?.toLowerCase() === email.trim().toLowerCase()
 }
 
-export async function reschedulePublicAppointmentServiceRole(
+/**
+ * `code` lets a caller tell a failed ownership check apart from a database
+ * error — the voice tools report the first as "I can't find that appointment"
+ * and the second as an apology, where the human `error` string alone would
+ * collapse both into one sentence. The string itself is unchanged, so the
+ * public booking page's error rendering is untouched.
+ */
+export type AppointmentMutationResult =
+  | { success: true }
+  | { error: string; code: 'not_found' | 'update_failed' }
+
+/**
+ * Moves an appointment after re-verifying the email owns it. Named "ByEmail"
+ * rather than "Public" because the voice manage-booking tools call it too — the
+ * credential, not the entry point, is what this function is specific to.
+ */
+export async function rescheduleAppointmentByEmailServiceRole(
   organizationId: string,
   appointmentId: string,
   email: string,
   startsAt: string,
   endsAt: string
-): Promise<{ error: string } | { success: true }> {
+): Promise<AppointmentMutationResult> {
   const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
-  if (!owned) return { error: 'Appointment not found.' }
+  if (!owned) return { error: 'Appointment not found.', code: 'not_found' }
 
   const supabase = createServiceRoleClient()
   const { error } = await supabase
@@ -228,7 +303,7 @@ export async function reschedulePublicAppointmentServiceRole(
     .eq('id', appointmentId)
     .eq('organization_id', organizationId)
 
-  if (error) return { error: 'Could not reschedule. Please try again.' }
+  if (error) return { error: 'Could not reschedule. Please try again.', code: 'update_failed' }
 
   void handleAppointmentUpdated(organizationId, appointmentId)
   void handleCalComAppointmentUpdated(organizationId, appointmentId)
@@ -238,13 +313,14 @@ export async function reschedulePublicAppointmentServiceRole(
   return { success: true }
 }
 
-export async function cancelPublicAppointmentServiceRole(
+/** Cancels an appointment after re-verifying the email owns it. See the rename note above. */
+export async function cancelAppointmentByEmailServiceRole(
   organizationId: string,
   appointmentId: string,
   email: string
-): Promise<{ error: string } | { success: true }> {
+): Promise<AppointmentMutationResult> {
   const owned = await assertAppointmentOwnedByEmail(organizationId, appointmentId, email)
-  if (!owned) return { error: 'Appointment not found.' }
+  if (!owned) return { error: 'Appointment not found.', code: 'not_found' }
 
   const supabase = createServiceRoleClient()
   const { error } = await supabase
@@ -253,7 +329,7 @@ export async function cancelPublicAppointmentServiceRole(
     .eq('id', appointmentId)
     .eq('organization_id', organizationId)
 
-  if (error) return { error: 'Could not cancel. Please try again.' }
+  if (error) return { error: 'Could not cancel. Please try again.', code: 'update_failed' }
 
   void dispatchWebhook(organizationId, 'appointment.cancelled', { appointmentId })
 
