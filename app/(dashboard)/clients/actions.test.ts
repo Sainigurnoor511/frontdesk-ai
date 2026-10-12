@@ -23,17 +23,41 @@ const VALID_CLIENT = {
   notes: '',
 }
 
-async function mockSupabase(options: { factors?: unknown; currentLevel?: string }) {
+async function mockSupabase(options: {
+  factors?: unknown
+  currentLevel?: string
+  signedOut?: boolean
+  organizationId?: string
+}) {
   const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
 
+  // `filters` records every `.eq()` on the update and delete chains, so a test can assert the
+  // write was scoped by both the row id and the caller's organization.
+  const filters: [string, unknown][] = []
+  const scoped = () => ({
+    eq: (column: string, value: unknown) => {
+      filters.push([column, value])
+      return {
+        eq: async (column2: string, value2: unknown) => {
+          filters.push([column2, value2])
+          return { error: null }
+        },
+      }
+    },
+  })
   const insert = vi.fn().mockResolvedValue({ error: null })
-  const update = vi.fn(() => ({ eq: () => ({ eq: async () => ({ error: null }) }) }))
-  const del = vi.fn(() => ({ eq: () => ({ eq: async () => ({ error: null }) }) }))
+  const update = vi.fn(scoped)
+  const del = vi.fn(scoped)
   const from = vi.fn((table: string) => {
     if (table === 'members') {
       return {
         select: () => ({
-          eq: () => ({ single: async () => ({ data: { organization_id: 'org-1' }, error: null }) }),
+          eq: () => ({
+            single: async () => ({
+              data: { organization_id: options.organizationId ?? 'org-1' },
+              error: null,
+            }),
+          }),
         }),
       }
     }
@@ -42,10 +66,14 @@ async function mockSupabase(options: { factors?: unknown; currentLevel?: string 
 
   vi.mocked(createSupabaseClient).mockResolvedValue({
     auth: {
-      getUser: vi.fn().mockResolvedValue({
-        data: { user: { id: 'u1', email: 'owner@example.com', factors: options.factors } },
-        error: null,
-      }),
+      getUser: vi.fn().mockResolvedValue(
+        options.signedOut
+          ? { data: { user: null }, error: { name: 'AuthSessionMissingError', status: 400 } }
+          : {
+              data: { user: { id: 'u1', email: 'owner@example.com', factors: options.factors } },
+              error: null,
+            }
+      ),
       mfa: {
         getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
           data: { currentLevel: options.currentLevel ?? 'aal1', nextLevel: null },
@@ -56,8 +84,88 @@ async function mockSupabase(options: { factors?: unknown; currentLevel?: string 
     from,
   } as never)
 
-  return { from, insert, update, delete: del }
+  return { from, insert, update, delete: del, filters }
 }
+
+const CLIENT_ID = '11111111-1111-4111-8111-111111111111'
+
+describe('clients actions — validation, auth and organization scoping', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('rejects an invalid phone number on create before touching Supabase', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+
+    const result = await createClient({ ...VALID_CLIENT, phoneNumber: 'not-a-phone' })
+
+    expect(result).toEqual({ error: 'Enter a valid phone number' })
+    expect(createSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it('rejects an invalid phone number on update before touching Supabase', async () => {
+    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
+
+    const result = await updateClient({ id: CLIENT_ID, ...VALID_CLIENT, phoneNumber: 'bad' })
+
+    expect(result).toEqual({ error: 'Enter a valid phone number' })
+    expect(createSupabaseClient).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['createClient', () => createClient(VALID_CLIENT), 'create'],
+    ['updateClient', () => updateClient({ id: CLIENT_ID, ...VALID_CLIENT }), 'update'],
+    ['deleteClient', () => deleteClient(CLIENT_ID), 'delete'],
+  ] as const)('%s refuses a signed-out caller', async (_name, run, verb) => {
+    const { from } = await mockSupabase({ signedOut: true })
+
+    expect(await run()).toEqual({ error: `You must be signed in to ${verb} a client.` })
+    expect(from).not.toHaveBeenCalled()
+  })
+
+  it('scopes the insert to the caller organization on success', async () => {
+    const { insert } = await mockSupabase({ factors: [], organizationId: 'org-42' })
+
+    const result = await createClient({ ...VALID_CLIENT, notes: 'VIP' })
+
+    expect(result).toEqual({ success: true })
+    expect(insert).toHaveBeenCalledWith({
+      organization_id: 'org-42',
+      name: 'Ada Lovelace',
+      phone_number: '+15551234567',
+      email: 'ada@example.com',
+      notes: 'VIP',
+    })
+  })
+
+  it('updates the row by id within the caller organization', async () => {
+    const { update, filters } = await mockSupabase({ factors: [], organizationId: 'org-42' })
+
+    const result = await updateClient({ id: CLIENT_ID, ...VALID_CLIENT, email: '' })
+
+    expect(result).toEqual({ success: true })
+    expect(update).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'Ada Lovelace', phone_number: '+15551234567', email: null })
+    )
+    expect(filters).toEqual([
+      ['id', CLIENT_ID],
+      ['organization_id', 'org-42'],
+    ])
+  })
+
+  it('deletes the row by id within the caller organization', async () => {
+    const { delete: del, filters } = await mockSupabase({ factors: [], organizationId: 'org-42' })
+
+    const result = await deleteClient(CLIENT_ID)
+
+    expect(result).toEqual({ success: true })
+    expect(del).toHaveBeenCalled()
+    expect(filters).toEqual([
+      ['id', CLIENT_ID],
+      ['organization_id', 'org-42'],
+    ])
+  })
+})
 
 describe('clients actions — pending-MFA session', () => {
   beforeEach(() => {
