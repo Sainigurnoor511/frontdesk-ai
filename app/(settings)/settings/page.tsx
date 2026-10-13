@@ -7,7 +7,7 @@ import { SettingsClient } from './settings-client'
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string; mfa?: string }>
+  searchParams: Promise<{ tab?: string; mfa?: string; sessions?: string }>
 }) {
   const context = await getCurrentOrgAndUser()
   if (!context) redirect('/login')
@@ -16,9 +16,10 @@ export default async function SettingsPage({
     getOrganizationSettings(context.org.id),
     getTotpFactorStatus(),
   ])
-  // `mfa=recovered` is set by `redeemRecoveryCode`. Unsigned and harmless: it only shows a prompt
-  // to set two-factor up again, which the page shows only while two-factor is actually off.
-  const { tab, mfa } = await searchParams
+  // `mfa=recovered` (and `sessions=active` when the other sessions could not be signed out) are set
+  // by `redeemRecoveryCode`. Unsigned and harmless: they only change the wording of a prompt that
+  // the page shows only while two-factor is actually off.
+  const { tab, mfa, sessions } = await searchParams
 
   return (
     <SettingsClient
@@ -29,8 +30,9 @@ export default async function SettingsPage({
       initialTab={tab}
       initialTotpEnabled={totpStatus.enabled}
       initialTotpFactorId={totpStatus.factorId}
-      initialRecoveryCodesRemaining={totpStatus.recoveryCodesRemaining}
+      initialRecoveryCodes={totpStatus.recoveryCodes}
       mfaRecovered={mfa === 'recovered'}
+      otherSessionsActive={sessions === 'active'}
     />
   )
 }

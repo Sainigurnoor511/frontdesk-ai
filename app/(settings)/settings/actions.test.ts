@@ -14,9 +14,10 @@ vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn(), createServiceRo
 // The recovery-code store is covered in recovery-codes.test.ts against an in-memory table; here it
 // is only a dependency whose result the actions pass through.
 vi.mock('@/lib/auth/recovery-codes', () => ({
+  RECOVERY_CODE_COUNT: 10,
   issueRecoveryCodes: vi.fn(async () => ({ codes: ['AAAAA-BBBBB'] })),
   countUnusedRecoveryCodes: vi.fn(async () => 7),
-  deleteRecoveryCodes: vi.fn(async () => true),
+  deleteUnusedRecoveryCodes: vi.fn(async () => true),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
@@ -261,7 +262,7 @@ describe('two-factor settings actions — provider results', () => {
     expect(await getTotpFactorStatus()).toEqual({
       enabled: true,
       factorId: 'factor-1',
-      recoveryCodesRemaining: 7,
+      recoveryCodes: { remaining: 7, total: 10 },
     })
   })
 
@@ -275,7 +276,7 @@ describe('two-factor settings actions — provider results', () => {
     expect(await getTotpFactorStatus()).toEqual({
       enabled: false,
       factorId: null,
-      recoveryCodesRemaining: null,
+      recoveryCodes: null,
     })
   })
 
@@ -286,7 +287,7 @@ describe('two-factor settings actions — provider results', () => {
     expect(await getTotpFactorStatus()).toEqual({
       enabled: false,
       factorId: null,
-      recoveryCodesRemaining: null,
+      recoveryCodes: null,
     })
     expect(listFactors).toHaveBeenCalled()
   })
@@ -331,7 +332,7 @@ describe('two-factor settings actions — pending session', () => {
     expect(await getTotpFactorStatus()).toEqual({
       enabled: false,
       factorId: null,
-      recoveryCodesRemaining: null,
+      recoveryCodes: null,
     })
     expect(listFactors).not.toHaveBeenCalled()
   })
@@ -361,11 +362,32 @@ describe('two-factor settings actions — elevated session', () => {
     vi.clearAllMocks()
   })
 
-  it('unenrolls once the session has passed the challenge', async () => {
+  it('unenrolls once the session has passed the challenge, and deletes the caller’s codes', async () => {
+    const { deleteUnusedRecoveryCodes } = await import('@/lib/auth/recovery-codes')
     const { unenroll } = await mockSupabase(ELEVATED)
 
     expect(await unenrollTotpFactor('factor-1')).toEqual({ success: true })
     expect(unenroll).toHaveBeenCalledWith({ factorId: 'factor-1' })
+    expect(deleteUnusedRecoveryCodes).toHaveBeenCalledWith(expect.anything(), 'u1')
+  })
+
+  it('reports success when the code delete fails: the factor is gone, so the codes are dead', async () => {
+    const { deleteUnusedRecoveryCodes } = await import('@/lib/auth/recovery-codes')
+    vi.mocked(deleteUnusedRecoveryCodes).mockResolvedValueOnce(false)
+    await mockSupabase(ELEVATED)
+
+    expect(await unenrollTotpFactor('factor-1')).toEqual({ success: true })
+  })
+
+  it('does not delete codes when the unenroll itself failed', async () => {
+    const { deleteUnusedRecoveryCodes } = await import('@/lib/auth/recovery-codes')
+    const { unenroll } = await mockSupabase(ELEVATED)
+    unenroll.mockResolvedValueOnce({ error: { message: 'boom' } })
+
+    expect(await unenrollTotpFactor('factor-1')).toEqual({
+      error: 'Could not disable two-factor authentication. Please try again.',
+    })
+    expect(deleteUnusedRecoveryCodes).not.toHaveBeenCalled()
   })
 
   it('still lets a user with no factor enrol one', async () => {

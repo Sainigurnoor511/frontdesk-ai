@@ -15,8 +15,9 @@ import {
 } from '@/lib/validations/settings'
 import { getAssuredUser } from '@/lib/auth/mfa'
 import {
+  RECOVERY_CODE_COUNT,
   countUnusedRecoveryCodes,
-  deleteRecoveryCodes,
+  deleteUnusedRecoveryCodes,
   issueRecoveryCodes,
 } from '@/lib/auth/recovery-codes'
 
@@ -211,9 +212,11 @@ export async function verifyTotpEnrollment(
     return { error: 'That code was incorrect or expired. Please try again.' }
   }
 
-  // A fresh set for the new factor, replacing anything left from an earlier one. Two-factor is on
-  // either way; `null` makes the dialog say so and point at "Generate recovery codes" instead.
-  const issued = await issueRecoveryCodes(createServiceRoleClient(), user.id)
+  // A fresh set bound to the factor that just verified (GoTrue only verifies a factor of the
+  // session's own user), replacing any unused codes left from an earlier one, which are dead by
+  // factor binding anyway. Two-factor is on either way; `null` makes the client say so and point at
+  // "Generate recovery codes" instead.
+  const issued = await issueRecoveryCodes(createServiceRoleClient(), user.id, factorId)
   return { success: true, recoveryCodes: 'codes' in issued ? issued.codes : null }
 }
 
@@ -231,14 +234,15 @@ export async function regenerateRecoveryCodes(): Promise<
     return { error: 'You must be signed in to do this.' }
   }
   // `user.factors` is from the `getUser()` response `getAssuredUser` just validated.
-  const hasTotp = (user.factors ?? []).some(
+  const totp = (user.factors ?? []).find(
     (factor) => factor.factor_type === 'totp' && factor.status === 'verified'
   )
-  if (!hasTotp) {
+  if (!totp) {
     return { error: 'Turn on two-factor authentication first.' }
   }
 
-  const issued = await issueRecoveryCodes(createServiceRoleClient(), user.id)
+  // Atomic: on failure the previous set is untouched. The client re-reads the count either way.
+  const issued = await issueRecoveryCodes(createServiceRoleClient(), user.id, totp.id)
   if ('error' in issued) {
     return { error: 'Could not generate recovery codes. Please try again.' }
   }
@@ -264,40 +268,53 @@ export async function unenrollTotpFactor(factorId: string): Promise<ActionResult
     return { error: 'Could not disable two-factor authentication. Please try again.' }
   }
 
-  // The codes belonged to the removed factor. A failure here is logged and harmless: a code only
-  // works from a pending session, which needs a factor, and the next enrolment replaces the set.
-  await deleteRecoveryCodes(createServiceRoleClient(), user.id)
+  // The unused codes belonged to the removed factor. A failure here is logged (inside the helper)
+  // and harmless: a code is accepted only while the factor it was issued for is verified.
+  await deleteUnusedRecoveryCodes(createServiceRoleClient(), user.id)
 
   return { success: true }
 }
 
+/**
+ * Recovery-code state for settings. `null` means two-factor is off. Otherwise `total` is the size of
+ * a set and `remaining` the unused codes bound to a verified factor, or `null` when the count could
+ * not be read, which the page treats as a warning, never as "fine".
+ */
+export type RecoveryCodeStatus = { remaining: number | null; total: number } | null
+
 export async function getTotpFactorStatus(): Promise<{
   enabled: boolean
   factorId: string | null
-  /** Unused recovery codes; `null` when two-factor is off or the count could not be read. */
-  recoveryCodesRemaining: number | null
+  recoveryCodes: RecoveryCodeStatus
 }> {
   const supabase = await createSupabaseClient()
   const user = await getAssuredUser(supabase)
   if (!user) {
-    return { enabled: false, factorId: null, recoveryCodesRemaining: null }
+    return { enabled: false, factorId: null, recoveryCodes: null }
   }
 
   const { data, error } = await supabase.auth.mfa.listFactors()
 
   if (error || !data) {
-    return { enabled: false, factorId: null, recoveryCodesRemaining: null }
+    return { enabled: false, factorId: null, recoveryCodes: null }
   }
 
-  const verifiedTotp = data.totp.find((factor) => factor.status === 'verified')
-  if (!verifiedTotp) {
-    return { enabled: false, factorId: null, recoveryCodesRemaining: null }
+  const verifiedTotp = data.totp.filter((factor) => factor.status === 'verified')
+  if (verifiedTotp.length === 0) {
+    return { enabled: false, factorId: null, recoveryCodes: null }
   }
   return {
     enabled: true,
-    factorId: verifiedTotp.id,
-    // A count only: the codes themselves are never readable after they were shown.
-    recoveryCodesRemaining: await countUnusedRecoveryCodes(createServiceRoleClient(), user.id),
+    factorId: verifiedTotp[0].id,
+    recoveryCodes: {
+      // A count only: the codes themselves are never readable after they were shown.
+      remaining: await countUnusedRecoveryCodes(
+        createServiceRoleClient(),
+        user.id,
+        verifiedTotp.map((factor) => factor.id)
+      ),
+      total: RECOVERY_CODE_COUNT,
+    },
   }
 }
 

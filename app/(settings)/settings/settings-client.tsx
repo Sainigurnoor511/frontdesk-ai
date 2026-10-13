@@ -75,13 +75,11 @@ import {
   verifyTotpEnrollment,
   unenrollTotpFactor,
   regenerateRecoveryCodes,
+  getTotpFactorStatus,
+  type RecoveryCodeStatus,
   type TotpEnrollment,
 } from './actions'
 import { RecoveryCodesDialog } from '@/components/auth/recovery-codes-dialog'
-
-// Mirrors `RECOVERY_CODE_COUNT` in `lib/auth/recovery-codes.ts`, which imports `node:crypto` and
-// so cannot be pulled into this client bundle.
-const RECOVERY_CODE_COUNT = 10
 
 type Tab = 'account' | 'notifications' | 'features'
 
@@ -99,8 +97,9 @@ export function SettingsClient({
   initialTab,
   initialTotpEnabled,
   initialTotpFactorId,
-  initialRecoveryCodesRemaining,
+  initialRecoveryCodes,
   mfaRecovered,
+  otherSessionsActive,
 }: {
   email: string
   orgName: string
@@ -109,9 +108,11 @@ export function SettingsClient({
   initialTab?: string
   initialTotpEnabled: boolean
   initialTotpFactorId: string | null
-  initialRecoveryCodesRemaining: number | null
+  initialRecoveryCodes: RecoveryCodeStatus
   /** Arrived from `/verify` after redeeming a recovery code, which removed the factor. */
   mfaRecovered: boolean
+  /** That recovery could not sign out the other sessions. */
+  otherSessionsActive: boolean
 }) {
   const activeTab: Tab = NAV_ITEMS.some((item) => item.value === initialTab)
     ? (initialTab as Tab)
@@ -171,8 +172,9 @@ export function SettingsClient({
                 settings={settings}
                 initialTotpEnabled={initialTotpEnabled}
                 initialTotpFactorId={initialTotpFactorId}
-                initialRecoveryCodesRemaining={initialRecoveryCodesRemaining}
+                initialRecoveryCodes={initialRecoveryCodes}
                 mfaRecovered={mfaRecovered}
+                otherSessionsActive={otherSessionsActive}
               />
             )}
             {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
@@ -191,15 +193,17 @@ function AccountTab({
   settings,
   initialTotpEnabled,
   initialTotpFactorId,
-  initialRecoveryCodesRemaining,
+  initialRecoveryCodes,
   mfaRecovered,
+  otherSessionsActive,
 }: {
   email: string
   settings: OrganizationSettings
   initialTotpEnabled: boolean
   initialTotpFactorId: string | null
-  initialRecoveryCodesRemaining: number | null
+  initialRecoveryCodes: RecoveryCodeStatus
   mfaRecovered: boolean
+  otherSessionsActive: boolean
 }) {
   const [language, setLanguage] = useState(settings.language)
   const [isPending, startTransition] = useTransition()
@@ -213,9 +217,11 @@ function AccountTab({
   const [isVerifying, setIsVerifying] = useState(false)
   const [disable2faOpen, setDisable2faOpen] = useState(false)
   const [isDisabling2fa, setIsDisabling2fa] = useState(false)
-  const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(
-    initialRecoveryCodesRemaining
-  )
+  // Only ever set from the server (`getTotpFactorStatus`), so a failed write can never leave a
+  // stale count on screen.
+  const [recoveryCodes, setRecoveryCodes] = useState<RecoveryCodeStatus>(initialRecoveryCodes)
+  // While two-factor is on, `null` is "count unknown", which warns like zero does.
+  const recoveryCodesRemaining = recoveryCodes?.remaining ?? null
   // Plaintext codes exist only here, between issue and the dialog closing.
   const [shownRecoveryCodes, setShownRecoveryCodes] = useState<string[] | null>(null)
   const [regenerateOpen, setRegenerateOpen] = useState(false)
@@ -281,21 +287,40 @@ function AccountTab({
     setTotpEnabled(true)
     setTotpFactorId(enrollment.factorId)
     setEnrollment(null)
+    await refreshRecoveryCodes()
     if (result.recoveryCodes) {
-      setRecoveryCodesRemaining(result.recoveryCodes.length)
       setShownRecoveryCodes(result.recoveryCodes)
       toast.success('Two-factor authentication is enabled.')
     } else {
-      setRecoveryCodesRemaining(0)
       toast.warning(
         'Two-factor authentication is enabled, but recovery codes could not be generated. Generate them from this page.'
       )
     }
   }
 
+  /**
+   * Re-reads the recovery-code count from the server. Called after every write, whatever its
+   * outcome, so the page never shows a count the database no longer holds. A failed read shows the
+   * "could not check" warning rather than the last known number.
+   */
+  async function refreshRecoveryCodes() {
+    try {
+      const status = await getTotpFactorStatus()
+      setRecoveryCodes(status.enabled ? status.recoveryCodes : null)
+    } catch {
+      setRecoveryCodes((current) => (current ? { ...current, remaining: null } : current))
+    }
+  }
+
   async function handleGenerateRecoveryCodes() {
     setIsRegenerating(true)
-    const result = await regenerateRecoveryCodes()
+    let result: Awaited<ReturnType<typeof regenerateRecoveryCodes>>
+    try {
+      result = await regenerateRecoveryCodes()
+    } catch {
+      result = { error: 'Could not generate recovery codes. Please try again.' }
+    }
+    await refreshRecoveryCodes()
     setIsRegenerating(false)
     setRegenerateOpen(false)
 
@@ -304,7 +329,6 @@ function AccountTab({
       return
     }
 
-    setRecoveryCodesRemaining(result.recoveryCodes.length)
     setShownRecoveryCodes(result.recoveryCodes)
   }
 
@@ -322,7 +346,7 @@ function AccountTab({
 
     setTotpEnabled(false)
     setTotpFactorId(null)
-    setRecoveryCodesRemaining(null)
+    setRecoveryCodes(null)
     toast.success('Two-factor authentication is disabled.')
   }
 
@@ -361,17 +385,28 @@ function AccountTab({
               className="flex items-start gap-2 rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning"
             >
               <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
-              You signed in with a recovery code, so two-factor authentication was removed and your
-              other sessions were signed out. Set it up again to keep your account protected.
+              {otherSessionsActive ? (
+                <span>
+                  You signed in with a recovery code, so two-factor authentication was removed, but
+                  your other sessions could not be signed out and may still be active. Use Sign out
+                  all devices below, then set two-factor up again.
+                </span>
+              ) : (
+                <span>
+                  You signed in with a recovery code, so two-factor authentication was removed and
+                  your other sessions were signed out. Set it up again to keep your account
+                  protected.
+                </span>
+              )}
             </p>
           )}
           {totpEnabled && (
             <div className="space-y-2 pt-2">
               <div className="flex items-center gap-2">
                 <span className="label-mono text-muted-foreground">Recovery codes</span>
-                {recoveryCodesRemaining !== null && (
+                {recoveryCodes && recoveryCodes.remaining !== null && (
                   <span className="font-mono text-xs text-muted-foreground">
-                    {recoveryCodesRemaining} of {RECOVERY_CODE_COUNT} unused
+                    {recoveryCodes.remaining} of {recoveryCodes.total} unused
                   </span>
                 )}
               </div>
@@ -389,6 +424,23 @@ function AccountTab({
                     disabled={isRegenerating}
                   >
                     {isRegenerating ? 'Generating…' : 'Generate recovery codes'}
+                  </Button>
+                </div>
+              ) : recoveryCodesRemaining === null ? (
+                <div className="space-y-2 rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning">
+                  <p>
+                    We could not check your recovery codes, so you may have none left. Generate a
+                    new set so a lost phone does not lock you out of your account.
+                  </p>
+                  {/* Confirmed first: codes may still exist, and a new set replaces them. */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRegenerateOpen(true)}
+                    disabled={isRegenerating}
+                  >
+                    Generate recovery codes
                   </Button>
                 </div>
               ) : (

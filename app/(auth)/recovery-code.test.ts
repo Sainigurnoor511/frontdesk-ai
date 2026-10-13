@@ -45,21 +45,27 @@ let store: ReturnType<typeof createRecoveryStore>
 let session: ReturnType<ReturnType<typeof createRecoveryStore>['session']>
 let codes: string[]
 
-async function setUp(options: { currentLevel?: 'aal1' | 'aal2' } = {}) {
+async function setUp(options: { currentLevel?: 'aal1' | 'aal2'; recoveringAt?: number } = {}) {
   const { createClient, createServiceRoleClient } = await import('@/lib/supabase/server')
   store = createRecoveryStore()
   store.factors.set(USER, [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }])
   store.factors.set(OTHER_USER, [{ id: 'factor-2', factor_type: 'totp', status: 'verified' }])
-  const issued = await issueRecoveryCodes(store.service as never, USER)
+  const issued = await issueRecoveryCodes(store.service as never, USER, 'factor-1')
   if (!('codes' in issued)) throw new Error('setup: codes not issued')
   codes = issued.codes
-  await issueRecoveryCodes(store.service as never, OTHER_USER)
+  await issueRecoveryCodes(store.service as never, OTHER_USER, 'factor-2')
   session = store.session(USER, options)
   vi.mocked(createClient).mockResolvedValue(session as never)
   vi.mocked(createServiceRoleClient).mockReturnValue(store.service as never)
 }
 
 const userRows = (userId: string) => store.rows.filter((row) => row.user_id === userId)
+/** What a redemption leaves: only the consumed row, kept with `used_at` set as the audit trail. */
+const onlyUsedRowLeft = (userId: string) => {
+  const rows = userRows(userId)
+  return rows.length === 1 && rows[0].used_at !== null
+}
+const authError = { name: 'AuthApiError', message: 'down', status: 500 }
 
 beforeEach(async () => {
   vi.clearAllMocks()
@@ -77,7 +83,7 @@ afterEach(() => {
 })
 
 describe('redeemRecoveryCode — a valid code from a pending session', () => {
-  it('removes the factor, deletes the remaining codes, revokes other sessions and clears the budget', async () => {
+  it('removes the factor, deletes the unused codes, keeps the used one, revokes other sessions and clears the budget', async () => {
     const { redirect } = await import('next/navigation')
     const { clearAttempts } = await import('@/lib/auth/mfa-attempts')
     const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
@@ -89,7 +95,7 @@ describe('redeemRecoveryCode — a valid code from a pending session', () => {
 
     expect(store.deleteFactor).toHaveBeenCalledWith({ userId: USER, id: 'factor-1' })
     expect(store.factors.get(USER)).toEqual([])
-    expect(userRows(USER)).toEqual([])
+    expect(onlyUsedRowLeft(USER)).toBe(true)
     expect(session.auth.signOut).toHaveBeenCalledWith({ scope: 'others' })
     expect(session.auth.signOut).not.toHaveBeenCalledWith({ scope: 'global' })
     expect(clearAttempts).toHaveBeenCalledWith(USER)
@@ -98,6 +104,7 @@ describe('redeemRecoveryCode — a valid code from a pending session', () => {
     expect(sendMfaRecoveryNotice).toHaveBeenCalledWith({
       to: 'owner@example.com',
       usedAt: expect.any(Date),
+      otherSessionsRevoked: true,
     })
 
     // The session that redeemed the code is now past the gate: no verified factor is left.
@@ -110,7 +117,7 @@ describe('redeemRecoveryCode — a valid code from a pending session', () => {
 
   it('cannot redeem another user’s code', async () => {
     const { redirect } = await import('next/navigation')
-    const other = await issueRecoveryCodes(store.service as never, OTHER_USER)
+    const other = await issueRecoveryCodes(store.service as never, OTHER_USER, 'factor-2')
     if (!('codes' in other)) throw new Error('setup')
 
     expect(await redeemRecoveryCode({ code: other.codes[0] })).toEqual({
@@ -162,7 +169,7 @@ describe('redeemRecoveryCode — single use', () => {
     vi.mocked(redirect).mockClear()
     // Re-enrol, so the session is pending again, and try the same code.
     store.factors.set(USER, [{ id: 'factor-3', factor_type: 'totp', status: 'verified' }])
-    await issueRecoveryCodes(store.service as never, USER)
+    await issueRecoveryCodes(store.service as never, USER, 'factor-3')
 
     expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
       error: 'That recovery code is not valid or has already been used.',
@@ -296,19 +303,196 @@ describe('redeemRecoveryCode — security email', () => {
   it('does not block or undo the recovery when the email fails', async () => {
     const { redirect } = await import('next/navigation')
     const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
-    vi.mocked(sendMfaRecoveryNotice).mockRejectedValue(new Error('Resend is down'))
+    vi.mocked(sendMfaRecoveryNotice).mockRejectedValueOnce(new Error('Resend is down'))
 
     await redeemRecoveryCode({ code: codes[0] })
 
     expect(sendMfaRecoveryNotice).toHaveBeenCalledTimes(1)
     expect(redirect).toHaveBeenCalledWith(SETTINGS)
     expect(store.factors.get(USER)).toEqual([])
-    expect(userRows(USER)).toEqual([])
+    expect(onlyUsedRowLeft(USER)).toBe(true)
     expect(session.auth.signOut).toHaveBeenCalledWith({ scope: 'others' })
     expect(budget.has(USER)).toBe(false)
-    expect(console.error).toHaveBeenCalledWith(
-      '[auth] recovery notice email not sent:',
-      expect.any(Error)
+    expect(console.error).toHaveBeenCalledWith('[mfa-recovery-notice-failed]', {
+      userId: USER,
+      error: expect.any(Error),
+    })
+  })
+
+  it('does not let a stalled provider hold the redirect past the timeout', async () => {
+    const { redirect } = await import('next/navigation')
+    const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
+    vi.mocked(sendMfaRecoveryNotice).mockReturnValueOnce(new Promise(() => {}))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const pending = redeemRecoveryCode({ code: codes[0] })
+      await vi.advanceTimersByTimeAsync(3000)
+      await pending
+    } finally {
+      vi.useRealTimers()
+    }
+
+    expect(redirect).toHaveBeenCalledWith(SETTINGS)
+    expect(console.error).toHaveBeenCalledWith('[mfa-recovery-notice-failed]', {
+      userId: USER,
+      error: expect.objectContaining({ message: 'timed out after 3000ms' }),
+    })
+  })
+})
+
+describe('redeemRecoveryCode — review findings', () => {
+  // #1: a recovery code cannot clear a non-TOTP factor, so it must not be spent trying.
+  it('refuses an account with a verified non-TOTP factor before reserving or consuming anything', async () => {
+    const { redirect } = await import('next/navigation')
+    const { reserveAttempt } = await import('@/lib/auth/mfa-attempts')
+    store.factors.set(USER, [
+      { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+      { id: 'phone-1', factor_type: 'phone', status: 'verified' },
+    ])
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error:
+        'This account has another two-factor method, so a recovery code cannot sign you in. Contact whoever runs the workspace.',
+    })
+    expect(reserveAttempt).not.toHaveBeenCalled()
+    expect(userRows(USER)).toHaveLength(10)
+    expect(userRows(USER).every((row) => row.used_at === null)).toBe(true)
+    expect(store.deleteFactor).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  // #4: codes are bound to the factor they were issued for.
+  it('rejects a code from an earlier enrolment after re-enrolling, even though its rows were never deleted', async () => {
+    const { redirect } = await import('next/navigation')
+    store.factors.set(USER, [{ id: 'factor-9', factor_type: 'totp', status: 'verified' }])
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error: 'That recovery code is not valid or has already been used.',
+    })
+    expect(store.deleteFactor).not.toHaveBeenCalled()
+    expect(store.factors.get(USER)).toEqual([{ id: 'factor-9', factor_type: 'totp', status: 'verified' }])
+    expect(userRows(USER).every((row) => row.used_at === null)).toBe(true)
+    expect(redirect).not.toHaveBeenCalled()
+  })
+
+  // #3: never say "still works" about a code that could not be put back.
+  it('says the code may have been used when the factor removal and the restore both fail', async () => {
+    store.deleteFactor.mockImplementationOnce(async () => {
+      store.failures.update = 1 // the restore that follows fails too
+      return { data: null, error: authError } as never
+    })
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error:
+        'Could not remove two-factor authentication, and your recovery code may have been used. If it no longer works, try another one.',
+    })
+    expect(userRows(USER).filter((row) => row.used_at !== null)).toHaveLength(1)
+    expect(budget.get(USER)).toBe(0)
+  })
+
+  it('says the code may have been used when its consumption committed and could not be confirmed', async () => {
+    store.failures.updateResponse = 1
+    store.failures.select = 1
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error:
+        'Could not check that recovery code, and it may have been used. If it no longer works, try another one.',
+    })
+    expect(budget.get(USER)).toBe(0)
+  })
+
+  it('re-reads a consumption that committed but lost its answer, and does not say the code still works', async () => {
+    store.failures.updateResponse = 1
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error:
+        'Could not check that recovery code, and it may have been used. If it no longer works, try another one.',
+    })
+    expect(userRows(USER).filter((row) => row.used_at !== null)).toHaveLength(1)
+    expect(store.deleteFactor).not.toHaveBeenCalled()
+    expect(budget.get(USER)).toBe(0)
+  })
+
+  // #5: the user who forgot the password and lost the phone goes on to the reset form.
+  it('sends a session that came from a reset link on to /reset-password', async () => {
+    const { redirect } = await import('next/navigation')
+    await setUp({ recoveringAt: Math.floor(Date.now() / 1000) - 60 })
+
+    await redeemRecoveryCode({ code: codes[0] })
+
+    expect(store.factors.get(USER)).toEqual([])
+    expect(redirect).toHaveBeenCalledWith('/reset-password')
+    expect(redirect).not.toHaveBeenCalledWith(SETTINGS)
+  })
+
+  it('sends a stale reset session to settings, as verifyMfaChallenge does', async () => {
+    const { redirect } = await import('next/navigation')
+    await setUp({ recoveringAt: Math.floor(Date.now() / 1000) - 60 * 60 })
+
+    await redeemRecoveryCode({ code: codes[0] })
+
+    expect(redirect).toHaveBeenCalledWith(SETTINGS)
+  })
+
+  // #6: report the revocation result instead of promising it.
+  it('says so in the redirect and the email when the other sessions could not be signed out', async () => {
+    const { redirect } = await import('next/navigation')
+    const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
+    session.auth.signOut.mockResolvedValue({ error: authError } as never)
+
+    await redeemRecoveryCode({ code: codes[0] })
+
+    expect(redirect).toHaveBeenCalledWith(`${SETTINGS}&sessions=active`)
+    expect(sendMfaRecoveryNotice).toHaveBeenCalledWith(
+      expect.objectContaining({ otherSessionsRevoked: false })
     )
+  })
+
+  // #7: a part-done removal that cleared the gate is a recovery, not a failure.
+  it('finishes the success path when the verified factor went but a leftover enrolment would not delete', async () => {
+    const { redirect } = await import('next/navigation')
+    const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
+    store.factors.set(USER, [
+      { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+      { id: 'factor-abandoned', factor_type: 'totp', status: 'unverified' },
+    ])
+    const realDelete = store.deleteFactor.getMockImplementation()!
+    store.deleteFactor
+      .mockImplementationOnce(realDelete)
+      .mockImplementationOnce(async () => ({ data: null, error: authError }) as never)
+
+    await redeemRecoveryCode({ code: codes[0] })
+
+    expect(store.factors.get(USER)).toEqual([
+      { id: 'factor-abandoned', factor_type: 'totp', status: 'unverified' },
+    ])
+    expect(redirect).toHaveBeenCalledWith(SETTINGS)
+    expect(session.auth.signOut).toHaveBeenCalledWith({ scope: 'others' })
+    expect(sendMfaRecoveryNotice).toHaveBeenCalledTimes(1)
+    expect(onlyUsedRowLeft(USER)).toBe(true)
+    expect(budget.has(USER)).toBe(false)
+  })
+
+  it('still revokes and notifies when a verified factor went but the gate is not cleared', async () => {
+    const { redirect } = await import('next/navigation')
+    const { sendMfaRecoveryNotice } = await import('@/lib/email/send-mfa-recovery-notice')
+    store.factors.set(USER, [
+      { id: 'factor-1', factor_type: 'totp', status: 'verified' },
+      { id: 'factor-extra', factor_type: 'totp', status: 'verified' },
+    ])
+    const realDelete = store.deleteFactor.getMockImplementation()!
+    store.deleteFactor
+      .mockImplementationOnce(realDelete)
+      .mockImplementationOnce(async () => ({ data: null, error: authError }) as never)
+
+    expect(await redeemRecoveryCode({ code: codes[0] })).toEqual({
+      error: 'We removed your authenticator but could not finish signing you in. Please try again.',
+    })
+    expect(session.auth.signOut).toHaveBeenCalledWith({ scope: 'others' })
+    expect(sendMfaRecoveryNotice).toHaveBeenCalledTimes(1)
+    // The code's factor is gone, so it is not restored; the slot is given back.
+    expect(userRows(USER).filter((row) => row.used_at !== null)).toHaveLength(1)
+    expect(budget.get(USER)).toBe(0)
+    expect(redirect).not.toHaveBeenCalled()
   })
 })

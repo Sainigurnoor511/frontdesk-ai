@@ -19,20 +19,26 @@ import { keyedHash } from '@/lib/crypto'
  * - Storage: `keyedHash()` from `lib/crypto.ts`, HMAC-SHA256 under a subkey of `ENCRYPTION_KEY`,
  *   of the canonical form (no dash, upper case). Never the plaintext. The codes are random enough
  *   that a fast keyed hash is the right tool; a leaked table without the key tests nothing.
+ * - Factor binding: each row carries the TOTP factor its set was issued for, and a code counts
+ *   (for redemption and for the remaining count) only while that factor is one of the user's
+ *   verified TOTP factors. A sheet from an earlier enrolment is dead once its factor is gone, even
+ *   if deleting its rows failed.
  * - Single use: `consumeRecoveryCode()` is one conditional `UPDATE … WHERE used_at IS NULL`, read
  *   back with `.select('id')`, and is accepted only when exactly one row changed. Two concurrent
  *   submissions of one code race on the row lock and the loser's `WHERE` no longer matches.
+ * - Audit: used rows are kept with `used_at` set. Only unused codes are ever deleted.
  */
 
 export const RECOVERY_CODE_COUNT = 10
 export const RECOVERY_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
 
 const TABLE = 'mfa_recovery_codes'
+const REPLACE_FUNCTION = 'replace_mfa_recovery_codes'
 const HASH_PURPOSE = 'mfa-recovery-code'
 
 // Structural, so tests can pass an in-memory fake. Every real caller passes the service-role
 // `SupabaseClient`.
-type ServiceClient = Pick<SupabaseClient, 'from'> & {
+type ServiceClient = Pick<SupabaseClient, 'from' | 'rpc'> & {
   auth: { admin: { mfa: Pick<SupabaseClient['auth']['admin']['mfa'], 'listFactors' | 'deleteFactor'> } }
 }
 
@@ -52,24 +58,27 @@ export function hashRecoveryCode(code: string): string {
 }
 
 /**
- * Replaces every code the user holds with a fresh set and returns the plaintext, which is the
- * only time it exists outside the user's hands: the caller shows it once and nothing reads it
- * back. Deletes first, so a failure part-way leaves the user with no codes (which settings
- * prompts them to fix), never with old codes still valid after a "regenerate".
+ * Replaces the user's unused codes with a fresh set bound to `factorId` (a verified TOTP factor of
+ * the user) and returns the plaintext, which is the only time it exists outside the user's hands:
+ * the caller shows it once and nothing reads it back.
+ *
+ * One call to `replace_mfa_recovery_codes()`, which deletes and inserts inside a single
+ * transaction, so a failure leaves the previous set exactly as it was: the user keeps the codes
+ * they saved instead of holding a sheet that silently stopped working.
  */
 export async function issueRecoveryCodes(
   service: ServiceClient,
-  userId: string
+  userId: string,
+  factorId: string
 ): Promise<{ codes: string[] } | { error: 'unavailable' }> {
   try {
-    const removed = await service.from(TABLE).delete().eq('user_id', userId)
-    if (removed.error) throw removed.error
-
     const codes = Array.from({ length: RECOVERY_CODE_COUNT }, generateRecoveryCode)
-    const inserted = await service.from(TABLE).insert(
-      codes.map((code) => ({ user_id: userId, code_hash: hashRecoveryCode(code.replace('-', '')) }))
-    )
-    if (inserted.error) throw inserted.error
+    const { error } = await service.rpc(REPLACE_FUNCTION, {
+      p_user_id: userId,
+      p_factor_id: factorId,
+      p_hashes: codes.map((code) => hashRecoveryCode(code.replace('-', ''))),
+    })
+    if (error) throw error
     return { codes }
   } catch (error) {
     console.error('[auth] recovery codes not issued:', error)
@@ -77,16 +86,22 @@ export async function issueRecoveryCodes(
   }
 }
 
-/** Unused codes left for the user, or `null` when the count could not be read. */
+/**
+ * Unused codes left for the user that are bound to one of `factorIds` (the user's verified TOTP
+ * factors), or `null` when the count could not be read. No factors means no usable codes.
+ */
 export async function countUnusedRecoveryCodes(
   service: ServiceClient,
-  userId: string
+  userId: string,
+  factorIds: string[]
 ): Promise<number | null> {
+  if (factorIds.length === 0) return 0
   try {
     const { count, error } = await service
       .from(TABLE)
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)
+      .in('factor_id', factorIds)
       .is('used_at', null)
     if (error) throw error
     return count ?? 0
@@ -98,36 +113,53 @@ export async function countUnusedRecoveryCodes(
 
 export type RecoveryCodeConsumption =
   /** Exactly one unused row matched and is now marked used. */
-  | { status: 'consumed'; id: string }
-  /** No unused code for this user has that hash: wrong, already used, or never issued. */
+  | { status: 'consumed'; id: string; factorId: string }
+  /** No unused code for this user and a live factor has that hash: wrong, used, stale or unknown. */
   | { status: 'invalid' }
-  /** The database could not be asked, so the code was not evaluated. */
-  | { status: 'unavailable' }
+  /**
+   * The database could not be asked, or its answer was lost, so the code was not evaluated.
+   * `codeIntact` is `true` only when a re-read confirmed the code is still unused. `false` means
+   * it is stamped (the lost update may have committed) or its state could not be read, so the user
+   * must be told the code may have been used.
+   */
+  | { status: 'unavailable'; codeIntact: boolean }
 
-/** Marks one unused code as used, atomically. `code` is canonical, as for `hashRecoveryCode`. */
+/**
+ * Marks one unused code as used, atomically, if it is bound to one of `factorIds` (the user's
+ * verified TOTP factors, from a validated `getUser()`). `code` is canonical, as for
+ * `hashRecoveryCode`.
+ */
 export async function consumeRecoveryCode(
   service: ServiceClient,
   userId: string,
-  code: string
+  code: string,
+  factorIds: string[]
 ): Promise<RecoveryCodeConsumption> {
+  if (factorIds.length === 0) return { status: 'invalid' }
+  const codeHash = hashRecoveryCode(code)
   let result
   try {
     result = await service
       .from(TABLE)
       .update({ used_at: new Date().toISOString() })
       .eq('user_id', userId)
-      .eq('code_hash', hashRecoveryCode(code))
+      .eq('code_hash', codeHash)
+      .in('factor_id', factorIds)
       .is('used_at', null)
-      .select('id')
+      .select('id, factor_id')
   } catch (error) {
     console.error('[auth] recovery code lookup threw:', error)
-    return { status: 'unavailable' }
+    return { status: 'unavailable', codeIntact: await codeLeftUnused(service, userId, codeHash) }
   }
   if (result.error || !result.data) {
+    // The update may have committed before its response was lost, so the code is re-read.
     console.error('[auth] recovery code lookup failed:', result.error)
-    return { status: 'unavailable' }
+    return { status: 'unavailable', codeIntact: await codeLeftUnused(service, userId, codeHash) }
   }
-  if (result.data.length === 1) return { status: 'consumed', id: result.data[0].id as string }
+  if (result.data.length === 1) {
+    const row = result.data[0] as { id: string; factor_id: string }
+    return { status: 'consumed', id: row.id, factorId: row.factor_id }
+  }
   if (result.data.length > 1) {
     // Two live rows with one hash would take a 50-bit collision. Refused rather than accepted,
     // because "exactly one row changed" is the single-use rule.
@@ -137,22 +169,56 @@ export async function consumeRecoveryCode(
 }
 
 /**
- * Puts a consumed code back, for when the recovery could not finish after the code was accepted
- * (the factor could not be removed). Without it a transient Auth failure would burn a code.
+ * After a consuming update whose response was lost (it threw, or came back as an error), finds out
+ * whether the code is now stamped, by re-reading it by hash. `true` only when it is known to be
+ * unused (or the hash matches nothing, so nothing was burned); `false` when it is stamped or the
+ * re-read failed too.
+ *
+ * It reports the true state rather than putting a stamped code back, deliberately: a stamp cannot
+ * be told apart from one written by a concurrent request that redeemed the same code legitimately,
+ * and un-using that one would hand the code out twice. A rare database blip can therefore cost the
+ * user one code, and the copy says so.
  */
-export async function restoreRecoveryCode(service: ServiceClient, id: string): Promise<void> {
+async function codeLeftUnused(service: ServiceClient, userId: string, codeHash: string): Promise<boolean> {
   try {
-    const { error } = await service.from(TABLE).update({ used_at: null }).eq('id', id)
-    if (error) throw error
+    const { data, error } = await service
+      .from(TABLE)
+      .select('id, used_at')
+      .eq('user_id', userId)
+      .eq('code_hash', codeHash)
+    if (error || !data) throw error ?? new Error('no rows returned')
+    const rows = data as { id: string; used_at: string | null }[]
+    return rows.every((row) => row.used_at === null)
   } catch (error) {
-    console.error('[auth] consumed recovery code not restored:', error)
+    console.error('[auth] recovery code state unknown after a failed lookup:', error)
+    return false
   }
 }
 
-/** Deletes every code the user holds, used or not. `false` when the delete failed. */
-export async function deleteRecoveryCodes(service: ServiceClient, userId: string): Promise<boolean> {
+/**
+ * Puts a consumed code back, for when the recovery could not finish after the code was accepted
+ * (the factor could not be removed). `true` only when the database confirmed the restore, which is
+ * the only case in which the user may be told the code still works.
+ */
+export async function restoreRecoveryCode(service: ServiceClient, id: string): Promise<boolean> {
   try {
-    const { error } = await service.from(TABLE).delete().eq('user_id', userId)
+    const { error } = await service.from(TABLE).update({ used_at: null }).eq('id', id)
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.error('[auth] consumed recovery code not restored:', error)
+    return false
+  }
+}
+
+/**
+ * Deletes every UNUSED code the user holds. Used rows stay, as the record that a code was
+ * redeemed. `false` when the delete failed, which factor binding makes harmless: codes bound to a
+ * removed factor are refused anyway.
+ */
+export async function deleteUnusedRecoveryCodes(service: ServiceClient, userId: string): Promise<boolean> {
+  try {
+    const { error } = await service.from(TABLE).delete().eq('user_id', userId).is('used_at', null)
     if (error) throw error
     return true
   } catch (error) {
@@ -161,25 +227,44 @@ export async function deleteRecoveryCodes(service: ServiceClient, userId: string
   }
 }
 
+export type TotpRemoval = {
+  /** Ids of the TOTP factors that were deleted. */
+  removed: string[]
+  /** `true` when the list or at least one delete failed. */
+  failed: boolean
+}
+
 /**
- * Deletes every TOTP factor the user has, verified or not, through the admin API. GoTrue's
+ * Deletes every TOTP factor the user has, verified or not, through the admin API, trying each one
+ * even when an earlier delete failed and reporting exactly which were removed, so a caller never
+ * mistakes a part-done removal for an untouched account. GoTrue's
  * `DELETE /admin/users/{id}/factors/{factor}` destroys the factor and downgrades any session that
  * was elevated with it to `aal1`; it does not end sessions (despite the auth-js doc comment), so
  * the pending session that redeemed the code survives and, with no verified factor left, the gate
- * reads it as `satisfied`. `false` when listing or any delete failed.
+ * reads it as `satisfied`.
  */
-export async function removeTotpFactors(service: ServiceClient, userId: string): Promise<boolean> {
+export async function removeTotpFactors(service: ServiceClient, userId: string): Promise<TotpRemoval> {
+  const removed: string[] = []
+  let failed = false
+  let factors
   try {
     const listed = await service.auth.admin.mfa.listFactors({ userId })
     if (listed.error || !listed.data) throw listed.error ?? new Error('no factor list')
-    for (const factor of listed.data.factors) {
-      if (factor.factor_type !== 'totp') continue
+    factors = listed.data.factors
+  } catch (error) {
+    console.error('[auth] totp factors not listed after a recovery code:', error)
+    return { removed, failed: true }
+  }
+  for (const factor of factors) {
+    if (factor.factor_type !== 'totp') continue
+    try {
       const deleted = await service.auth.admin.mfa.deleteFactor({ userId, id: factor.id })
       if (deleted.error) throw deleted.error
+      removed.push(factor.id)
+    } catch (error) {
+      failed = true
+      console.error('[auth] totp factor not removed after a recovery code:', { factorId: factor.id, error })
     }
-    return true
-  } catch (error) {
-    console.error('[auth] totp factor not removed after a recovery code:', error)
-    return false
   }
+  return { removed, failed }
 }
