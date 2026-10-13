@@ -160,7 +160,7 @@ flowchart LR
     AAI["AssemblyAI<br/>Voice Agent API"]
 
     subgraph Jobs["Job worker (BullMQ)"]
-        Q["scan-website · knowledge-indexing<br/>webhook-deliver · assemblyai-finalize"]
+        Q["scan-website · knowledge-indexing<br/>webhook-deliver · assemblyai-finalize<br/>notification-deliver"]
     end
 
     DB[("Supabase<br/>Postgres + RLS + Storage")]
@@ -238,7 +238,7 @@ Open **http://localhost**. Compose starts:
 | `nginx` | Reverse proxy on port **80** |
 | `app` | Next.js production server |
 | `redis` | Redis 7 for BullMQ |
-| `worker-jobs` | Every background queue: website scans, knowledge indexing, webhooks, AssemblyAI transcripts |
+| `worker-jobs` | Every background queue: website scans, knowledge indexing, webhooks, AssemblyAI transcripts, staff notifications and appointment reminders (`notification-deliver`) |
 | `worker-voice` | LiveKit voice agent |
 
 Stop with `docker compose down`. Rebuild after code changes with the same `up --build` command.
@@ -377,7 +377,7 @@ pnpm exec tsc --noEmit    # typecheck
 pnpm exec eslint <files>  # lint what you changed
 ```
 
-Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server actions and data helpers are tested for validation failures, success paths, and organization scoping. A handful of known pre-existing failures are tracked in the [architecture guide](./developer-docs/ARCHITECTURE.md#known-baseline-2026-10-08).
+Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server actions and data helpers are tested for validation failures, success paths, and organization scoping. A handful of known pre-existing failures are tracked in the [architecture guide](./developer-docs/ARCHITECTURE.md#known-baseline).
 
 ---
 
@@ -394,12 +394,12 @@ Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server acti
 - [x] Google, Microsoft, Cal.com, Calendly calendar sync
 - [x] Phone number provisioning, agent rules, language auto-detect, TOTP 2FA
 - [x] Enforce two-factor at login
+- [x] Notification delivery and a notification center
 
 **Next**
 
 - [ ] Inbound phone calls (Twilio / Plivo → LiveKit SIP)
 - [ ] Answering modes and call routing enforcement
-- [ ] Notification delivery and a notification center
 - [ ] End-to-end and load tests
 - [ ] Billing and plans for hosted deployments
 

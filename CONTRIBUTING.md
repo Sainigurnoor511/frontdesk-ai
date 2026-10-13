@@ -17,7 +17,7 @@ Follow the [README's Getting Started section](./README.md#getting-started) to ge
    pnpm exec eslint <files you changed>
    pnpm build
    ```
-   `pnpm test` and full-repo `pnpm lint` have a few known pre-existing failures, listed under [Testing → Known Baseline](./developer-docs/ARCHITECTURE.md#known-baseline-2026-10-08). Your change shouldn't add to them.
+   `pnpm test` and full-repo `pnpm lint` have a few known pre-existing failures, listed under [Testing → Known baseline](./developer-docs/ARCHITECTURE.md#known-baseline). Your change shouldn't add to them.
 4. Open a pull request against `main` with a clear description of what changed and why.
 
 ## Coding conventions

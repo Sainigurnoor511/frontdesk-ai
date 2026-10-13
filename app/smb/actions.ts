@@ -415,6 +415,10 @@ export async function createPublicAppointment(
     notes: parsed.data.notes ?? null,
   })
 
+  // The org's booking notification and the reminder are dispatched inside
+  // `createAppointmentServiceRole()`, the write this page shares with the
+  // `book_appointment` voice tool.
+
   try {
     await sendAppointmentConfirmationEmail({
       to: parsed.data.clientEmail,
