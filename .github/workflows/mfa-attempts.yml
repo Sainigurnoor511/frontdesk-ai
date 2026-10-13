@@ -3,8 +3,9 @@
 # (atomic reservation, a TTL on every write, release never below zero, a
 # recovery refill claimed only when it clears something) are checked somewhere
 # reproducible, plus the gate, signed recovery claim, /callback routing, reset
-# page, auth action, recovery code, proxy and assistant route suites, which
-# need no Redis.
+# page, /verify page, auth action, settings action, recovery code, recovery
+# notice email, auth form, proxy and assistant route suites, which need no
+# Redis.
 #
 # Deliberately these files, not the whole Vitest suite: the full suite still has
 # known pre-existing failures (developer-docs/TODO.md, "Known Technical
@@ -22,9 +23,11 @@ on:
       - "proxy.ts"
       - "proxy.test.ts"
       - "app/(settings)/settings/**"
+      - "components/auth/**"
       - "lib/crypto.ts"
       - "lib/validations/auth.ts"
       - "lib/email/send-mfa-recovery-notice.ts"
+      - "lib/email/send-mfa-recovery-notice.test.ts"
       - "supabase/migrations/00000000000048_mfa_recovery_codes.sql"
       - ".github/workflows/mfa-attempts.yml"
   workflow_dispatch:
@@ -89,6 +92,10 @@ jobs:
           lib/auth/recovery-codes-migration.test.ts
           "app/(auth)/recovery-code.test.ts"
           "app/(settings)/settings/recovery-codes.test.ts"
+          "app/(settings)/settings/actions.test.ts"
+          "app/(auth)/verify/page.test.tsx"
+          components/auth/verify-code-form.test.tsx
+          lib/email/send-mfa-recovery-notice.test.ts
           "app/(auth)/callback/route.test.ts"
           "app/(auth)/callback/route.recovery-cap.test.ts"
           "app/(auth)/actions.test.ts"
