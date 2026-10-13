@@ -38,6 +38,8 @@ async function mockSupabase(options: {
   amr?: unknown
   /** `sub` of the verified access token; defaults to the signed-in user. */
   sub?: string
+  /** `getUser()` fails in transport, which the MFA gate reads as `indeterminate`. */
+  getUserBlip?: boolean
 }) {
   const { createServerClient } = await import('@supabase/ssr')
   const { createServiceRoleClient } = await import('@/lib/supabase/server')
@@ -62,7 +64,9 @@ async function mockSupabase(options: {
         },
         error: null,
       }),
-      getUser: vi.fn().mockResolvedValue({ data: { user }, error: null }),
+      getUser: options.getUserBlip
+        ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+        : vi.fn().mockResolvedValue({ data: { user }, error: null }),
       mfa: {
         getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
           data: { currentLevel: options.currentLevel ?? 'aal1', nextLevel: null },
@@ -153,6 +157,16 @@ describe('GET /callback', () => {
       expect(response.headers.get('location')).toBe('https://app.example.com/verify')
     })
 
+    it('on an indeterminate gate: to /reset-password, which re-resolves it, not to a dead-end /verify', async () => {
+      // A getUser() blip makes the gate indeterminate. /verify has nothing to challenge for a
+      // factorless session and the PKCE code is already spent, so sending it there burned the link.
+      await mockSupabase({ factors: [], amr: recoveryAmr(), getUserBlip: true })
+
+      const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+
+      expect(response.headers.get('location')).toBe('https://app.example.com/reset-password')
+    })
+
     it('clears the attempt budget, so a locked-out owner gets back in without waiting', async () => {
       const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
       vi.spyOn(console, 'warn').mockImplementation(() => {})
@@ -193,6 +207,18 @@ describe('GET /callback', () => {
 
     expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
     expect(response.headers.get('location')).toBe('https://app.example.com/verify')
+  })
+
+  it('sends an ordinary no-factor sign-in carrying ?flow=recovery to the dashboard, not to reset', async () => {
+    // The unsigned parameter used to pick /reset-password on its own, which then refused the
+    // ordinary session as an expired link: a successful sign-in turned into a dead end.
+    const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
+    await mockSupabase({ factors: [] })
+
+    const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+
+    expect(response.headers.get('location')).toBe('https://app.example.com/')
+    expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
   })
 
   it('does not clear the budget for a stale recovery claim or another user', async () => {

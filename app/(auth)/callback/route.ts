@@ -39,7 +39,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  const isRecovery = searchParams.get('flow') === 'recovery'
+  // Unsigned, so only a hint that a reset link may be arriving: it decides whether the signed claim
+  // is worth checking, never the destination on its own.
+  const mayBeRecovery = searchParams.get('flow') === 'recovery'
 
   // Cookies and headers are collected here and applied to a response built at the end, because
   // the destination is not knowable until the session exists and its assurance level is resolved.
@@ -98,24 +100,31 @@ export async function GET(request: NextRequest) {
   // sign-ins are challenged exactly like password sign-ins: the gate is a property of the
   // session, not of the credential type, so exempting OAuth would be a one-click bypass.
   const mfa = await resolveMfaGate(supabase)
-  const owesCode = mfa.state === 'pending' || mfa.state === 'indeterminate'
-  let destination: string = owesCode ? MFA_VERIFY_PATH : POST_LOGIN_PATH
-  if (isRecovery) {
+
+  // Only a *verified* recovery claim makes this a reset flow. The id comes from the same signed
+  // token, and must be the user just signed in; anything else, `?flow=recovery` included, is an
+  // ordinary sign-in and gets the ordinary destination.
+  const recoveredUserId = mayBeRecovery
+    ? await recentRecoverySubject(supabase, { jwt: data.session?.access_token })
+    : null
+  const isVerifiedRecovery = recoveredUserId !== null && recoveredUserId === data.user.id
+
+  let destination: string
+  if (isVerifiedRecovery) {
     // A reset link gets you a new password, not entry without the code. Supabase refuses a
     // password change from an aal1 session once MFA is on ("AAL2 session is required to update
-    // email or password"), so a user with a factor goes through /verify first, and
-    // `verifyMfaChallenge` sends a recovery session on to /reset-password. Without a factor the
-    // flow is unchanged: straight to /reset-password.
-    destination = owesCode ? MFA_VERIFY_PATH : '/reset-password'
-
-    // Only a *verified* recovery claim refills the budget; `?flow=recovery` is just a query
-    // parameter. The id comes from the same signed token, and must be the user just signed in.
-    const recoveredUserId = await recentRecoverySubject(supabase, {
-      jwt: data.session?.access_token,
-    })
-    if (recoveredUserId && recoveredUserId === data.user.id) {
-      await clearBudgetAfterRecovery(recoveredUserId)
-    }
+    // email or password"), so a user with a confirmed pending factor goes through /verify first,
+    // and `verifyMfaChallenge` sends a recovery session on to /reset-password. Everything else
+    // goes straight to /reset-password, including an `indeterminate` gate: that is usually a
+    // transient `getUser()` failure, /verify has nothing to challenge for a factorless session,
+    // and the PKCE code is already spent, so /verify would be a dead end. /reset-password resolves
+    // the gate again and sends a session that really is pending to /verify; `updatePassword`
+    // enforces it either way.
+    destination = mfa.state === 'pending' ? MFA_VERIFY_PATH : '/reset-password'
+    await clearBudgetAfterRecovery(recoveredUserId)
+  } else {
+    const owesCode = mfa.state === 'pending' || mfa.state === 'indeterminate'
+    destination = owesCode ? MFA_VERIFY_PATH : POST_LOGIN_PATH
   }
 
   const response = NextResponse.redirect(`${origin}${destination}`)
@@ -132,7 +141,7 @@ export async function GET(request: NextRequest) {
 
   // No recovery cookie either. `/reset-password` and `updatePassword` read the proof of a reset
   // link from the session's own signed token (`hasRecentRecoveryClaim`), which `?flow=recovery`
-  // cannot fake: that query parameter only picks the destination.
+  // cannot fake: that query parameter only decides whether the claim is checked.
 
   return response
 }
