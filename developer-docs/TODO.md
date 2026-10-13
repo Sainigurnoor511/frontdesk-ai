@@ -234,6 +234,33 @@ Recently).
       because GoTrue keeps the `recovery` `amr` entry next to the new `totp` one after
       `mfa.verify()`. That is verified only against mocks; if a GoTrue version drops it, an
       MFA user's reset would land on the dashboard instead of the password form.
+- [ ] **Live-GoTrue test of the two session behaviours recovery codes rely on** (added:
+      2026-10-13) — `redeemRecoveryCode` assumes that `auth.admin.mfa.deleteFactor`
+      downgrades the redeeming session to `aal1` rather than ending it, and that
+      `signOut({ scope: 'others' })` keeps the local session. Both are asserted only against
+      the in-repo fake (`lib/auth/recovery-codes-test-store.ts`); `@supabase/supabase-js` is
+      now pinned (2.112.2) so a release cannot change them under CI, but nothing checks real
+      GoTrue. If either breaks, the user lands on `/settings` signed out after their factor
+      was already removed.
+- [ ] **Persist the "recovered, needs re-enrolment" state** (added: 2026-10-13, review
+      finding #14) — the prompt to set two-factor up again after a recovery code is driven by
+      the unsigned `?mfa=recovered` query param, so it disappears on reload or navigation and
+      nothing marks the account as downgraded. Persist a flag on the account (set on
+      redemption, cleared when a factor verifies) if re-enrolment is meant to be followed up.
+- [ ] **Cross-system tests for recovery codes** (added: 2026-10-13, review finding #15) — a
+      live Supabase (GoTrue + Postgres) recovery journey: mixed factors, the effect of admin
+      deletion on the redeeming session, real `others` revocation, and migration `048`'s
+      privileges, factor binding and `replace_mfa_recovery_codes()` executed in Postgres
+      rather than checked as text (CI applies migrations only on merge to `main`). Plus
+      form-level tests for `RecoveryCodeForm` and `RecoveryCodesDialog` (copy, the clipboard
+      fallback, download and close), including the download's synchronous
+      `URL.revokeObjectURL` right after `link.click()` on a detached anchor.
+- [ ] **Detect codes invalidated by an `ENCRYPTION_KEY` rotation** (added: 2026-10-13, review
+      finding #17) — codes are stored only as a keyed hash under `ENCRYPTION_KEY`, so after a
+      rotation every saved sheet fails with the same "not valid or has already been used"
+      message as a typo. Store a key-derivation marker with each set so a mismatch can be
+      reported as "these codes are no longer valid, regenerate them from settings". Until
+      then the operator runbook in ARCHITECTURE.md says to have users regenerate.
 - [ ] **One Redis `connect` listener per cold-start waiter in `lib/auth/mfa-attempts.ts`**
       (added: 2026-10-13) — `transportOpen()` adds a `connect` listener for every caller that
       arrives while the first connect is in flight, so a burst at boot adds one listener per
@@ -305,8 +332,11 @@ Recently).
       `ENCRYPTION_KEY` in the service-role-only `mfa_recovery_codes` table (migration `048`).
       `/verify` offers "Use a recovery code instead": the code spends the same five-attempt
       budget as a TOTP guess, is consumed by a conditional update so it works once, removes
-      the TOTP factor, deletes the remaining codes, signs out the other sessions, and sends
-      the user to settings to set two-factor up again, with a best-effort security email.
+      the TOTP factor, deletes the remaining unused codes (the used one is kept as the
+      record), signs out the other sessions, and sends the user to settings to set
+      two-factor up again (or on to `/reset-password` from a reset link), with a bounded,
+      best-effort security email. Codes are bound to the factor they were issued for and
+      replaced atomically; accounts with a non-TOTP factor are refused before a code is spent.
       Email-verified unenroll was decided against (it would make two-factor only as strong as
       the mailbox). The operator runbook stays as the fallback for a user with no codes left.
 - [x] **Enforce TOTP at login** (2026-10-13, branch `feat/totp-login-challenge`) — a session
