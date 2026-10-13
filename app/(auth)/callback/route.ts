@@ -3,7 +3,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { resolveMfaGate, MFA_VERIFY_PATH, POST_LOGIN_PATH } from '@/lib/auth/mfa'
-import { recentRecoverySubject } from '@/lib/auth/recovery'
+import { checkRecoveryClaim } from '@/lib/auth/recovery'
 import { clearAttemptsAfterRecovery } from '@/lib/auth/mfa-attempts'
 
 /**
@@ -102,15 +102,23 @@ export async function GET(request: NextRequest) {
   const mfa = await resolveMfaGate(supabase)
 
   // Only a *verified* recovery claim makes this a reset flow. The id comes from the same signed
-  // token, and must be the user just signed in; anything else, `?flow=recovery` included, is an
+  // token, and must be the user just signed in; an `absent` claim, `?flow=recovery` or not, is an
   // ordinary sign-in and gets the ordinary destination.
-  const recoveredUserId = mayBeRecovery
-    ? await recentRecoverySubject(supabase, { jwt: data.session?.access_token })
-    : null
-  const isVerifiedRecovery = recoveredUserId !== null && recoveredUserId === data.user.id
+  const claim = mayBeRecovery
+    ? await checkRecoveryClaim(supabase, { jwt: data.session?.access_token })
+    : ({ status: 'absent' } as const)
+  const recoveredUserId =
+    claim.status === 'valid' && claim.userId === data.user.id ? claim.userId : null
 
   let destination: string
-  if (isVerifiedRecovery) {
+  if (claim.status === 'unverifiable') {
+    // A reset link opened during an Auth blip: the claim could not be checked either way. The PKCE
+    // code is spent, so routing it as an ordinary sign-in threw the link away with no sign it had
+    // been one. /reset-password checks the signed claim again on every load (a retry panel while
+    // it still cannot), and `updatePassword` checks it before any change, so this grants nothing.
+    // No budget refill: that needs a verified claim, and the hint alone is caller-supplied.
+    destination = '/reset-password'
+  } else if (recoveredUserId !== null) {
     // A reset link gets you a new password, not entry without the code. Supabase refuses a
     // password change from an aal1 session once MFA is on ("AAL2 session is required to update
     // email or password"), so a user with a confirmed pending factor goes through /verify first,
@@ -140,7 +148,7 @@ export async function GET(request: NextRequest) {
   // A verified recovery link is the one exception, above.
 
   // No recovery cookie either. `/reset-password` and `updatePassword` read the proof of a reset
-  // link from the session's own signed token (`hasRecentRecoveryClaim`), which `?flow=recovery`
+  // link from the session's own signed token (`checkRecoveryClaim`), which `?flow=recovery`
   // cannot fake: that query parameter only decides whether the claim is checked.
 
   return response

@@ -40,6 +40,8 @@ async function mockSupabase(options: {
   sub?: string
   /** `getUser()` fails in transport, which the MFA gate reads as `indeterminate`. */
   getUserBlip?: boolean
+  /** `getClaims()` cannot be answered: it throws, or returns auth-js's retryable fetch error. */
+  claimsBlip?: 'throws' | 'retryable'
 }) {
   const { createServerClient } = await import('@supabase/ssr')
   const { createServiceRoleClient } = await import('@/lib/supabase/server')
@@ -53,17 +55,25 @@ async function mockSupabase(options: {
           ? { data: { user: null, session: null }, error: { message: 'bad code' } }
           : { data: { user, session: { access_token: 'issued.access.token' } }, error: null }
       ),
-      getClaims: vi.fn().mockResolvedValue({
-        data: {
-          claims: {
-            sub: options.sub ?? 'u1',
-            amr: options.amr ?? [{ method: 'oauth', timestamp: nowSeconds() }],
-          },
-          header: {},
-          signature: new Uint8Array(),
-        },
-        error: null,
-      }),
+      getClaims:
+        options.claimsBlip === 'throws'
+          ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
+          : options.claimsBlip === 'retryable'
+            ? vi.fn().mockResolvedValue({
+                data: null,
+                error: { name: 'AuthRetryableFetchError', status: 503, message: 'upstream' },
+              })
+            : vi.fn().mockResolvedValue({
+                data: {
+                  claims: {
+                    sub: options.sub ?? 'u1',
+                    amr: options.amr ?? [{ method: 'oauth', timestamp: nowSeconds() }],
+                  },
+                  header: {},
+                  signature: new Uint8Array(),
+                },
+                error: null,
+              }),
       getUser: options.getUserBlip
         ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
         : vi.fn().mockResolvedValue({ data: { user }, error: null }),
@@ -195,6 +205,36 @@ describe('GET /callback', () => {
       expect(response.headers.get('location')).toBe('https://app.example.com/verify')
       expect(consoleError).toHaveBeenCalled()
       consoleError.mockRestore()
+    })
+  })
+
+  describe('a recovery claim that cannot be verified (an Auth blip)', () => {
+    // The PKCE code is spent by now, so routing this as an ordinary sign-in threw a real reset
+    // link away: the dashboard (no factor) or /verify (with one), and no way to reopen the link.
+    // /reset-password and updatePassword re-check the signed claim, so sending it there grants
+    // nothing, and the refill still waits for a verified claim.
+    it.each([
+      ['getClaims() throws', 'throws' as const, []],
+      ['getClaims() returns AuthRetryableFetchError', 'retryable' as const, []],
+      ['getClaims() throws, TOTP factor pending', 'throws' as const, [totpFactor]],
+      ['getClaims() returns AuthRetryableFetchError, TOTP factor pending', 'retryable' as const, [totpFactor]],
+    ])('%s: to /reset-password, budget untouched', async (_label, claimsBlip, factors) => {
+      const { clearAttemptsAfterRecovery } = await import('@/lib/auth/mfa-attempts')
+      await mockSupabase({ factors, currentLevel: 'aal1', claimsBlip })
+
+      const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+
+      expect(response.headers.get('location')).toBe('https://app.example.com/reset-password')
+      expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
+    })
+
+    it('does not check the claim at all without ?flow=recovery, so an ordinary sign-in is unaffected', async () => {
+      const client = await mockSupabase({ factors: [], claimsBlip: 'throws' })
+
+      const response = await GET(callbackRequest('?code=abc'))
+
+      expect(response.headers.get('location')).toBe('https://app.example.com/')
+      expect(client.auth.getClaims).not.toHaveBeenCalled()
     })
   })
 
