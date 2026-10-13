@@ -494,7 +494,7 @@ Never inline validation in actions or components — always import from these mo
 Last recorded 2026-10-13, on `feat/notification-delivery` after merging `main` at `03f8aac`. The heading is undated on purpose so links to `#known-baseline` survive updates; change the date here instead.
 
 - `pnpm exec tsc --noEmit`: clean
-- `pnpm test`: 577 passed, 4 failed (581 total) across 2 files — 2 in `lib/data/analytics.test.ts`, 2 in `lib/voice/adapters/fish-audio-tts.test.ts`. Both pre-existing. The 6 `lib/data/availability-engine.test.ts` failures were a stale test clock and were fixed on 2026-10-12; `app/smb/actions.test.ts` passes.
+- `pnpm test`: 589 passed, 4 failed (593 total) across 2 files — 2 in `lib/data/analytics.test.ts`, 2 in `lib/voice/adapters/fish-audio-tts.test.ts`. Both pre-existing. Under heavy machine load, `lib/knowledge/extract-file-text.test.ts`'s docx case can hit its 15s timeout once; it passes on rerun. The 6 `lib/data/availability-engine.test.ts` failures were a stale test clock and were fixed on 2026-10-12; `app/smb/actions.test.ts` passes.
 - `pnpm lint`: 29 errors, 4 warnings, pre-existing. Lint the files you touch with `pnpm exec eslint <files>`.
 
 ---
