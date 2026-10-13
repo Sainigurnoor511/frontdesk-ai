@@ -180,7 +180,7 @@ describe('updatePassword', () => {
     expect(updateUser).not.toHaveBeenCalled()
   })
 
-  it('refuses a recovery sign-in older than the recovery window', async () => {
+  it('refuses a recovery sign-in older than the 15-minute window', async () => {
     const { updateUser } = await useRecoveryClient({
       amr: [{ method: 'recovery', timestamp: nowSeconds() - 16 * 60 }],
     })

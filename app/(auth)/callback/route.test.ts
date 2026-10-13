@@ -42,19 +42,24 @@ async function mockSupabase(options: {
   getUserBlip?: boolean
   /** `getClaims()` cannot be answered: it throws, or returns auth-js's retryable fetch error. */
   claimsBlip?: 'throws' | 'retryable'
+  /** Session cookies the exchange writes through `setAll`. */
+  sessionCookies?: { name: string; value: string; options: object }[]
 }) {
   const { createServerClient } = await import('@supabase/ssr')
   const { createServiceRoleClient } = await import('@/lib/supabase/server')
   vi.mocked(createServiceRoleClient).mockReturnValue(mockServiceClient() as never)
 
   const user = { id: 'u1', email: 'owner@example.com', factors: options.factors }
+  let setAll: ((cookies: unknown[]) => void) | undefined
   const client = {
     auth: {
-      exchangeCodeForSession: vi.fn().mockResolvedValue(
-        options.exchangeError
-          ? { data: { user: null, session: null }, error: { message: 'bad code' } }
-          : { data: { user, session: { access_token: 'issued.access.token' } }, error: null }
-      ),
+      exchangeCodeForSession: vi.fn(async () => {
+        if (options.exchangeError) {
+          return { data: { user: null, session: null }, error: { message: 'bad code' } }
+        }
+        setAll?.(options.sessionCookies ?? [])
+        return { data: { user, session: { access_token: 'issued.access.token' } }, error: null }
+      }),
       getClaims:
         options.claimsBlip === 'throws'
           ? vi.fn().mockRejectedValue(new TypeError('fetch failed'))
@@ -85,7 +90,12 @@ async function mockSupabase(options: {
       },
     },
   }
-  vi.mocked(createServerClient).mockReturnValue(client as never)
+  vi.mocked(createServerClient).mockImplementation(((_url: string, _key: string, config: {
+    cookies: { setAll: (cookies: unknown[]) => void }
+  }) => {
+    setAll = config.cookies.setAll
+    return client
+  }) as never)
   return client
 }
 
@@ -272,5 +282,58 @@ describe('GET /callback', () => {
     await GET(callbackRequest('?code=abc&flow=recovery'))
 
     expect(clearAttemptsAfterRecovery).not.toHaveBeenCalled()
+  })
+})
+
+// Cases `main` added when it ported the signed recovery claim (a7e7a22), kept on merge. `main` has
+// no MFA gate, so each runs here on an account with no factor, which is the case it described.
+describe('GET /callback (cases from main)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends an ordinary sign-in to the dashboard without checking a recovery claim', async () => {
+    const client = await mockSupabase({ factors: [] })
+    const response = await GET(callbackRequest('?code=abc'))
+    expect(response.headers.get('location')).toBe('https://app.example.com/')
+    expect(client.auth.getClaims).not.toHaveBeenCalled()
+  })
+
+  it('carries the session cookies the exchange set onto the redirect', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    await mockSupabase({
+      factors: [],
+      amr: recoveryAmr(),
+      sessionCookies: [{ name: 'sb-auth-token', value: 'session', options: { path: '/' } }],
+    })
+    const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+    expect(response.cookies.get('sb-auth-token')?.value).toBe('session')
+    vi.mocked(console.warn).mockRestore()
+  })
+
+  it('sends a verified recovery link to /reset-password without setting a forgeable recovery cookie', async () => {
+    const client = await mockSupabase({ factors: [], amr: recoveryAmr() })
+    const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+    expect(response.headers.get('location')).toBe('https://app.example.com/reset-password')
+    expect(response.cookies.get('fd_password_recovery')).toBeUndefined()
+    // The claim is read from the token the exchange just issued, verified by getClaims().
+    expect(client.auth.getClaims).toHaveBeenCalledWith('issued.access.token')
+  })
+
+  it('sends an ordinary sign-in carrying ?flow=recovery to the dashboard, not to reset', async () => {
+    await mockSupabase({ factors: [] })
+    const response = await GET(callbackRequest('?code=abc&flow=recovery'))
+    expect(response.headers.get('location')).toBe('https://app.example.com/')
+    expect(response.cookies.get('fd_password_recovery')).toBeUndefined()
+  })
+
+  it('does not treat a stale recovery claim, or one for another user, as a reset', async () => {
+    await mockSupabase({ factors: [], amr: [{ method: 'recovery', timestamp: nowSeconds() - 60 * 60 }] })
+    const stale = await GET(callbackRequest('?code=abc&flow=recovery'))
+    expect(stale.headers.get('location')).toBe('https://app.example.com/')
+
+    await mockSupabase({ factors: [], amr: recoveryAmr(), sub: 'someone-else' })
+    const otherUser = await GET(callbackRequest('?code=abc&flow=recovery'))
+    expect(otherUser.headers.get('location')).toBe('https://app.example.com/')
   })
 })

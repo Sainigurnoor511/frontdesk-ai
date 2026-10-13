@@ -175,3 +175,38 @@ describe('ResetPasswordPage', () => {
     expect(screen.getByText(/owner@example\.com/)).toBeTruthy()
   })
 })
+
+// Cases `main` added when it ported the signed recovery claim (a7e7a22), kept on merge. Its "no
+// session" case returned `{ user: null, error: null }`, which this branch's gate reads as
+// indeterminate (a shape the SDK does not produce); the real no-session shape is covered above by
+// "a positively absent session renders the expired panel".
+describe('ResetPasswordPage (cases from main)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('does not render the form for an ordinary signed-in session', async () => {
+    await mockSupabase({ getUser: getUserOk(signedInUser()), getClaims: claimsAbsent })
+    render(await ResetPasswordPage())
+    expect(screen.getByRole('heading').textContent).toBe(EXPIRED_HEADING)
+    expect(screen.getByRole('link', { name: /from settings/i }).getAttribute('href')).toBe('/settings')
+    expect(screen.queryByTestId('reset-form')).toBeNull()
+  })
+
+  it('offers the form to a verified, recent recovery session, naming the account', async () => {
+    await mockSupabase({ getUser: getUserOk(signedInUser()), getClaims: claimsValid })
+    render(await ResetPasswordPage())
+    expect(screen.getByTestId('reset-form')).toBeTruthy()
+    expect(screen.getByText(/owner@example\.com/)).toBeTruthy()
+  })
+
+  it('does not render the form for a recovery sign-in older than 15 minutes', async () => {
+    await mockSupabase({
+      getUser: getUserOk(signedInUser()),
+      getClaims: claimsWith([{ method: 'recovery', timestamp: nowSeconds() - 16 * 60 }]),
+    })
+    render(await ResetPasswordPage())
+    expect(screen.getByRole('heading').textContent).toBe(EXPIRED_HEADING)
+    expect(screen.queryByTestId('reset-form')).toBeNull()
+  })
+})

@@ -167,3 +167,78 @@ describe('recentRecoverySubject', () => {
     ).resolves.toBeNull()
   })
 })
+
+// Cases `main` added when it ported the signed recovery claim (a7e7a22), kept on merge. They
+// drive `checkRecoveryClaim` directly, where the suites above go through its wrappers.
+describe('checkRecoveryClaim (cases from main)', () => {
+  const absent = { status: 'absent' }
+
+  it('is valid, with the verified subject, for a recovery sign-in inside the window', async () => {
+    await expect(
+      checkRecoveryClaim(withAmr([{ method: 'recovery', timestamp: nowSeconds - 60 }], 'u-7'), {
+        now: NOW,
+      })
+    ).resolves.toEqual({ status: 'valid', userId: 'u-7' })
+  })
+
+  it('finds the recovery entry among other methods of the same session', async () => {
+    const amr = [
+      { method: 'totp', timestamp: nowSeconds - 10 },
+      { method: 'recovery', timestamp: nowSeconds - 120 },
+    ]
+    await expect(checkRecoveryClaim(withAmr(amr), { now: NOW })).resolves.toMatchObject({
+      status: 'valid',
+    })
+  })
+
+  it('is absent for a recovery sign-in older than the 15-minute window', async () => {
+    const stale = nowSeconds - PASSWORD_RECOVERY_MAX_AGE_SECONDS - 1
+    await expect(
+      checkRecoveryClaim(withAmr([{ method: 'recovery', timestamp: stale }]), { now: NOW })
+    ).resolves.toEqual(absent)
+  })
+
+  it('is absent for a timestamp far in the future', async () => {
+    await expect(
+      checkRecoveryClaim(withAmr([{ method: 'recovery', timestamp: nowSeconds + 3600 }]), {
+        now: NOW,
+      })
+    ).resolves.toEqual(absent)
+  })
+
+  it('is absent for ordinary sign-ins', async () => {
+    for (const amr of [
+      [{ method: 'password', timestamp: nowSeconds }],
+      [
+        { method: 'totp', timestamp: nowSeconds },
+        { method: 'oauth', timestamp: nowSeconds },
+      ],
+      [{ method: 'magiclink', timestamp: nowSeconds }],
+    ]) {
+      await expect(checkRecoveryClaim(withAmr(amr), { now: NOW })).resolves.toEqual(absent)
+    }
+  })
+
+  it('is absent for timestamp-less string entries, which cannot prove recency', async () => {
+    await expect(checkRecoveryClaim(withAmr(['recovery']), { now: NOW })).resolves.toEqual(absent)
+  })
+
+  it('is absent for a missing or malformed amr claim, or a missing subject', async () => {
+    for (const amr of [undefined, null, 'recovery', { method: 'recovery' }]) {
+      await expect(checkRecoveryClaim(withAmr(amr), { now: NOW })).resolves.toEqual(absent)
+    }
+    await expect(
+      checkRecoveryClaim(withAmr([{ method: 'recovery', timestamp: nowSeconds }], ''), { now: NOW })
+    ).resolves.toEqual(absent)
+  })
+
+  it('is absent for a token that does not verify, or no session', async () => {
+    for (const supabase of [
+      client({ data: null, error: { name: 'AuthInvalidJwtError', message: 'Invalid JWT signature' } }),
+      client({ data: null, error: { name: 'AuthApiError', status: 403, message: 'bad_jwt' } }),
+      client({ data: null, error: null }),
+    ]) {
+      await expect(checkRecoveryClaim(supabase, { now: NOW })).resolves.toEqual(absent)
+    }
+  })
+})
