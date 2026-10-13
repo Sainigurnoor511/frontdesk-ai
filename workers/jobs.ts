@@ -17,6 +17,12 @@ import {
   processScanWebsite,
 } from '@/lib/queue/processors/scan-website'
 import { describeWebhookJob, processWebhookDelivery } from '@/lib/queue/processors/webhook'
+import { NOTIFICATION_QUEUE } from '@/lib/queue/queues/notification'
+import {
+  describeNotificationJob,
+  processNotification,
+} from '@/lib/queue/processors/notification'
+import { registerNotificationSweep } from '@/lib/notifications/sweep'
 
 /**
  * Single host process for every BullMQ queue.
@@ -70,6 +76,15 @@ const QUEUES: QueueDefinition[] = [
     concurrency: 5,
     process: processAssemblyAiSession as QueueDefinition['process'],
     describe: describeAssemblyAiSessionJob as QueueDefinition['describe'],
+  },
+  {
+    name: NOTIFICATION_QUEUE,
+    // Deliberately lower than the other I/O-bound queues: each job spends
+    // exactly one Resend request, and that budget is account-wide and shared
+    // with the appointment-confirmation sender.
+    concurrency: 2,
+    process: processNotification as QueueDefinition['process'],
+    describe: describeNotificationJob as QueueDefinition['describe'],
   },
 ]
 
@@ -129,6 +144,20 @@ console.log(
     .map((q) => `${q.name}(x${q.concurrency})`)
     .join(', ')}`
 )
+
+// The sweep's scheduler lives in Redis, so re-register on reconnect too: a wiped Redis lost it.
+if (active.some((definition) => definition.name === NOTIFICATION_QUEUE)) {
+  void registerNotificationSweep()
+
+  let connectedBefore = redisConnection.status === 'ready'
+  redisConnection.on('ready', () => {
+    if (connectedBefore) {
+      console.log('[notifications] Redis reconnected; re-registering the notification sweep')
+      void registerNotificationSweep()
+    }
+    connectedBefore = true
+  })
+}
 
 /**
  * Closing each Worker lets in-flight jobs finish and returns anything unstarted to

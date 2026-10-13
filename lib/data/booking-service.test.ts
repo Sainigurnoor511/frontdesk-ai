@@ -16,6 +16,12 @@ vi.mock('@/lib/integrations/webhook', () => ({
   dispatchWebhook: vi.fn(),
 }))
 
+vi.mock('@/lib/notifications/dispatch', () => ({
+  dispatchNotification: vi.fn(() => Promise.resolve()),
+  scheduleAppointmentReminder: vi.fn(() => Promise.resolve()),
+  cancelAppointmentReminder: vi.fn(),
+}))
+
 vi.mock('@/lib/integrations/google-calendar-sync', () => ({
   handleAppointmentCreated: vi.fn(),
   handleAppointmentUpdated: vi.fn(),
@@ -244,6 +250,8 @@ describe('createAppointmentServiceRole', () => {
     const insert = vi.fn().mockReturnValue({ select })
     const from = vi.fn().mockReturnValue({ insert })
     vi.mocked(createServiceRoleClient).mockReturnValue({ from } as never)
+    const { dispatchNotification } = await import('@/lib/notifications/dispatch')
+    vi.mocked(dispatchNotification).mockClear()
 
     await expect(
       createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', {
@@ -255,6 +263,76 @@ describe('createAppointmentServiceRole', () => {
         endsAt: '2026-08-03T15:00:00Z',
       })
     ).rejects.toThrow('boom')
+    expect(dispatchNotification).not.toHaveBeenCalled()
+  })
+
+  /**
+   * Round-2 issue 4. A phone booking used to be announced only from the call's
+   * terminal conversation write, so a hard-killed voice worker meant no booking
+   * notification and no reminder, ever. It is announced where it is written.
+   */
+  describe('notifying the organization', () => {
+    async function mockInsert(row: Record<string, unknown>) {
+      const { createServiceRoleClient } = await import('@/lib/supabase/service-role')
+      const single = vi.fn().mockResolvedValue({ data: row, error: null })
+      const select = vi.fn().mockReturnValue({ single })
+      const insert = vi.fn().mockReturnValue({ select })
+      vi.mocked(createServiceRoleClient).mockReturnValue({
+        from: vi.fn().mockReturnValue({ insert }),
+      } as never)
+    }
+
+    const INPUT = {
+      title: 'Consultation',
+      clientName: 'Ada Lovelace',
+      clientPhone: null,
+      clientId: 'client-1',
+      startsAt: '2026-08-10T14:00:00.000Z',
+      endsAt: '2026-08-10T15:00:00.000Z',
+    }
+
+    it('dispatches the booking and schedules the reminder at creation', async () => {
+      await mockInsert({ id: 'appt-9', starts_at: '2026-08-10T14:00:00+00:00' })
+      const { dispatchNotification, scheduleAppointmentReminder } = await import(
+        '@/lib/notifications/dispatch'
+      )
+      vi.mocked(dispatchNotification).mockClear()
+      vi.mocked(scheduleAppointmentReminder).mockClear()
+
+      await createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', INPUT)
+
+      expect(dispatchNotification).toHaveBeenCalledWith({
+        type: 'client_booking',
+        organizationId: 'org-1',
+        appointmentId: 'appt-9',
+      })
+      expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+        'org-1',
+        'appt-9',
+        '2026-08-10T14:00:00+00:00'
+      )
+    })
+
+    it('still returns the booking when both dispatches reject', async () => {
+      await mockInsert({ id: 'appt-9', starts_at: '2026-08-10T14:00:00+00:00' })
+      const { dispatchNotification, scheduleAppointmentReminder } = await import(
+        '@/lib/notifications/dispatch'
+      )
+      vi.mocked(dispatchNotification).mockRejectedValueOnce(new Error('redis down'))
+      vi.mocked(scheduleAppointmentReminder).mockRejectedValueOnce(new Error('redis down'))
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+      await expect(
+        createAppointmentServiceRole('org-1', 'agent-1', 'conv-1', INPUT)
+      ).resolves.toMatchObject({ id: 'appt-9' })
+      // Let the swallowed rejections settle inside this test.
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      expect(error).toHaveBeenCalledWith(
+        '[notifications] booking dispatch failed:',
+        expect.any(Error)
+      )
+      error.mockRestore()
+    })
   })
 })
 
@@ -644,6 +722,26 @@ describe('cancelAppointmentByEmailServiceRole', () => {
     expect(handleCalendlyAppointmentCancelled).toHaveBeenCalled()
   })
 
+  // Issue 1: a cancelled appointment must not keep a pending reminder, and this
+  // is the cancel write behind both the public page and the voice tool.
+  it('drops the pending reminder', async () => {
+    await useMock(mockCancel({}))
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com')
+
+    expect(cancelAppointmentReminder).toHaveBeenCalledWith('appt-1')
+  })
+
+  it('keeps the reminder when the cancel matched no rows', async () => {
+    await useMock(mockCancel({ updatedRows: [] }))
+    const { cancelAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await cancelAppointmentByEmailServiceRole('org-1', 'appt-1', 'ada@example.com')
+
+    expect(cancelAppointmentReminder).not.toHaveBeenCalled()
+  })
+
   it('returns code not_found and never updates when the email does not own the appointment', async () => {
     const mock = mockCancel({ owner: { client_id: 'client-9', clients: { email: 'eve@example.com' } } })
     await useMock(mock)
@@ -764,6 +862,47 @@ describe('rescheduleAppointmentByEmailServiceRole', () => {
 
     const { handleAppointmentUpdated } = await import('@/lib/integrations/google-calendar-sync')
     expect(handleAppointmentUpdated).toHaveBeenCalledWith('org-1', 'appt-1')
+  })
+
+  /**
+   * Issue 1. This function is the only reschedule write in the product — the
+   * public booking page and the `reschedule_appointment` voice tool both land
+   * here — so the reminder has to move from here or not at all.
+   */
+  it('re-points the reminder at the new start time', async () => {
+    const mock = mockReschedule({})
+    await useRescheduleMock(mock)
+    const { scheduleAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(scheduleAppointmentReminder).toHaveBeenCalledWith(
+      'org-1',
+      'appt-1',
+      '2026-08-06T09:00:00.000Z'
+    )
+  })
+
+  it('leaves the reminder where it is when the move does not land', async () => {
+    const mock = mockReschedule({ rpc: { data: 'destination_conflict', error: null } })
+    await useRescheduleMock(mock)
+    const { scheduleAppointmentReminder } = await import('@/lib/notifications/dispatch')
+
+    await rescheduleAppointmentByEmailServiceRole(
+      'org-1',
+      'appt-1',
+      'ada@example.com',
+      '2026-08-06T09:00:00.000Z',
+      '2026-08-06T09:30:00.000Z'
+    )
+
+    expect(scheduleAppointmentReminder).not.toHaveBeenCalled()
   })
 
   it('sends a null expected start for the public path, which has no confirmed time', async () => {

@@ -23,6 +23,10 @@ vi.mock('@/lib/data/conversations-service', () => ({
   createConversation: vi.fn(),
   updateConversationStatus: vi.fn(),
 }))
+vi.mock('@/lib/notifications/dispatch', () => ({
+  dispatchNotification: vi.fn(),
+  scheduleAppointmentReminder: vi.fn(),
+}))
 vi.mock('@/lib/voice/end-call', () => ({
   endLiveKitCallRoom: vi.fn(),
 }))
@@ -52,6 +56,7 @@ import {
 } from '@/lib/data/booking-service'
 import { sendAppointmentConfirmationEmail } from '@/lib/email/send-appointment-confirmation'
 import { checkAndConsumeRateLimit } from '@/lib/voice/rate-limit'
+import { dispatchNotification, scheduleAppointmentReminder } from '@/lib/notifications/dispatch'
 import {
   getPublicAvailableSlots,
   createPublicAppointment,
@@ -128,6 +133,24 @@ describe('createPublicAppointment', () => {
     )
   })
 
+  // The notification and reminder are dispatched inside
+  // `createAppointmentServiceRole()` (covered in `booking-service.test.ts`), so
+  // the page must not dispatch a second time on top of it.
+  it('leaves the booking notification to the shared appointment write', async () => {
+    vi.mocked(getAvailableSlots).mockResolvedValue([
+      { date: '2026-08-10', slots: [{ startsAt: '2026-08-10T09:00:00.000Z', endsAt: '2026-08-10T09:30:00.000Z' }] },
+    ])
+    vi.mocked(findOrCreateClientServiceRole).mockResolvedValue({ id: 'client-1', isNew: true })
+    vi.mocked(createAppointmentServiceRole).mockResolvedValue({ id: 'appt-1' } as never)
+    vi.mocked(sendAppointmentConfirmationEmail).mockResolvedValue()
+
+    await createPublicAppointment(validInput)
+
+    expect(createAppointmentServiceRole).toHaveBeenCalledTimes(1)
+    expect(dispatchNotification).not.toHaveBeenCalled()
+    expect(scheduleAppointmentReminder).not.toHaveBeenCalled()
+  })
+
   it('refuses to book when the slot is no longer open', async () => {
     vi.mocked(getAvailableSlots).mockResolvedValue([{ date: '2026-08-10', slots: [] }])
 
@@ -135,6 +158,7 @@ describe('createPublicAppointment', () => {
 
     expect(result).toEqual({ error: 'slot_taken' })
     expect(createAppointmentServiceRole).not.toHaveBeenCalled()
+    expect(dispatchNotification).not.toHaveBeenCalled()
   })
 
   it('rejects when rate limited', async () => {

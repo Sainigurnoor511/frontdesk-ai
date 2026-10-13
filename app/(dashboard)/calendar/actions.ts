@@ -4,6 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
 import { dispatchWebhook } from '@/lib/integrations/webhook'
 import {
+  cancelAppointmentReminder,
+  dispatchNotification,
+  scheduleAppointmentReminder,
+} from '@/lib/notifications/dispatch'
+import {
   handleAppointmentCreated,
   handleAppointmentUpdated,
   handleAppointmentCancelled,
@@ -89,6 +94,17 @@ export async function createAppointment(
     source: 'dashboard',
   })
 
+  void dispatchNotification({
+    type: 'staff_booking',
+    organizationId: member.organization_id,
+    appointmentId: appointment.id,
+  })
+  void scheduleAppointmentReminder(
+    member.organization_id,
+    appointment.id,
+    parsed.data.startsAt
+  )
+
   void handleAppointmentCreated(member.organization_id, appointment.id)
   void handleCalComAppointmentCreated(member.organization_id, appointment.id)
   void handleMicrosoftAppointmentCreated(member.organization_id, appointment.id)
@@ -133,6 +149,9 @@ export async function cancelAppointment(
   void dispatchWebhook(member.organization_id, 'appointment.cancelled', {
     appointmentId: id,
   })
+
+  // A cancelled appointment must not keep a pending reminder.
+  void cancelAppointmentReminder(id)
 
   void handleAppointmentCancelled(member.organization_id, id)
   void handleCalComAppointmentCancelled(member.organization_id, id)
@@ -188,6 +207,11 @@ export async function updateAppointment(
   if (error) {
     return { error: 'Could not update appointment. Please try again.' }
   }
+
+  // This write can move `starts_at`, so the reminder is re-installed against the
+  // new time. Unconditional rather than diffed: the previous start is not read
+  // here, and re-installing an unchanged time is idempotent.
+  void scheduleAppointmentReminder(member.organization_id, id, parsed.data.startsAt)
 
   void handleAppointmentUpdated(member.organization_id, id)
   void handleCalComAppointmentUpdated(member.organization_id, id)

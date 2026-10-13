@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MessageCircleMore, Bell, BookOpen, MessageSquarePlus } from 'lucide-react'
+import { MessageCircleMore, BookOpen, MessageSquarePlus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -11,11 +11,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { NavUser } from './nav-user'
 import { SidebarToggleButton } from './sidebar-toggle-button'
 import { FeedbackDialog } from './feedback-dialog'
 import { CommandMenu } from './command-menu'
+import { NotificationCenter } from './notification-center'
 
 const pageTitles: Record<string, string> = {
   '/': 'Home',
@@ -40,12 +40,15 @@ export function AppHeader({
   orgName,
   avatarUrl,
   businessName,
+  unreadNotificationCount,
 }: {
   email: string
   orgName: string
   avatarUrl: string | null
   /** Overrides the header title on /business — the page name there is the business's own name, not a static label. */
   businessName?: string
+  /** Server-rendered badge seed. Absent where the header is rendered from a client component; the center then fetches once on mount. */
+  unreadNotificationCount?: number
 }) {
   const pathname = usePathname()
   const section = `/${pathname.split('/')[1] ?? ''}`
@@ -83,14 +86,7 @@ export function AppHeader({
           </DropdownMenuContent>
         </DropdownMenu>
         <FeedbackDialog open={feedbackOpen} onOpenChange={setFeedbackOpen} />
-        <Popover>
-          <PopoverTrigger render={<Button variant="outline" size="icon" aria-label="Notifications" />}>
-            <Bell />
-          </PopoverTrigger>
-          <PopoverContent align="end">
-            <p className="text-sm text-muted-foreground">No notifications yet.</p>
-          </PopoverContent>
-        </Popover>
+        <NotificationCenter initialUnreadCount={unreadNotificationCount} />
         <NavUser email={email} orgName={orgName} avatarUrl={avatarUrl} />
       </div>
     </header>
