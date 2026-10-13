@@ -286,7 +286,7 @@ All configuration is environment variables in `.env.local`. [`.env.example`](./.
 | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ | Supabase publishable (anon) key |
 | `SUPABASE_SECRET_KEY` | ✅ | Service-role key for workers and privileged server code. Never expose it to the browser. |
 | `NEXT_PUBLIC_SITE_URL` | ✅ | Public base URL, e.g. `http://localhost:3000` |
-| `REDIS_URL` | ✅ | Redis ≥ 6 for BullMQ jobs **and** the two-factor sign-in attempt budget. Not optional for interactive use: if Redis is down, users with two-factor enabled cannot finish signing in (the code step fails closed); users without it are unaffected |
+| `REDIS_URL` | ✅ | Redis ≥ 6 for BullMQ jobs **and** the two-factor attempt budget. Not optional for interactive use: if Redis is down, users with two-factor enabled can neither finish signing in nor reset a forgotten password, because both go through the code step, which fails closed. Treat a Redis outage as an auth incident. Users without two-factor are unaffected |
 | `GROQ_API_KEY` | ✅ | STT, conversation LLM, extraction, assistant |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | ✅ | LiveKit rooms, tokens, webhooks |
 | `FISH_AUDIO_API_KEY` | ✅ | Text-to-speech |
