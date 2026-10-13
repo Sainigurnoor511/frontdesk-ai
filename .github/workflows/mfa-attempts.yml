@@ -2,8 +2,8 @@
 # the MFA attempt budget against a real Redis, so the Lua scripts' guarantees
 # (atomic reservation, a TTL on every write, release never below zero, a
 # recovery refill claimed only when it clears something) are checked somewhere
-# reproducible, plus the gate, signed recovery claim, /callback routing and
-# auth action suites, which need no Redis.
+# reproducible, plus the gate, signed recovery claim, /callback routing, reset
+# page, auth action, proxy and assistant route suites, which need no Redis.
 #
 # Deliberately these files, not the whole Vitest suite: the full suite still has
 # known pre-existing failures (developer-docs/TODO.md, "Known Technical
@@ -17,6 +17,9 @@ on:
     paths:
       - "lib/auth/**"
       - "app/(auth)/**"
+      - "app/api/**"
+      - "proxy.ts"
+      - "proxy.test.ts"
       - ".github/workflows/mfa-attempts.yml"
   workflow_dispatch:
 permissions:
@@ -79,3 +82,6 @@ jobs:
           "app/(auth)/callback/route.test.ts"
           "app/(auth)/callback/route.recovery-cap.test.ts"
           "app/(auth)/actions.test.ts"
+          "app/(auth)/reset-password/page.test.tsx"
+          app/api/assistant/route.test.ts
+          proxy.test.ts
