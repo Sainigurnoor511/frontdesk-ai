@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { signUp, signOutAllDevices, requestPasswordReset, updatePassword } from './actions'
 
 vi.mock('@/lib/supabase/server', () => ({
@@ -10,7 +10,8 @@ vi.mock('next/navigation', () => ({
   redirect: vi.fn(),
 }))
 
-const cookieStore = { has: vi.fn(), delete: vi.fn() }
+// Lets a test send the old `fd_password_recovery` cookie, to prove it no longer counts as proof.
+const cookieStore = { has: vi.fn(), get: vi.fn(), delete: vi.fn() }
 vi.mock('next/headers', () => ({
   cookies: vi.fn(async () => cookieStore),
 }))
@@ -78,46 +79,133 @@ describe('updatePassword', () => {
     expect(result).toEqual({ error: 'Passwords do not match' })
   })
 
-  it('refuses a signed-in user who did not arrive from a reset link', async () => {
+  const nowSeconds = () => Math.floor(Date.now() / 1000)
+
+  /**
+   * A signed-in client whose verified token carries `amr`. `getUser` succeeds for every case, so
+   * the only thing separating a refusal from a password change is the recovery proof.
+   */
+  async function useRecoveryClient(
+    claims:
+      | { amr?: unknown }
+      | { error: string; name?: string; status?: number }
+      | { throws: Error }
+  ) {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const updateUser = vi.fn()
-    cookieStore.has.mockReturnValue(false)
-    vi.mocked(createSupabaseClient).mockResolvedValue({
-      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }), updateUser },
-    } as never)
-
-    const result = await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
-
-    expect(result).toEqual({ error: 'This reset link has expired. Request a new one.' })
-    expect(updateUser).not.toHaveBeenCalled()
-  })
-
-  it('refuses when there is no recovery session', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const updateUser = vi.fn()
-    vi.mocked(createSupabaseClient).mockResolvedValue({
-      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: null } }), updateUser },
-    } as never)
-
-    const result = await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
-
-    expect(result).toEqual({ error: 'This reset link has expired. Request a new one.' })
-    expect(updateUser).not.toHaveBeenCalled()
-  })
-
-  it('updates the password and redirects home', async () => {
-    const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
-    const { redirect } = await import('next/navigation')
-    cookieStore.has.mockReturnValue(true)
     const updateUser = vi.fn().mockResolvedValue({ error: null })
+    const getClaims =
+      'throws' in claims
+        ? vi.fn().mockRejectedValue(claims.throws)
+        : vi.fn().mockResolvedValue(
+            'error' in claims
+              ? {
+                  data: null,
+                  error: {
+                    name: claims.name ?? 'AuthInvalidJwtError',
+                    status: claims.status,
+                    message: claims.error,
+                  },
+                }
+              : {
+                  data: { claims: { sub: 'u1', ...claims }, header: {}, signature: new Uint8Array() },
+                  error: null,
+                }
+          )
     vi.mocked(createSupabaseClient).mockResolvedValue({
-      auth: { getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } } }), updateUser },
+      auth: {
+        getUser: vi.fn().mockResolvedValue({ data: { user: { id: 'u1' } }, error: null }),
+        getClaims,
+        updateUser,
+      },
     } as never)
+    return { updateUser, getClaims }
+  }
 
-    await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+  const expired = { error: 'This reset link has expired. Request a new one.' }
+  const retry = {
+    error:
+      'We could not confirm your reset link just now. Your password was not changed. Please try again in a moment.',
+  }
+  const submit = () => updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+
+  /** The old proof of a reset link, which any client can send. */
+  function sendForgedRecoveryCookie() {
+    cookieStore.has.mockImplementation((name: string) => name === 'fd_password_recovery')
+    cookieStore.get.mockImplementation((name: string) =>
+      name === 'fd_password_recovery' ? { name, value: '1' } : undefined
+    )
+  }
+
+  beforeEach(() => {
+    // Every refusal below is made with the old cookie present, so it is the signed claim, not the
+    // cookie's absence, that refuses.
+    sendForgedRecoveryCookie()
+  })
+
+  it('refuses a forged recovery cookie on a session with no verified recovery claim', async () => {
+    // The pre-fix exploit: `fd_password_recovery=1` was unsigned and bound to nothing, so any
+    // signed-in session could send it and change the password without ever opening a reset link.
+    const { updateUser } = await useRecoveryClient({ amr: [] })
+
+    expect(await submit()).toEqual(expired)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['password', [{ method: 'password', timestamp: nowSeconds() }]],
+    ['OAuth', [{ method: 'oauth', timestamp: nowSeconds() }]],
+    [
+      'password + TOTP',
+      [
+        { method: 'totp', timestamp: nowSeconds() },
+        { method: 'password', timestamp: nowSeconds() - 30 },
+      ],
+    ],
+  ])('refuses an ordinary %s session with no recovery marker', async (_label, amr) => {
+    const { updateUser } = await useRecoveryClient({ amr })
+
+    expect(await submit()).toEqual(expired)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('refuses a recovery sign-in older than the 15-minute window', async () => {
+    const { updateUser } = await useRecoveryClient({
+      amr: [{ method: 'recovery', timestamp: nowSeconds() - 16 * 60 }],
+    })
+
+    expect(await submit()).toEqual(expired)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('refuses when the token does not verify', async () => {
+    const { updateUser } = await useRecoveryClient({ error: 'Invalid JWT signature' })
+
+    expect(await submit()).toEqual(expired)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['getClaims() throws', { throws: new TypeError('fetch failed') }],
+    ['getClaims() returns a retryable error', { error: 'fetch failed', name: 'AuthRetryableFetchError', status: 0 }],
+  ])('refuses with a retry message, not "expired", when %s', async (_label, claims) => {
+    const { updateUser } = await useRecoveryClient(claims)
+
+    expect(await submit()).toEqual(retry)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('updates the password for a verified, recent recovery sign-in and redirects home', async () => {
+    const { redirect } = await import('next/navigation')
+    // No cookie at all: the signed claim is the whole proof.
+    cookieStore.has.mockReturnValue(false)
+    cookieStore.get.mockReturnValue(undefined)
+    const { updateUser } = await useRecoveryClient({
+      amr: [{ method: 'recovery', timestamp: nowSeconds() - 60 }],
+    })
+
+    await submit()
 
     expect(updateUser).toHaveBeenCalledWith({ password: 'longenough1' })
-    expect(cookieStore.delete).toHaveBeenCalledWith('fd_password_recovery')
     expect(redirect).toHaveBeenCalledWith('/')
   })
 })

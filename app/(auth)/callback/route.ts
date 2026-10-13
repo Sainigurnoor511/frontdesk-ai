@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createServiceRoleClient } from '@/lib/supabase/server'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
-import { PASSWORD_RECOVERY_COOKIE, PASSWORD_RECOVERY_MAX_AGE_SECONDS } from '@/lib/auth/recovery'
+import { checkRecoveryClaim } from '@/lib/auth/recovery'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
@@ -15,10 +15,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`)
   }
 
-  // A fixed destination chosen by a flag, never a caller-supplied URL.
-  const isRecovery = searchParams.get('flow') === 'recovery'
-  const destination = isRecovery ? '/reset-password' : '/'
-  let response = NextResponse.redirect(`${origin}${destination}`)
+  // Unsigned hint: it decides whether to check the signed claim, never the destination itself.
+  const mayBeRecovery = searchParams.get('flow') === 'recovery'
+
+  // Applied at the end: the destination depends on the session's verified recovery claim.
+  const pendingCookies: { name: string; value: string; options?: CookieOptions }[] = []
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,10 +31,7 @@ export async function GET(request: NextRequest) {
         },
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.redirect(`${origin}${destination}`)
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          )
+          pendingCookies.push(...cookiesToSet)
         },
       },
     }
@@ -70,14 +68,22 @@ export async function GET(request: NextRequest) {
       .insert({ organization_id: org.id, user_id: data.user.id, role: 'owner' })
   }
 
-  if (isRecovery) {
-    response.cookies.set(PASSWORD_RECOVERY_COOKIE, '1', {
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: request.nextUrl.protocol === 'https:',
-      path: '/',
-      maxAge: PASSWORD_RECOVERY_MAX_AGE_SECONDS,
-    })
+  // Fixed destinations only; a reset needs a verified claim whose subject is this user.
+  const claim = mayBeRecovery
+    ? await checkRecoveryClaim(supabase, { jwt: data.session?.access_token })
+    : ({ status: 'absent' } as const)
+
+  let destination = '/'
+  if (claim.status === 'valid' && claim.userId === data.user.id) {
+    destination = '/reset-password'
+  } else if (claim.status === 'unverifiable') {
+    // Auth blip with the code already spent; /reset-password re-checks, so this grants nothing.
+    destination = '/reset-password'
+  }
+
+  const response = NextResponse.redirect(`${origin}${destination}`)
+  for (const cookie of pendingCookies) {
+    response.cookies.set(cookie.name, cookie.value, cookie.options)
   }
 
   return response

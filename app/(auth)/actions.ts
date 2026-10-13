@@ -1,6 +1,5 @@
 'use server'
 
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { createClient, createServiceRoleClient } from '@/lib/supabase/server'
 import {
@@ -14,7 +13,7 @@ import {
   type UpdatePasswordInput,
 } from '@/lib/validations/auth'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
-import { PASSWORD_RECOVERY_COOKIE } from '@/lib/auth/recovery'
+import { checkRecoveryClaim } from '@/lib/auth/recovery'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -115,6 +114,10 @@ export async function requestPasswordReset(
   return { success: true }
 }
 
+/** Not exported: a 'use server' module may only export async functions. */
+const RESET_CHECK_UNAVAILABLE =
+  'We could not confirm your reset link just now. Your password was not changed. Please try again in a moment.'
+
 export async function updatePassword(input: UpdatePasswordInput): Promise<{ error: string }> {
   const parsed = updatePasswordSchema.safeParse(input)
   if (!parsed.success) {
@@ -122,11 +125,10 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
   }
 
   const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  const cookieStore = await cookies()
-  if (!user || !cookieStore.has(PASSWORD_RECOVERY_COOKIE)) {
+  // Fail-closed: only a verified, recent recovery claim on this session may change the password.
+  const claim = await checkRecoveryClaim(supabase)
+  if (claim.status === 'unverifiable') return { error: RESET_CHECK_UNAVAILABLE }
+  if (claim.status !== 'valid') {
     return { error: 'This reset link has expired. Request a new one.' }
   }
 
@@ -139,7 +141,6 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
     }
   }
 
-  cookieStore.delete(PASSWORD_RECOVERY_COOKIE)
   redirect('/')
 }
 
