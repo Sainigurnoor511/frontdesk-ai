@@ -8,7 +8,7 @@ import {
   getAssistantChatMessages,
   titleFromFirstMessage,
 } from '@/lib/data/assistant-chats'
-import { getAssuredUser } from '@/lib/auth/mfa'
+import { getAssuredUser, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
 
 const legacyMessagesSchema = z
   .array(
@@ -32,7 +32,13 @@ export async function POST(request: Request) {
   const user = await getAssuredUser(supabase)
 
   if (!user) {
-    return Response.json({ error: 'You must be signed in to use the assistant.' }, { status: 401 })
+    // The proxy's denial shape (`proxy.ts`), `verifyPath` included, so the panel can navigate
+    // whichever layer refused. /verify sends a signed-out caller on to /login, and a satisfied one
+    // home, so the path is safe for every reason `getAssuredUser` returns null.
+    return Response.json(
+      { error: 'You must be signed in to use the assistant.', verifyPath: MFA_VERIFY_PATH },
+      { status: 401 }
+    )
   }
 
   if (!process.env.GROQ_API_KEY) {
