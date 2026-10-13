@@ -240,6 +240,30 @@ both surfaces.
       through its server action on every window `focus`, so repeated alt-tabbing costs a
       `getCurrentOrgAndUser()` plus two queries each time while the popover is closed. Keep
       a last-fetched timestamp and skip refetches inside a short minimum interval.
+- [ ] **Sweep retries restart the cap-deferral budget** (added: 2026-10-13, from the
+      round-3 notification review, which was merged on one reviewer's verdict, with no High
+      findings, because the second reviewer stalled) — a `:sweepN` job carries
+      `sweepAttempt` but no `capDeferrals`, so a capped public-booking email starts a fresh
+      `:defer1`→`:defer3` chain on every sweep attempt. Recovery can then run about a day.
+      A duplicate needs the status write to keep failing past Resend's 24h idempotency
+      window as well. Fix: let sweep-originated jobs share or skip the cap-deferral budget,
+      and add a test that a capped `{ sweepAttempt: 1 }` job cannot install `:defer1`.
+- [ ] **The client-booking charge marker expires before recovery ends** (same review) —
+      `CLIENT_BOOKING_CHARGE_TTL_SECONDS` is 6h, while sweep recovery can run longer, so one
+      failed public-booking notification can be charged against the hourly cap more than
+      once. Fix: persist the charge on the notification row, or outlive the real retry
+      horizon.
+- [ ] **A reschedule into the grace band re-adds the reminder at once** (same review) —
+      `scheduleAppointmentReminder()` removes the job when its fire time has passed, and the
+      sweep's 30-minute grace scan reinstalls it, because it compares against
+      `appointments.created_at`, not when the current `starts_at` took effect. Probably
+      harmless: an appointment about 23.75h out getting its reminder now is reasonable. If
+      it ever matters, record a start-changed timestamp.
+- [ ] **The sweep shares delivery concurrency** (same review, rated likely, not confirmed)
+      — each run walks the full near window with serial Redis checks on
+      `notification-deliver` (concurrency 2), with no overlap lock or row budget. At volume,
+      two long sweeps could occupy both slots. Fix: bound each run, add an overlap lock, or
+      move the sweep to its own queue.
 - [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13,
       investigated 2026-10-13 — see `.agents/tasks/filter-background-speech-livekit.md`) —
       honoured on the AssemblyAI path (`session-config.ts` sends `voice_focus` +
