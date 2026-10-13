@@ -8,7 +8,7 @@ import {
   getAssistantChatMessages,
   titleFromFirstMessage,
 } from '@/lib/data/assistant-chats'
-import { getAssuredUser, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
+import { resolveMfaGateWithUser, MFA_VERIFY_PATH } from '@/lib/auth/mfa'
 
 const legacyMessagesSchema = z
   .array(
@@ -29,16 +29,26 @@ export async function POST(request: Request) {
   }
 
   const supabase = await createClient()
-  const user = await getAssuredUser(supabase)
+  // The same check as `getAssuredUser` (only `satisfied` gets through), resolved here so the
+  // denial can say why. Only a session that really owes its code gets the proxy's denial shape
+  // (`proxy.ts`) with `verifyPath`, which the panel follows with a full-page navigation. A check
+  // that could not be made (`indeterminate`, usually a GoTrue blip) or a signed-out caller gets a
+  // plain 401: navigating a healthy session away on a blip discarded the typed message and could
+  // land on /verify's sign-out-only panel.
+  const { gate, user } = await resolveMfaGateWithUser(supabase)
 
-  if (!user) {
-    // The proxy's denial shape (`proxy.ts`), `verifyPath` included, so the panel can navigate
-    // whichever layer refused. /verify sends a signed-out caller on to /login, and a satisfied one
-    // home, so the path is safe for every reason `getAssuredUser` returns null.
-    return Response.json(
-      { error: 'You must be signed in to use the assistant.', verifyPath: MFA_VERIFY_PATH },
-      { status: 401 }
-    )
+  if (gate.state !== 'satisfied' || !user) {
+    if (gate.state === 'pending') {
+      return Response.json(
+        { error: 'Two-factor verification required.', verifyPath: MFA_VERIFY_PATH },
+        { status: 401 }
+      )
+    }
+    const error =
+      gate.state === 'unauthenticated'
+        ? 'You must be signed in to use the assistant.'
+        : 'We could not confirm your session just now. Please try again in a moment.'
+    return Response.json({ error }, { status: 401 })
   }
 
   if (!process.env.GROQ_API_KEY) {

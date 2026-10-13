@@ -144,6 +144,11 @@ export function AssistantClient({
         window.location.assign(verifyPath)
         return
       }
+      // Every refusal from the route comes before it saves the message, so nothing was sent. Put
+      // the draft back (unless something new was typed meanwhile) and drop the optimistic bubble,
+      // so a retry is one click and does not show the message twice.
+      setMessages(messages)
+      setInput((current) => current || text)
       setErrorMessage(body?.error ?? 'The assistant could not respond. Please try again.')
       return
     }
