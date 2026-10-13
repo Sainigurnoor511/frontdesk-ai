@@ -67,8 +67,9 @@ export type MfaGate =
  * `aal` claim, and `decodeJWT` does not verify signatures — the claim is only trustworthy because
  * the same token was just validated server-side by the `getUser()` call that produced `user`. A
  * user from any other source (a decoded cookie, a cached value, `signInWithPassword`'s
- * `data.user`) would void that guarantee, so the only way in is `resolveMfaGate` or
- * `getAssuredUser` below, both of which make the validating call themselves. Documenting the
+ * `data.user`) would void that guarantee, so the only way in is `resolveMfaGate`,
+ * `resolveMfaGateWithUser` or `getAssuredUser` below, all of which make the validating call
+ * themselves. Documenting the
  * precondition was not enough: nothing in the signature could enforce it.
  *
  * `nextLevel` is deliberately never read: auth-js derives it from `session.user.factors`, which
@@ -182,15 +183,31 @@ function classifyReturnedGetUserError(error: AuthError): MfaGate {
  *   and is `indeterminate` as well.
  */
 export async function resolveMfaGate(supabase: MfaAwareClient): Promise<MfaGate> {
+  return (await resolveMfaGateWithUser(supabase)).gate
+}
+
+/**
+ * `resolveMfaGate`, plus the user its own `getUser()` validated (`null` whenever that call threw
+ * or returned no user). For callers that need both the reason for a refusal and, once satisfied,
+ * the user, from one validated call: the reset page names the account, and the assistant route
+ * tells a pending session (navigate to `/verify`) from a check that could not be made. Authorize
+ * on `gate.state === 'satisfied'`, never on `user` alone: a pending session has a user too.
+ *
+ * Never rejects.
+ */
+export async function resolveMfaGateWithUser(
+  supabase: MfaAwareClient
+): Promise<{ gate: MfaGate; user: User | null }> {
   let result
   try {
     result = await supabase.auth.getUser()
   } catch {
-    return { state: 'indeterminate' }
+    return { gate: { state: 'indeterminate' }, user: null }
   }
-  if (result.error) return classifyReturnedGetUserError(result.error)
-  if (!result.data.user) return { state: 'indeterminate' }
-  return resolveMfaGateForUser(supabase, result.data.user)
+  if (result.error) return { gate: classifyReturnedGetUserError(result.error), user: null }
+  const user = result.data.user
+  if (!user) return { gate: { state: 'indeterminate' }, user: null }
+  return { gate: await resolveMfaGateForUser(supabase, user), user }
 }
 
 /**
