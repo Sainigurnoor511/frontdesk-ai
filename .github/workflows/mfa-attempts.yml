@@ -1,18 +1,22 @@
-# Runs the MFA attempt-budget tests against a real Redis, so the Lua script's
-# guarantees (atomic reservation, a TTL on every write, release never below
-# zero) are checked somewhere reproducible and not only on a developer box.
+# Runs the auth suites that encode the two-factor and password-reset contract:
+# the MFA attempt budget against a real Redis, so the Lua scripts' guarantees
+# (atomic reservation, a TTL on every write, release never below zero, a
+# recovery refill claimed only when it clears something) are checked somewhere
+# reproducible, plus the gate, signed recovery claim, /callback routing and
+# auth action suites, which need no Redis.
 #
-# Deliberately one file, not the whole Vitest suite: the full suite still has
+# Deliberately these files, not the whole Vitest suite: the full suite still has
 # known pre-existing failures (developer-docs/TODO.md, "Known Technical
 # Issues"), so a full-suite job would be red for reasons unrelated to auth.
 #
 # No secrets needed. The service is redis:7-alpine, matching docker-compose.yml
 # (the release script's SET ... KEEPTTL needs Redis >= 6.0).
-name: MFA attempt budget
+name: Auth and MFA
 on:
   pull_request:
     paths:
       - "lib/auth/**"
+      - "app/(auth)/**"
       - ".github/workflows/mfa-attempts.yml"
   workflow_dispatch:
 permissions:
@@ -22,6 +26,7 @@ concurrency:
   cancel-in-progress: true
 jobs:
   vitest:
+    name: Auth and MFA tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -64,5 +69,13 @@ jobs:
           socket.on('data', (d) => { if (!String(d).startsWith('+PONG')) process.exit(1); socket.end(); });
           socket.on('error', (e) => { console.error(e.message); process.exit(1); });
           "
-      - name: Run the attempt-budget tests
-        run: pnpm exec vitest run lib/auth/mfa-attempts.test.ts
+      - name: Run the auth and MFA tests
+        # Quoted: the route group's parentheses are shell syntax.
+        run: >-
+          pnpm exec vitest run
+          lib/auth/mfa-attempts.test.ts
+          lib/auth/mfa.test.ts
+          lib/auth/recovery.test.ts
+          "app/(auth)/callback/route.test.ts"
+          "app/(auth)/callback/route.recovery-cap.test.ts"
+          "app/(auth)/actions.test.ts"
