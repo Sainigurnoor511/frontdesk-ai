@@ -15,9 +15,8 @@ import {
   type TotpCodeInput,
 } from '@/lib/validations/auth'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
-import { hasRecentRecoveryClaim } from '@/lib/auth/recovery'
+import { checkRecoveryClaim, hasRecentRecoveryClaim } from '@/lib/auth/recovery'
 import {
-  getAssuredUser,
   resolveMfaGate,
   mfaErrorMessage,
   MFA_MAX_ATTEMPTS,
@@ -305,6 +304,10 @@ export async function requestPasswordReset(
   return { success: true }
 }
 
+/** Not exported: a 'use server' module may only export async functions. */
+const RESET_CHECK_UNAVAILABLE =
+  'We could not confirm your reset link just now. Your password was not changed. Please try again in a moment.'
+
 export async function updatePassword(input: UpdatePasswordInput): Promise<{ error: string }> {
   const parsed = updatePasswordSchema.safeParse(input)
   if (!parsed.success) {
@@ -313,13 +316,28 @@ export async function updatePassword(input: UpdatePasswordInput): Promise<{ erro
 
   const supabase = await createClient()
   // The only proof of a reset link is a signature-verified `recovery` entry in the session's own
-  // token, recent enough. An ordinary session, aal1 or aal2, has none and cannot get here.
-  if (!(await hasRecentRecoveryClaim(supabase))) {
+  // token, recent enough. An ordinary session, aal1 or aal2, has none and cannot get here. When the
+  // auth server cannot be asked, the change is refused too, but the link is not called expired.
+  const claim = await checkRecoveryClaim(supabase)
+  if (claim.status === 'unverifiable') return { error: RESET_CHECK_UNAVAILABLE }
+  if (claim.status === 'absent') {
     return { error: 'This reset link has expired. Request a new one.' }
   }
+
+  const mfa = await resolveMfaGate(supabase)
   // A recovery session that still owes its code: Supabase would refuse the change from aal1, so
-  // send it to the code step, which comes back to /reset-password once it passes.
-  if (!(await getAssuredUser(supabase))) return redirect(MFA_VERIFY_PATH)
+  // send it to the code step, which comes back to /reset-password once it passes. An account on an
+  // unsupported factor goes there too, because /verify explains that dead end.
+  if (mfa.state === 'pending' || (mfa.state === 'indeterminate' && mfa.reason === 'unsupported_factor')) {
+    return redirect(MFA_VERIFY_PATH)
+  }
+  // Any other non-satisfied gate is a check that could not be made (or a session that just
+  // vanished). Sending that to /verify bounced a factorless session home with no message, so the
+  // user believed the password had changed. Say so instead; the form can simply be resubmitted.
+  if (mfa.state === 'unauthenticated') {
+    return { error: 'This reset link has expired. Request a new one.' }
+  }
+  if (mfa.state !== 'satisfied') return { error: RESET_CHECK_UNAVAILABLE }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
   if (error) {

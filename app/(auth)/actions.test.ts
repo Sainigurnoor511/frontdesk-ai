@@ -102,14 +102,14 @@ describe('updatePassword', () => {
    * the only thing separating a refusal from a password change is the recovery proof.
    */
   async function useRecoveryClient(
-    claims: { amr?: unknown } | { error: string },
-    session: { factors?: unknown; currentLevel?: string } = {}
+    claims: { amr?: unknown } | { error: string; name?: string },
+    session: { factors?: unknown; currentLevel?: string; aalError?: boolean } = {}
   ) {
     const { createClient: createSupabaseClient } = await import('@/lib/supabase/server')
     const updateUser = vi.fn().mockResolvedValue({ error: null })
     const getClaims = vi.fn().mockResolvedValue(
       'error' in claims
-        ? { data: null, error: { name: 'AuthInvalidJwtError', message: claims.error } }
+        ? { data: null, error: { name: claims.name ?? 'AuthInvalidJwtError', message: claims.error } }
         : { data: { claims: { sub: 'u1', ...claims }, header: {}, signature: new Uint8Array() }, error: null }
     )
     vi.mocked(createSupabaseClient).mockResolvedValue({
@@ -121,14 +121,20 @@ describe('updatePassword', () => {
         getClaims,
         updateUser,
         mfa: {
-          getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue({
-            data: { currentLevel: session.currentLevel ?? 'aal1', nextLevel: null },
-            error: null,
-          }),
+          getAuthenticatorAssuranceLevel: vi.fn().mockResolvedValue(
+            session.aalError
+              ? { data: null, error: { name: 'AuthRetryableFetchError', message: 'fetch failed' } }
+              : { data: { currentLevel: session.currentLevel ?? 'aal1', nextLevel: null }, error: null }
+          ),
         },
       },
     } as never)
     return { updateUser, getClaims }
+  }
+
+  const retry = {
+    error:
+      'We could not confirm your reset link just now. Your password was not changed. Please try again in a moment.',
   }
 
   const expired = { error: 'This reset link has expired. Request a new one.' }
@@ -192,6 +198,35 @@ describe('updatePassword', () => {
       await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
     ).toEqual(expired)
     expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('refuses, without calling the link expired, when the auth server cannot verify the token', async () => {
+    const { updateUser } = await useRecoveryClient({
+      error: 'fetch failed',
+      name: 'AuthRetryableFetchError',
+    })
+
+    expect(
+      await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+    ).toEqual(retry)
+    expect(updateUser).not.toHaveBeenCalled()
+  })
+
+  it('returns a retryable error on an indeterminate gate instead of a silent bounce via /verify', async () => {
+    // /verify sends a factorless or unreadable session home with no message, so the user believed
+    // the password had changed when it had not.
+    const { redirect } = await import('next/navigation')
+    vi.mocked(redirect).mockClear()
+    const { updateUser } = await useRecoveryClient(
+      { amr: [{ method: 'recovery', timestamp: nowSeconds() - 60 }] },
+      { factors: [{ id: 'factor-1', factor_type: 'totp', status: 'verified' }], aalError: true }
+    )
+
+    const result = await updatePassword({ password: 'longenough1', confirmPassword: 'longenough1' })
+
+    expect(result).toEqual(retry)
+    expect(updateUser).not.toHaveBeenCalled()
+    expect(redirect).not.toHaveBeenCalled()
   })
 
   it('sends a recovery session that still owes its code to /verify instead of changing it', async () => {

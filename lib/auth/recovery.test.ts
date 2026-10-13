@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import {
+  checkRecoveryClaim,
   hasRecentRecoveryClaim,
   recentRecoverySubject,
   PASSWORD_RECOVERY_MAX_AGE_SECONDS,
@@ -93,6 +94,56 @@ describe('hasRecentRecoveryClaim', () => {
 
     await hasRecentRecoveryClaim(supabase, { now: NOW, jwt: 'issued.access.token' })
     expect(supabase.auth.getClaims).toHaveBeenLastCalledWith('issued.access.token')
+  })
+})
+
+describe('checkRecoveryClaim', () => {
+  it('is valid, with the verified subject, for a recent recovery sign-in', async () => {
+    await expect(
+      checkRecoveryClaim(withAmr([{ method: 'recovery', timestamp: nowSeconds }], 'u-7'), {
+        now: NOW,
+      })
+    ).resolves.toEqual({ status: 'valid', userId: 'u-7' })
+  })
+
+  it('is absent for a stale or missing claim, a bad signature, or no session', async () => {
+    const stale = nowSeconds - PASSWORD_RECOVERY_MAX_AGE_SECONDS - 1
+    for (const supabase of [
+      withAmr([{ method: 'recovery', timestamp: stale }]),
+      withAmr([{ method: 'password', timestamp: nowSeconds }]),
+      client({ data: null, error: { name: 'AuthInvalidJwtError', message: 'Invalid JWT signature' } }),
+      client({ data: null, error: { name: 'AuthApiError', status: 403, message: 'bad_jwt' } }),
+      client({ data: null, error: null }),
+    ]) {
+      await expect(checkRecoveryClaim(supabase, { now: NOW })).resolves.toEqual({ status: 'absent' })
+    }
+  })
+
+  it('is unverifiable, not absent, when the auth server cannot be asked', async () => {
+    // These used to collapse into "this reset link has expired", so a user holding a good link
+    // was told to throw it away during a network blip.
+    const throwing = {
+      auth: { getClaims: vi.fn().mockRejectedValue(new TypeError('fetch failed')) },
+    } as unknown as ClaimsAwareClient
+    for (const supabase of [
+      throwing,
+      client({ data: null, error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' } }),
+      client({ data: null, error: { name: 'AuthApiError', status: 503, message: 'unavailable' } }),
+      client({ data: null, error: { name: 'AuthApiError', status: 429, message: 'rate limited' } }),
+    ]) {
+      await expect(checkRecoveryClaim(supabase, { now: NOW })).resolves.toEqual({
+        status: 'unverifiable',
+      })
+    }
+  })
+
+  it('keeps both non-valid results fail-closed in hasRecentRecoveryClaim', async () => {
+    const unreachable = client({
+      data: null,
+      error: { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' },
+    })
+    await expect(hasRecentRecoveryClaim(unreachable, { now: NOW })).resolves.toBe(false)
+    await expect(recentRecoverySubject(unreachable, { now: NOW })).resolves.toBeNull()
   })
 })
 

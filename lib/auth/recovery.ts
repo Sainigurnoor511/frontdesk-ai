@@ -42,13 +42,14 @@ export type ClaimsAwareClient = {
  * timestamp, not its presence, bounds the window.
  *
  * Plain-string `amr` entries (RFC 8176 form) carry no timestamp, so they cannot prove recency and
- * are not accepted. Never rejects; every failure is `false`.
+ * are not accepted. Never rejects; every failure is `false`. Callers that show the user a reason
+ * use `checkRecoveryClaim` instead, which tells "no valid claim" from "could not verify".
  */
 export async function hasRecentRecoveryClaim(
   supabase: ClaimsAwareClient,
   options: { jwt?: string; now?: number } = {}
 ): Promise<boolean> {
-  return (await recentRecoverySubject(supabase, options)) !== null
+  return (await checkRecoveryClaim(supabase, options)).status === 'valid'
 }
 
 /**
@@ -60,16 +61,54 @@ export async function recentRecoverySubject(
   supabase: ClaimsAwareClient,
   options: { jwt?: string; now?: number } = {}
 ): Promise<string | null> {
+  const claim = await checkRecoveryClaim(supabase, options)
+  return claim.status === 'valid' ? claim.userId : null
+}
+
+export type RecoveryClaim =
+  /** A verified, recent recovery sign-in; `userId` is the verified token's `sub`. */
+  | { status: 'valid'; userId: string }
+  /** No session, a token that does not verify, or one with no recent recovery entry. */
+  | { status: 'absent' }
+  /**
+   * The auth server could not be asked (a thrown call, a network failure, a 5xx or 429). Not
+   * evidence the link expired, so callers say "try again" rather than "request a new link". Still
+   * a refusal: it never lets a password change through.
+   */
+  | { status: 'unverifiable' }
+
+/**
+ * A returned `getClaims()` error that says the check could not be made, rather than that the token
+ * is bad. auth-js 2.112.2 returns `AuthRetryableFetchError` for a fetch failure and for 5xx (from
+ * the JWKS fetch or the HS256 `getUser(jwt)` fallback). Structural checks, as in `lib/auth/mfa.ts`.
+ */
+function isTransportError(error: { name?: string; status?: number }): boolean {
+  if (error.name === 'AuthRetryableFetchError') return true
+  return typeof error.status === 'number' && (error.status >= 500 || error.status === 429)
+}
+
+/**
+ * The full result behind `hasRecentRecoveryClaim` and `recentRecoverySubject`. Both non-valid
+ * results are fail-closed; they differ only in what the user should be told. Never rejects.
+ */
+export async function checkRecoveryClaim(
+  supabase: ClaimsAwareClient,
+  options: { jwt?: string; now?: number } = {}
+): Promise<RecoveryClaim> {
   let result
   try {
     result = await supabase.auth.getClaims(options.jwt)
   } catch {
-    return null
+    // auth-js rethrows anything that is not an `AuthError`, such as a fetch `TypeError`.
+    return { status: 'unverifiable' }
   }
-  if (result.error || !result.data) return null
+  if (result.error) {
+    return isTransportError(result.error) ? { status: 'unverifiable' } : { status: 'absent' }
+  }
+  if (!result.data) return { status: 'absent' }
 
   const { amr, sub } = result.data.claims
-  if (!Array.isArray(amr) || typeof sub !== 'string' || !sub) return null
+  if (!Array.isArray(amr) || typeof sub !== 'string' || !sub) return { status: 'absent' }
 
   const nowSeconds = Math.floor((options.now ?? Date.now()) / 1000)
   const recent = amr.some((entry: unknown) => {
@@ -82,5 +121,5 @@ export async function recentRecoverySubject(
       timestamp <= nowSeconds + CLOCK_SKEW_SECONDS
     )
   })
-  return recent ? sub : null
+  return recent ? { status: 'valid', userId: sub } : { status: 'absent' }
 }
