@@ -366,6 +366,29 @@ describe.skipIf(!liveAvailable)('mfa attempt counter — live Redis (MFA_REDIS_T
     await admin.del(keyFor(other))
   })
 
+  it('spends no recovery claim when there is no counter to clear', async () => {
+    const id = newUser()
+    const claim = `mfa:recovery-clear:${id}`
+    try {
+      await expect(clearAttemptsAfterRecovery(id)).resolves.toBe('nothing_to_clear')
+      expect(await admin.exists(claim)).toBe(0)
+      expect(await admin.exists(keyFor(id))).toBe(0)
+
+      // A counter at zero (every slot released) is nothing to refill either.
+      await admin.set(keyFor(id), '0', 'EX', 600)
+      await expect(clearAttemptsAfterRecovery(id)).resolves.toBe('nothing_to_clear')
+      expect(await admin.exists(claim)).toBe(0)
+
+      // So the hour's refill is still there for a real lockout.
+      await admin.set(keyFor(id), '5', 'EX', 600)
+      await expect(clearAttemptsAfterRecovery(id)).resolves.toBe('cleared')
+      expect(await admin.exists(keyFor(id))).toBe(0)
+      expect(await admin.ttl(claim)).toBeGreaterThan(0)
+    } finally {
+      await admin.del(claim)
+    }
+  })
+
   it('refills after a recovery link once per user per hour, with a TTL on the claim', async () => {
     const id = newUser()
     const claim = `mfa:recovery-clear:${id}`

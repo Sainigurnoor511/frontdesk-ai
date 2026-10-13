@@ -3,8 +3,8 @@
 //
 // The per-user hourly cap on recovery refills, exercised through /callback with the real
 // `lib/auth/mfa-attempts` module. Only the Redis client underneath it is replaced, by an in-memory
-// fake that applies `SET … EX … NX` the way Redis does, so these tests see the commands the module
-// actually sends rather than a mock of the module.
+// fake that applies the refill script's semantics (and `SET … EX … NX` / `DEL` the way Redis does),
+// so these tests see the commands the module actually sends rather than a mock of the module.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { NextRequest } from 'next/server'
 import { GET } from './route'
@@ -58,6 +58,22 @@ vi.mock('ioredis', () => {
     async del(...keys: string[]) {
       this.record('del', keys)
       return keys.filter((key) => redis.store.delete(key)).length
+    }
+
+    /**
+     * The only script this path sends is the recovery refill (two keys: counter, claim). Applied
+     * here with the semantics of `RECOVERY_CLEAR_SCRIPT`; the script itself runs against a real
+     * Redis in lib/auth/mfa-attempts.test.ts.
+     */
+    async eval(_script: string, numKeys: number, ...rest: unknown[]) {
+      this.record('eval', [numKeys, ...rest])
+      const [counterKey, claim, ttl] = rest.map(String)
+      const counter = redis.store.get(counterKey)
+      if (!counter || counter.value === '0') return 0
+      if (redis.store.has(claim)) return 1
+      redis.store.set(claim, { value: '1', ttl: Number(ttl) })
+      redis.store.delete(counterKey)
+      return 2
     }
 
     async expire(key: string, seconds: number) {
@@ -173,16 +189,29 @@ describe('GET /callback — at most one recovery refill per user per hour', () =
     expect(redis.store.get(budgetKey('u2'))?.value).toBe('5')
   })
 
-  it('does not clear the budget when the claim cannot be recorded, and still completes the callback', async () => {
-    // The claim fails as if Redis were unreachable, while a DEL would still have gone through:
+  it('spends no claim when there is no counter to clear, so a later lockout in the hour still refills', async () => {
+    // A reset link opened with a full budget used to take the hour's only refill anyway, so a
+    // genuine lockout later in the same hour got nothing back.
+    expect(await signInWithRecoveryLink('u1')).toBe('https://app.example.com/verify')
+    expect(redis.store.has(claimKey('u1'))).toBe(false)
+    expect(redis.store.has(budgetKey('u1'))).toBe(false)
+
+    burnBudget('u1')
+    await signInWithRecoveryLink('u1')
+    expect(redis.store.has(budgetKey('u1'))).toBe(false)
+    expect(redis.store.get(claimKey('u1'))?.ttl).toBe(MFA_RECOVERY_CLEAR_INTERVAL_SECONDS)
+  })
+
+  it('does not clear the budget when the refill cannot run, and still completes the callback', async () => {
+    // The refill fails as if Redis were unreachable, while a DEL would still have gone through:
     // a fail-open refill would show up here as a cleared budget.
     burnBudget('u1')
-    redis.failing.add('set')
+    redis.failing.add('eval')
 
     expect(await signInWithRecoveryLink('u1')).toBe('https://app.example.com/verify')
 
     expect(redis.store.get(budgetKey('u1'))?.value).toBe('5')
-    expect(redis.commands.some(([name]) => name === 'del')).toBe(false)
+    expect(redis.store.has(claimKey('u1'))).toBe(false)
     expect(console.error).toHaveBeenCalled()
 
     // A full outage: nothing answers, and the reset flow still reaches the code step.

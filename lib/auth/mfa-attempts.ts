@@ -103,6 +103,22 @@ redis.call('SET', KEYS[1], current - 1, 'KEEPTTL')
 return current - 1
 `
 
+/**
+ * KEYS[1] counter key · KEYS[2] recovery claim key · ARGV[1] claim TTL seconds.
+ * The hourly refill is spent only on an actual refill: with no counter (or a counter at zero) there
+ * is nothing to give back, so the script touches nothing and returns 0. Otherwise it takes the claim
+ * with `SET … NX EX` (the key never exists without its expiry) and returns 1 when the claim is
+ * already held, or deletes the counter and returns 2. One script, so the check, the claim and the
+ * clear cannot interleave with another instance, and a claim is never recorded without its clear.
+ */
+const RECOVERY_CLEAR_SCRIPT = `
+local raw = redis.call('GET', KEYS[1])
+if not raw or raw == '0' then return 0 end
+if not redis.call('SET', KEYS[2], '1', 'EX', ARGV[1], 'NX') then return 1 end
+redis.call('DEL', KEYS[1])
+return 2
+`
+
 let client: Redis | null = null
 let connecting: Promise<void> | null = null
 
@@ -242,9 +258,11 @@ export async function clearAttempts(userId: string): Promise<void> {
 export type RecoveryClearOutcome =
   /** The claim was taken and the budget cleared. */
   | 'cleared'
+  /** No attempts were used, so there was nothing to refill; the hourly claim was not spent. */
+  | 'nothing_to_clear'
   /** This user's budget was already refilled by a recovery link within the window; left alone. */
   | 'already_claimed'
-  /** Redis failed on the claim or the clear. The budget is not refilled. */
+  /** Redis could not run the refill. The budget is not refilled. */
   | 'unavailable'
 
 /**
@@ -252,32 +270,33 @@ export type RecoveryClearOutcome =
  * `MFA_RECOVERY_CLEAR_INTERVAL_SECONDS`. Each reset link needs only the mailbox, so without this
  * cap the refill rate, and with it the guess rate, would follow the deployment's email quota.
  *
- * The claim is one `SET … NX EX` command: the check and the write cannot race across instances,
- * and the key cannot exist without its expiry. It fails closed on the refill: if the claim cannot
- * be recorded, nothing is cleared, because no refill is the safe direction. A claim that was
- * recorded but whose clear then failed stays spent; that is also no refill. Never rejects.
+ * The hour is spent only when a counter is actually cleared (`RECOVERY_CLEAR_SCRIPT`): a reset
+ * link opened with a full budget, or by a user with no factor, leaves the claim untouched, so a
+ * later genuine lockout in the same hour still gets its refill. It fails closed on the refill: if
+ * the script cannot run, nothing is cleared, because no refill is the safe direction. Never rejects.
  */
 export async function clearAttemptsAfterRecovery(userId: string): Promise<RecoveryClearOutcome> {
-  let claim: string | null
+  let result: number
   try {
-    claim = await bounded((redis) =>
-      redis.set(recoveryClaimKey(userId), '1', 'EX', MFA_RECOVERY_CLEAR_INTERVAL_SECONDS, 'NX')
-    )
+    result = (await bounded((redis) =>
+      redis.eval(
+        RECOVERY_CLEAR_SCRIPT,
+        2,
+        key(userId),
+        recoveryClaimKey(userId),
+        MFA_RECOVERY_CLEAR_INTERVAL_SECONDS
+      )
+    )) as number
   } catch (error) {
-    console.error('[auth] recovery refill claim not recorded; mfa attempt budget not cleared:', error)
+    console.error('[auth] recovery refill not run; mfa attempt budget not cleared:', error)
     return 'unavailable'
   }
-  if (claim !== 'OK') {
+  if (result === 0) return 'nothing_to_clear'
+  if (result === 1) {
     console.info('[auth] mfa attempt budget already refilled by a recovery link this hour; not cleared', {
       userId,
     })
     return 'already_claimed'
-  }
-  try {
-    await bounded((redis) => redis.del(key(userId)))
-  } catch (error) {
-    console.error('[auth] mfa attempt counter not cleared after recovery; it expires with its window:', error)
-    return 'unavailable'
   }
   return 'cleared'
 }
