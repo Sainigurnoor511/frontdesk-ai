@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { resolveMfaGate, POST_LOGIN_PATH } from '@/lib/auth/mfa'
 import { cancelMfaChallenge } from '@/app/(auth)/actions'
 import { Button } from '@/components/ui/button'
-import { VerifyCodeForm } from '@/components/auth/verify-code-form'
+import { VerifyMethods } from '@/components/auth/verify-methods'
 
 // The cancel control is a plain server-action form, so it works without JavaScript — it is the
 // one control a stuck user must be able to reach. Rendered as a sibling of the code form, never
@@ -68,18 +68,9 @@ export default async function VerifyPage() {
 
   return (
     <div className="space-y-8">
-      <div className="space-y-2 text-center">
-        <h1 className="text-2xl font-semibold">Enter your authentication code</h1>
-        <p className="text-sm text-muted-foreground">
-          {mfa.email
-            ? `Open your authenticator app for the 6-digit code for ${mfa.email}.`
-            : 'Open your authenticator app for the 6-digit code.'}
-        </p>
-      </div>
-      <div className="space-y-4">
-        <VerifyCodeForm />
+      <VerifyMethods email={mfa.email}>
         <CancelForm label="Use a different account" />
-      </div>
+      </VerifyMethods>
     </div>
   )
 }

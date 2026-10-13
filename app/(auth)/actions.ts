@@ -8,11 +8,13 @@ import {
   requestPasswordResetSchema,
   updatePasswordSchema,
   totpCodeSchema,
+  recoveryCodeSchema,
   type SignupInput,
   type LoginInput,
   type RequestPasswordResetInput,
   type UpdatePasswordInput,
   type TotpCodeInput,
+  type RecoveryCodeInput,
 } from '@/lib/validations/auth'
 import { generateUniqueSlug } from '@/lib/data/organization-slug'
 import { checkRecoveryClaim, hasRecentRecoveryClaim } from '@/lib/auth/recovery'
@@ -24,6 +26,13 @@ import {
   POST_LOGIN_PATH,
 } from '@/lib/auth/mfa'
 import { clearAttempts, releaseAttempt, reserveAttempt } from '@/lib/auth/mfa-attempts'
+import {
+  consumeRecoveryCode,
+  deleteRecoveryCodes,
+  removeTotpFactors,
+  restoreRecoveryCode,
+} from '@/lib/auth/recovery-codes'
+import { sendMfaRecoveryNotice } from '@/lib/email/send-mfa-recovery-notice'
 
 function friendlyAuthError(message: string): string {
   if (message.includes('already registered')) {
@@ -272,6 +281,103 @@ async function settleFailure(
     return endPendingSession(supabase, 'mfa_attempts', userId)
   }
   return { error: mapped.message }
+}
+
+/**
+ * Where a redeemed recovery code lands: settings, whose page reads `mfa=recovered` to show the
+ * "set up two-factor again" prompt. Not exported: a 'use server' module may only export async
+ * functions.
+ */
+const RECOVERED_SETTINGS_PATH = '/settings?tab=account&mfa=recovered'
+
+/**
+ * The lost-authenticator path on `/verify`: redeems one single-use recovery code, which removes the
+ * user's TOTP factor and signs out their other sessions. Named `redeem…`, not `use…`, so the hooks
+ * lint rule does not mistake it for a React hook at its call sites.
+ *
+ * Guarded exactly like `verifyMfaChallenge`, and it spends the SAME per-user attempt budget, before
+ * anything is looked up, so a recovery-code guess costs what a TOTP guess costs and alternating the
+ * two paths cannot buy more than `MFA_MAX_ATTEMPTS` guesses. The slot rules mirror the TOTP path:
+ *   accepted                          -> budget cleared (after the factor is gone)
+ *   wrong / used / never issued       -> slot kept; it is the failed attempt
+ *   lookup could not run              -> slot released; no code was evaluated
+ *   factor removal failed             -> code restored, slot released; the user was not wrong
+ */
+export async function redeemRecoveryCode(input: RecoveryCodeInput): Promise<{ error: string }> {
+  const parsed = recoveryCodeSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const supabase = await createClient()
+  const mfa = await resolveMfaGate(supabase)
+
+  if (mfa.state === 'unauthenticated') {
+    return redirect('/login?error=session_expired')
+  }
+  if (mfa.state === 'satisfied') return redirect(POST_LOGIN_PATH)
+  if (mfa.state === 'indeterminate') return endPendingSession(supabase, 'mfa_unavailable')
+
+  const reservation = await reserveAttempt(mfa.userId)
+  if (reservation.status === 'unavailable') {
+    logMfaEvent('attempt counter unavailable', { userId: mfa.userId, path: 'recovery_code' })
+    return { error: 'Two-factor sign-in is temporarily unavailable. Please try again in a minute.' }
+  }
+  if (reservation.status === 'exhausted') {
+    return endPendingSession(supabase, 'mfa_attempts', mfa.userId)
+  }
+
+  const service = createServiceRoleClient()
+  const consumed = await consumeRecoveryCode(service, mfa.userId, parsed.data.code)
+  if (consumed.status === 'unavailable') {
+    await releaseAttempt(mfa.userId)
+    return { error: 'Could not check that recovery code. Please try again.' }
+  }
+  if (consumed.status === 'invalid') {
+    return settleFailure(supabase, mfa.userId, reservation.attempts, {
+      message: 'That recovery code is not valid or has already been used.',
+      fatal: false,
+      throttled: false,
+    })
+  }
+
+  if (!(await removeTotpFactors(service, mfa.userId))) {
+    await restoreRecoveryCode(service, consumed.id)
+    await releaseAttempt(mfa.userId)
+    logMfaEvent('recovery code accepted but factor not removed', { userId: mfa.userId })
+    return {
+      error: 'Could not remove two-factor authentication. Your recovery code still works. Please try again.',
+    }
+  }
+
+  // The factor is gone, so the rest cannot fail the recovery; each step logs its own failure.
+  // The remaining codes belonged to the removed factor. Should this delete fail, the set issued
+  // at the next enrolment replaces them, and none of them works without a factor to remove.
+  await deleteRecoveryCodes(service, mfa.userId)
+  try {
+    // `others` keeps this session, which is the one the owner is holding. auth-js 2.112.2 sends
+    // `POST /logout?scope=others` and, for that scope only, leaves the local session in place.
+    const { error } = await supabase.auth.signOut({ scope: 'others' })
+    if (error) throw error
+  } catch (thrown) {
+    console.error('[auth] other sessions not revoked after a recovery code:', thrown)
+  }
+  await clearAttempts(mfa.userId)
+  logMfaEvent('recovery code used, factor removed', { userId: mfa.userId })
+
+  // Best effort, never allowed to block or undo the recovery above.
+  if (mfa.email) {
+    try {
+      await sendMfaRecoveryNotice({ to: mfa.email, usedAt: new Date() })
+    } catch (thrown) {
+      console.error('[auth] recovery notice email not sent:', thrown)
+    }
+  } else {
+    console.warn('[auth] recovery notice email not sent: account has no email', { userId: mfa.userId })
+  }
+
+  // Not re-enrolled silently: settings shows a prompt to set two-factor up again.
+  return redirect(RECOVERED_SETTINGS_PATH)
 }
 
 /** The escape hatch from `/verify`: ends the pending session and returns to /login. */

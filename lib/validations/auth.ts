@@ -42,3 +42,22 @@ export const totpCodeSchema = z.object({
 })
 
 export type TotpCodeInput = z.infer<typeof totpCodeSchema>
+
+const RECOVERY_CODE_MESSAGE = 'Enter a recovery code in the form XXXXX-XXXXX'
+
+/**
+ * A recovery code as typed: case-insensitive, with or without the dash or spaces. The output is
+ * the canonical 10-character Crockford base32 form (`0-9`, `A-Z` without `I L O U`), which is what
+ * gets hashed. Crockford's decoding rule maps the look-alikes a person might type for a digit
+ * (`I`/`L` → `1`, `O` → `0`), so a code read off paper still matches. Kept free of `node:crypto`
+ * because the `/verify` form imports it in the browser.
+ */
+export const recoveryCodeSchema = z.object({
+  code: z
+    .string({ required_error: RECOVERY_CODE_MESSAGE })
+    .transform((value) =>
+      value.toUpperCase().replace(/[\s-]/g, '').replace(/[IL]/g, '1').replace(/O/g, '0')
+    )
+    .pipe(z.string().regex(/^[0-9A-HJKMNP-TV-Z]{10}$/, RECOVERY_CODE_MESSAGE)),
+})
+export type RecoveryCodeInput = z.input<typeof recoveryCodeSchema>

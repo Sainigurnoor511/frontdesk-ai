@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import VerifyPage from './page'
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
 vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
-vi.mock('@/app/(auth)/actions', () => ({ cancelMfaChallenge: vi.fn() }))
+vi.mock('@/app/(auth)/actions', () => ({ cancelMfaChallenge: vi.fn(), redeemRecoveryCode: vi.fn() }))
 // The code form is a client component with its own test file; the branches under test here are
 // the three non-form ones.
 vi.mock('@/components/auth/verify-code-form', () => ({
@@ -127,6 +127,22 @@ describe('VerifyPage', () => {
 
     expect(screen.getByTestId('code-form')).toBeTruthy()
     expect(screen.getByText(/owner@example\.com/)).toBeTruthy()
+    expect(screen.getByRole('button', { name: /use a different account/i })).toBeTruthy()
+  })
+
+  it('offers a recovery code instead of the authenticator code', async () => {
+    await mockSupabase({
+      user: { id: 'u1', email: 'owner@example.com', factors: [totpFactor] },
+      currentLevel: 'aal1',
+    })
+    render(await VerifyPage())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use a recovery code instead' }))
+
+    expect(screen.getByRole('heading').textContent).toBe('Enter a recovery code')
+    expect(screen.getByLabelText('Recovery code')).toBeTruthy()
+    expect(screen.queryByTestId('code-form')).toBeNull()
+    // The cancel form stays reachable on both methods.
     expect(screen.getByRole('button', { name: /use a different account/i })).toBeTruthy()
   })
 })

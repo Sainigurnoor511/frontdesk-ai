@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes } from 'node:crypto'
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_LENGTH = 16
@@ -22,6 +22,19 @@ export function encrypt(text: string): string {
   const authTag = cipher.getAuthTag()
 
   return Buffer.concat([iv, authTag, encrypted]).toString('base64')
+}
+
+/**
+ * HMAC-SHA256 of `value`, hex-encoded, for storing a lookup token (such as a recovery code) that
+ * must be matchable but never stored in plaintext. Keyed from `ENCRYPTION_KEY` like `encrypt()`,
+ * so the database alone cannot test candidates, but through a per-`purpose` subkey
+ * (`HMAC(key, "frontdesk:<purpose>")`) so the AES key itself is never used as a MAC key and one
+ * purpose's hashes are useless for another. Only for high-entropy values: a fast keyed hash is
+ * no defence for anything guessable.
+ */
+export function keyedHash(purpose: string, value: string): string {
+  const subkey = createHmac('sha256', getEncryptionKey()).update(`frontdesk:${purpose}`).digest()
+  return createHmac('sha256', subkey).update(value, 'utf8').digest('hex')
 }
 
 export function decrypt(encryptedData: string): string {
