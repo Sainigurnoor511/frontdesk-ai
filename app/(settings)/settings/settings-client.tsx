@@ -12,6 +12,7 @@ import {
   User,
   Bell,
   Eye,
+  ShieldAlert,
 } from 'lucide-react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -73,8 +74,14 @@ import {
   enrollTotpFactor,
   verifyTotpEnrollment,
   unenrollTotpFactor,
+  regenerateRecoveryCodes,
   type TotpEnrollment,
 } from './actions'
+import { RecoveryCodesDialog } from '@/components/auth/recovery-codes-dialog'
+
+// Mirrors `RECOVERY_CODE_COUNT` in `lib/auth/recovery-codes.ts`, which imports `node:crypto` and
+// so cannot be pulled into this client bundle.
+const RECOVERY_CODE_COUNT = 10
 
 type Tab = 'account' | 'notifications' | 'features'
 
@@ -92,6 +99,8 @@ export function SettingsClient({
   initialTab,
   initialTotpEnabled,
   initialTotpFactorId,
+  initialRecoveryCodesRemaining,
+  mfaRecovered,
 }: {
   email: string
   orgName: string
@@ -100,6 +109,9 @@ export function SettingsClient({
   initialTab?: string
   initialTotpEnabled: boolean
   initialTotpFactorId: string | null
+  initialRecoveryCodesRemaining: number | null
+  /** Arrived from `/verify` after redeeming a recovery code, which removed the factor. */
+  mfaRecovered: boolean
 }) {
   const activeTab: Tab = NAV_ITEMS.some((item) => item.value === initialTab)
     ? (initialTab as Tab)
@@ -159,6 +171,8 @@ export function SettingsClient({
                 settings={settings}
                 initialTotpEnabled={initialTotpEnabled}
                 initialTotpFactorId={initialTotpFactorId}
+                initialRecoveryCodesRemaining={initialRecoveryCodesRemaining}
+                mfaRecovered={mfaRecovered}
               />
             )}
             {activeTab === 'notifications' && <NotificationsTab settings={settings} />}
@@ -177,11 +191,15 @@ function AccountTab({
   settings,
   initialTotpEnabled,
   initialTotpFactorId,
+  initialRecoveryCodesRemaining,
+  mfaRecovered,
 }: {
   email: string
   settings: OrganizationSettings
   initialTotpEnabled: boolean
   initialTotpFactorId: string | null
+  initialRecoveryCodesRemaining: number | null
+  mfaRecovered: boolean
 }) {
   const [language, setLanguage] = useState(settings.language)
   const [isPending, startTransition] = useTransition()
@@ -195,6 +213,13 @@ function AccountTab({
   const [isVerifying, setIsVerifying] = useState(false)
   const [disable2faOpen, setDisable2faOpen] = useState(false)
   const [isDisabling2fa, setIsDisabling2fa] = useState(false)
+  const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState(
+    initialRecoveryCodesRemaining
+  )
+  // Plaintext codes exist only here, between issue and the dialog closing.
+  const [shownRecoveryCodes, setShownRecoveryCodes] = useState<string[] | null>(null)
+  const [regenerateOpen, setRegenerateOpen] = useState(false)
+  const [isRegenerating, setIsRegenerating] = useState(false)
 
   const dirty = language !== settings.language
 
@@ -256,7 +281,31 @@ function AccountTab({
     setTotpEnabled(true)
     setTotpFactorId(enrollment.factorId)
     setEnrollment(null)
-    toast.success('Two-factor authentication is enabled.')
+    if (result.recoveryCodes) {
+      setRecoveryCodesRemaining(result.recoveryCodes.length)
+      setShownRecoveryCodes(result.recoveryCodes)
+      toast.success('Two-factor authentication is enabled.')
+    } else {
+      setRecoveryCodesRemaining(0)
+      toast.warning(
+        'Two-factor authentication is enabled, but recovery codes could not be generated. Generate them from this page.'
+      )
+    }
+  }
+
+  async function handleGenerateRecoveryCodes() {
+    setIsRegenerating(true)
+    const result = await regenerateRecoveryCodes()
+    setIsRegenerating(false)
+    setRegenerateOpen(false)
+
+    if ('error' in result) {
+      toast.error(result.error)
+      return
+    }
+
+    setRecoveryCodesRemaining(result.recoveryCodes.length)
+    setShownRecoveryCodes(result.recoveryCodes)
   }
 
   async function handleDisable2fa() {
@@ -273,6 +322,7 @@ function AccountTab({
 
     setTotpEnabled(false)
     setTotpFactorId(null)
+    setRecoveryCodesRemaining(null)
     toast.success('Two-factor authentication is disabled.')
   }
 
@@ -305,6 +355,54 @@ function AccountTab({
           <p className="text-sm text-muted-foreground">
             Add an extra layer of security to your account using an authenticator app.
           </p>
+          {mfaRecovered && !totpEnabled && (
+            <p
+              role="status"
+              className="flex items-start gap-2 rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning"
+            >
+              <ShieldAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+              You signed in with a recovery code, so two-factor authentication was removed and your
+              other sessions were signed out. Set it up again to keep your account protected.
+            </p>
+          )}
+          {totpEnabled && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="label-mono text-muted-foreground">Recovery codes</span>
+                {recoveryCodesRemaining !== null && (
+                  <span className="font-mono text-xs text-muted-foreground">
+                    {recoveryCodesRemaining} of {RECOVERY_CODE_COUNT} unused
+                  </span>
+                )}
+              </div>
+              {recoveryCodesRemaining === 0 ? (
+                <div className="space-y-2 rounded-md bg-warning-subtle px-3 py-2 text-sm text-warning">
+                  <p>
+                    You have no recovery codes. Generate a set so a lost phone does not lock you
+                    out of your account.
+                  </p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGenerateRecoveryCodes}
+                    disabled={isRegenerating}
+                  >
+                    {isRegenerating ? 'Generating…' : 'Generate recovery codes'}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setRegenerateOpen(true)}
+                >
+                  Regenerate recovery codes
+                </Button>
+              )}
+            </div>
+          )}
         </div>
         {totpEnabled ? (
           <Button
@@ -393,6 +491,28 @@ function AccountTab({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <RecoveryCodesDialog
+        codes={shownRecoveryCodes}
+        onClose={() => setShownRecoveryCodes(null)}
+      />
+
+      <AlertDialog open={regenerateOpen} onOpenChange={setRegenerateOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate recovery codes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your current recovery codes will stop working, including any you have saved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRegenerating}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleGenerateRecoveryCodes} disabled={isRegenerating}>
+              {isRegenerating ? 'Generating…' : 'Regenerate codes'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={disable2faOpen} onOpenChange={setDisable2faOpen}>
         <AlertDialogContent>

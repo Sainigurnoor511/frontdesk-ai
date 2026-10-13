@@ -10,7 +10,14 @@ import {
   sendPasswordResetEmail,
 } from './actions'
 
-vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn() }))
+vi.mock('@/lib/supabase/server', () => ({ createClient: vi.fn(), createServiceRoleClient: vi.fn(() => ({})) }))
+// The recovery-code store is covered in recovery-codes.test.ts against an in-memory table; here it
+// is only a dependency whose result the actions pass through.
+vi.mock('@/lib/auth/recovery-codes', () => ({
+  issueRecoveryCodes: vi.fn(async () => ({ codes: ['AAAAA-BBBBB'] })),
+  countUnusedRecoveryCodes: vi.fn(async () => 7),
+  deleteRecoveryCodes: vi.fn(async () => true),
+}))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 const totpFactor = { id: 'factor-1', factor_type: 'totp', status: 'verified' }
@@ -226,7 +233,10 @@ describe('two-factor settings actions — provider results', () => {
   it('verifyTotpEnrollment succeeds on a valid code', async () => {
     const { challengeAndVerify } = await mockSupabase(NO_FACTOR)
 
-    expect(await verifyTotpEnrollment('factor-1', '123456')).toEqual({ success: true })
+    expect(await verifyTotpEnrollment('factor-1', '123456')).toEqual({
+      success: true,
+      recoveryCodes: ['AAAAA-BBBBB'],
+    })
     expect(challengeAndVerify).toHaveBeenCalledWith({ factorId: 'factor-1', code: '123456' })
   })
 
@@ -248,7 +258,11 @@ describe('two-factor settings actions — provider results', () => {
     })
     await mockSupabase({ ...ELEVATED, listFactors })
 
-    expect(await getTotpFactorStatus()).toEqual({ enabled: true, factorId: 'factor-1' })
+    expect(await getTotpFactorStatus()).toEqual({
+      enabled: true,
+      factorId: 'factor-1',
+      recoveryCodesRemaining: 7,
+    })
   })
 
   it('getTotpFactorStatus reports disabled when no verified totp factor exists', async () => {
@@ -258,14 +272,22 @@ describe('two-factor settings actions — provider results', () => {
     })
     await mockSupabase({ ...NO_FACTOR, listFactors })
 
-    expect(await getTotpFactorStatus()).toEqual({ enabled: false, factorId: null })
+    expect(await getTotpFactorStatus()).toEqual({
+      enabled: false,
+      factorId: null,
+      recoveryCodesRemaining: null,
+    })
   })
 
   it('getTotpFactorStatus reports disabled when listFactors errors', async () => {
     const listFactors = vi.fn().mockResolvedValue({ data: null, error: { message: 'boom' } })
     await mockSupabase({ ...ELEVATED, listFactors })
 
-    expect(await getTotpFactorStatus()).toEqual({ enabled: false, factorId: null })
+    expect(await getTotpFactorStatus()).toEqual({
+      enabled: false,
+      factorId: null,
+      recoveryCodesRemaining: null,
+    })
     expect(listFactors).toHaveBeenCalled()
   })
 })
@@ -306,7 +328,11 @@ describe('two-factor settings actions — pending session', () => {
   it('reports no factor rather than listing the real ones', async () => {
     const { listFactors } = await mockSupabase(PENDING)
 
-    expect(await getTotpFactorStatus()).toEqual({ enabled: false, factorId: null })
+    expect(await getTotpFactorStatus()).toEqual({
+      enabled: false,
+      factorId: null,
+      recoveryCodesRemaining: null,
+    })
     expect(listFactors).not.toHaveBeenCalled()
   })
 
