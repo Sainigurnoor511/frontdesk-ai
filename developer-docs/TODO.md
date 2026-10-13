@@ -206,30 +206,43 @@ both surfaces.
 
 ## P1 - Auth hardening
 
-Both items are the residual gaps of the TOTP login challenge (see Completed Recently), and both
-are **awaiting a product decision**, so neither has been started.
+Residual gaps and follow-ups of the TOTP login challenge and its recovery codes (see Completed
+Recently).
 
-- [ ] **RLS does not require `aal2`** (added: 2026-10-13) — a pending session's `aal1` access
+- [ ] **RLS does not require `aal2`** (added: 2026-10-13; **deferred by product decision on
+      2026-10-13 ("not for now")**, still open) — a pending session's `aal1` access
       token is an ordinary valid token in browser-readable cookies, and every member-scoped
       policy in `supabase/migrations/` authorizes on membership alone. Someone holding only
       the password can therefore skip the app and read or write the organization's data
-      through PostgREST with the publishable key, which the Next-side gate cannot see. Held
-      for the product owner because the fix is a migration and CI applies migrations to
-      production on merge to `main`. Context for the decision, not a commitment: Supabase's
+      through PostgREST with the publishable key, which the Next-side gate cannot see. The
+      product owner chose not to do it for now; it needed their call because the fix is a
+      migration and CI applies migrations to production on merge to `main`. Context for
+      picking it back up, not a commitment: Supabase's
       MFA guide ("Enforce only for users that have opted-in",
       https://supabase.com/docs/guides/auth/auth-mfa) documents a `restrictive` policy that
       demands `aal2` only when `auth.mfa_factors` holds a verified factor for `auth.uid()` and
       accepts `aal1` or `aal2` otherwise, so users without MFA are not locked out. It would
       go on every member-scoped table, leaving the public booking reads and the service-role
       paths alone, and its cost is one `auth.mfa_factors` lookup per policy evaluation.
-- [ ] **No recovery path for a lost authenticator** (added: 2026-10-13) — `unenrollTotpFactor`
-      requires a satisfied gate (correctly: it is the one action that removes the second
-      factor), so a user without their device cannot remove it, and there is no in-app way
-      back. Options for the decision: recovery codes issued at enrolment, or an
-      email-verified unenroll. Until one ships, recovery is the operator procedure in
-      `developer-docs/ARCHITECTURE.md` (Auth Flow): delete the user's factor with the admin
-      API from a service-role context, then have them sign in and enrol again. The same
-      procedure clears an account stuck on a non-TOTP factor, which `/verify` now explains.
+- [ ] **End-to-end test for `/reset-password` with `flow=recovery`** (added: 2026-10-13) —
+      the reset journey (request a link, open it at `/callback?flow=recovery`, the code step
+      for an MFA user, choose a password) is covered only by unit tests of each piece
+      (`callback/route.test.ts`, `reset-password/page.test.tsx`, `actions.test.ts`). No
+      Playwright spec drives it through a real mailbox link.
+- [ ] **Live-GoTrue test that the recovery `amr` entry survives the `aal2` upgrade** (added:
+      2026-10-13) — `verifyMfaChallenge` sends a recovering session on to `/reset-password`
+      because GoTrue keeps the `recovery` `amr` entry next to the new `totp` one after
+      `mfa.verify()`. That is verified only against mocks; if a GoTrue version drops it, an
+      MFA user's reset would land on the dashboard instead of the password form.
+- [ ] **One Redis `connect` listener per cold-start waiter in `lib/auth/mfa-attempts.ts`**
+      (added: 2026-10-13) — `transportOpen()` adds a `connect` listener for every caller that
+      arrives while the first connect is in flight, so a burst at boot adds one listener per
+      request (and can trip Node's max-listeners warning). Fan out through one shared promise
+      instead.
+- [ ] **The best-effort budget refill is awaited inline on the `/callback` redirect** (added:
+      2026-10-13) — `clearAttemptsAfterRecovery()` runs before the recovery redirect is
+      returned, so a slow Redis adds up to its connect and command bounds (3s + 1s) to opening
+      a reset link, although the refill's outcome never changes where the user is sent.
 
 ## P2 - UX + Platform
 
@@ -284,6 +297,18 @@ are **awaiting a product decision**, so neither has been started.
 
 ## Completed Recently
 
+- [x] **Recovery codes for a lost authenticator** (2026-10-13, branch
+      `feat/totp-login-challenge`) — replaces "No recovery path for a lost authenticator".
+      Ten single-use codes (50 bits each, Crockford base32) are issued when TOTP is enrolled
+      and can be regenerated in settings, which also shows how many are left and prompts
+      users enrolled earlier to generate a set. Stored as HMAC-SHA256 under a subkey of
+      `ENCRYPTION_KEY` in the service-role-only `mfa_recovery_codes` table (migration `048`).
+      `/verify` offers "Use a recovery code instead": the code spends the same five-attempt
+      budget as a TOTP guess, is consumed by a conditional update so it works once, removes
+      the TOTP factor, deletes the remaining codes, signs out the other sessions, and sends
+      the user to settings to set two-factor up again, with a best-effort security email.
+      Email-verified unenroll was decided against (it would make two-factor only as strong as
+      the mailbox). The operator runbook stays as the fallback for a user with no codes left.
 - [x] **Enforce TOTP at login** (2026-10-13, branch `feat/totp-login-challenge`) — a session
       holding a verified factor but no `aal2` claim is pending: `logIn` and the OAuth callback
       send it to the new `/verify` challenge screen, `proxy.ts` refuses it on every non-exempt
@@ -295,8 +320,8 @@ are **awaiting a product decision**, so neither has been started.
       outage. Code attempts are budgeted in Redis (5 per user per 10 minutes), reserved
       atomically before the code reaches Supabase, on a dedicated bounded client that fails
       closed when Redis is down. Teardown signs out `local`, never `global`. An account whose
-      only factor is not TOTP gets an explanation instead of a loop. Residual gaps are the
-      two P1 "Auth hardening" items.
+      only factor is not TOTP gets an explanation instead of a loop. The lost-authenticator
+      gap was closed by recovery codes (above); the RLS item in P1 "Auth hardening" remains.
 - [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
       receptionist promised a human handoff it had no tool to perform. The UI advertises
       transfers (the Transfer rules section on the agent detail page, the "Handoff to a

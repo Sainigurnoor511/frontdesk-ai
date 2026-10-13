@@ -393,12 +393,12 @@ Tests live next to the code they cover (`*.test.ts` / `*.test.tsx`). Server acti
 - [x] Public booking page with themes, templates, embed, reschedule/cancel
 - [x] Google, Microsoft, Cal.com, Calendly calendar sync
 - [x] Phone number provisioning, agent rules, language auto-detect, TOTP 2FA
+- [x] Enforce two-factor at login
 
 **Next**
 
 - [ ] Inbound phone calls (Twilio / Plivo → LiveKit SIP)
 - [ ] Answering modes and call routing enforcement
-- [ ] Enforce two-factor at login
 - [ ] Notification delivery and a notification center
 - [ ] End-to-end and load tests
 - [ ] Billing and plans for hosted deployments
