@@ -186,20 +186,60 @@ both surfaces.
 - [ ] **`notifications` rows are never deleted** (added: 2026-10-13, from the round-2
       notification-delivery review, issue 8) — **explicit decision: no retention job yet.**
       The growth driver is one row per delivered event per org (every completed call, every
-      booking, every reminder — plus one more per reschedule, since a moved appointment's
-      reminder is a new row and the old one is only marked `superseded_at`). Migration `047`
+      booking, every reminder). A reschedule adds a second reminder row only when an
+      earlier reminder already went out: a move before the reminder fires just replaces the
+      pending job, and only an already-delivered row is kept and marked `superseded_at`.
+      (Round-3 review, issue 9.) Migration `047`
       has no delete policy and nothing prunes, while the bell only ever reads the newest ten,
       so a long-lived org carries an ever-growing table behind its unread count and keeps
       delivery metadata indefinitely. Obvious fix when it matters: a scheduled job on the
       jobs worker that deletes read rows (and superseded ones) older than N days, service
       role only, batched per org.
 - [ ] **Run the RLS and grant tests against a real Postgres in CI** (added: 2026-10-13,
-      round-2 review, issue 9) — `lib/data/notifications-policies.test.ts` regex-matches
-      migration `047`'s SQL text; it cannot tell a correct-looking policy from a correct one.
-      Exercising the policies needs a CI job that boots Postgres (`supabase start` or a
-      service container), applies the migrations, and signs in as two members of different
-      orgs. That would cover every table's policies, not just this one, and there is no
-      build/test workflow at all yet (`.github/workflows/` runs migrations only).
+      round-2 review, issue 9; updated 2026-10-13, round-3 review, issues 5 and 10) —
+      `lib/data/notifications-policies.test.ts` regex-matches migration `047`'s SQL text; it
+      cannot tell a correct-looking policy from a correct one. RLS cannot restrict which
+      columns an update touches, so the `grant update (is_read)` column grant is the only
+      thing stopping a member from writing `email_sent_at`, `email_status`, `dedupe_key` or
+      `superseded_at`, and nothing exercises it at runtime. Needs a CI job that boots
+      Postgres (`supabase start` or a service container), applies the migrations, signs in
+      as members of two different orgs, and asserts cross-org reads fail and writes to any
+      column but `is_read` are rejected. That would cover every table's policies, not just
+      this one. **What CI has today:** `migrations.yml` pushes migrations on merge to `main`,
+      and `e2e.yml` runs the Playwright suite on manual dispatch only. There is no
+      PR-gating build, typecheck or unit-test workflow, and no database-backed RLS job.
+- [ ] **Record the booking source on the appointment row** (added: 2026-10-13, round-3
+      notification review, issue 4) — `getAppointmentSubject()` infers `publicBooking` from
+      three nullable columns (`agent_id` and `conversation_id` null, `client_id` set). That
+      holds for every current writer, but a future change that links dashboard bookings to a
+      client row would reclassify every staff booking as public and push its reminder email
+      into the anonymous-booking cap. Fix: persist the source (the value already passed to
+      `dispatchWebhook` at both call sites) and read it. Out of scope for the notification
+      branch because it needs a migration on the already-applied `appointments` table, which
+      CI would run in production on merge.
+- [ ] **The Resend idempotency key freezes the first recipient set** (added: 2026-10-13,
+      round-3 notification review, issue 6) — known behaviour, recorded rather than fixed.
+      The key is the notification id, and recipients are re-read on every attempt. If a
+      first submission reached Resend but its response was lost, the retry gets
+      `invalid_idempotent_request`. That is classified `already_sent` and the row is stamped,
+      so a member who joined in between never gets that email. Commented where the outcome is
+      classified (`lib/email/send-notification-email.ts`). Fix if it matters: put a
+      recipient-set fingerprint in the key so a changed member list makes a new submission.
+- [ ] **Notification email is org-wide only** (added: 2026-10-13, round-3 notification
+      review, issue 8) — known limitations, recorded as a design choice for now:
+      - No per-member preferences: every member gets every enabled type, and the only opt-out
+        is an owner turning the type off for everybody. The in-app bell cannot be turned off
+        at all, so an org with all four toggles off still accumulates rows and unread count.
+      - `MAX_RECIPIENTS = 50` (`lib/data/notifications-service.ts`): above 50 members, the 50
+        oldest are mailed and the rest get nothing beyond a warning log line.
+      - No unsubscribe link in the email body.
+      Fix: a per-member preferences table read by `getOrgRecipients()`, a paged fan-out, and
+      an unsubscribe link (which per-member preferences are a prerequisite for).
+- [ ] **Debounce the notification center's focus refetch** (added: 2026-10-13, round-3
+      notification review, issue 11) — `components/layout/notification-center.tsx` refetches
+      through its server action on every window `focus`, so repeated alt-tabbing costs a
+      `getCurrentOrgAndUser()` plus two queries each time while the popover is closed. Keep
+      a last-fetched timestamp and skip refetches inside a short minimum interval.
 - [ ] **The LiveKit path ignores `filter_background_speech`** (added: 2026-10-13,
       investigated 2026-10-13 — see `.agents/tasks/filter-background-speech-livekit.md`) —
       honoured on the AssemblyAI path (`session-config.ts` sends `voice_focus` +
@@ -331,6 +371,18 @@ both surfaces.
       cannot swallow them; the reminder backfill writes its completion marker after the
       scan and locks with a short TTL; reminders from public-page bookings take the same
       hourly cap; and the badge caps at `9+`, the panel's page size.
+      Round-3 review (11 issues, 3 High, one root cause: durable delivery state lived only in
+      Redis) fixed: the one-time, marker-guarded backfill, which read 2,000 appointments and
+      marked itself done, is replaced by the `notification-sweep` job scheduler. Every 5
+      minutes it keyset-pages appointments with no row cap and installs near-term reminders
+      add-if-absent. Reminder jobs now exist in Redis only within 48h of firing, so a Redis
+      loss costs at most one interval. `notifications.email_status`
+      (`pending | sent | skipped | abandoned`) makes an owed email explicit, and the sweep
+      re-queues `pending` rows on a bounded backoff, then abandons them loudly, so a
+      misconfigured Resend key, a permanent error or exhausted cap deferrals no longer strand
+      an email silently. An opted-out org's `skipped` rows are never swept. Redis runs with
+      AOF and `noeviction` in compose. `REMINDER_LEAD_MS` has one definition. Issues 4, 5, 6,
+      8 and 11 are backlogged above.
 - [x] **Added the `take_message` voice tool** (2026-10-13) — closes the gap where the
       receptionist promised a human handoff it had no tool to perform. The UI advertises
       transfers (the Transfer rules section on the agent detail page, the "Handoff to a

@@ -100,6 +100,7 @@ export async function sendNotificationEmails(
 
     if (error) {
       const message = `Failed to send notification email: ${error.message}`
+      // Known limit: the key freezes the first submission's recipients; members added since miss it.
       if (ALREADY_SENT_CODES.has(error.name)) return { status: 'already_sent', message }
       if (PERMANENT_CODES.has(error.name)) return { status: 'permanent', message }
       return { status: 'retry', message }

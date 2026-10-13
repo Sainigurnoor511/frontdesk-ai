@@ -187,7 +187,7 @@ The pattern is about *which rows*, not which columns, so a table the app writes 
 | `_044` | Agent `voice_provider` (`livekit` \| `assemblyai`), conversation `assemblyai_session_id` |
 | `_045` | `reschedule_appointment_atomic()` — locks, re-checks the confirmed start, and re-checks the destination for overlaps in one transaction |
 | `_046` | Caller message `urgency` + `source` (`agent_escalation` \| `call_followup`) |
-| `_047` | `notifications` (dedupe index, delivery lease columns, `superseded_at` for moved reminders, member-facing select plus a column-level `is_read` update grant — no insert or delete policy), `appointments_conversation_id_idx` |
+| `_047` | `notifications` (dedupe index, delivery lease columns, `email_status` + sweep counters, `superseded_at` for moved reminders, member-facing select plus a column-level `is_read` update grant — no insert or delete policy), `appointments_conversation_id_idx`, `appointments_reminder_sweep_idx` |
 
 Apply with `npx supabase db push`. CI applies them on merge to `main` (see [CI](#ci)).
 
@@ -303,15 +303,22 @@ One process hosting every queue, with per-queue concurrency:
 | `knowledge-indexing` | 1 | Chunks and embeds knowledge sources and FAQs |
 | `webhook-deliver` | 5 | Delivers outbound webhooks to an org's endpoint (3 attempts, exponential backoff) |
 | `assemblyai-session-finalize` | 5 | Pulls transcript and recording for a finished AssemblyAI call |
-| `notification-deliver` | 2 | Writes a `notifications` row (always) and emails the org's members (when the type's `notify_*` email preference is on). Also carries the 24h-before appointment reminder as a delayed job |
+| `notification-deliver` | 2 | Writes a `notifications` row (always) and emails the org's members (when the type's `notify_*` email preference is on). Also carries the 24h-before appointment reminder as a delayed job, and the `notification-sweep` job scheduler (every 5 min) that rebuilds both from Postgres |
 
 Handlers live in `lib/queue/processors/*.ts`; producers in `lib/queue/queues/*.ts` are built with `lazyQueue()` (`lib/queue/lazy-queue.ts`), which defers the Redis connection until the first `add()` so importing a queue never opens a socket. `workers/jobs.ts` only wires processors to queues and owns graceful shutdown (SIGINT/SIGTERM close each Worker so in-flight jobs finish). The two queues at concurrency 1 are the CPU-bound ones (crawling, embedding) — raising them would stall the other queues in the shared event loop.
 
 Set `WORKER_QUEUES` to a comma-separated subset to split a queue onto its own container without touching code. Unset runs everything; an unknown name fails startup loudly.
 
-`notification-deliver` is the one queue that uses fixed job ids (`notify:<type>:<subject>`), so a job parked under that id — delayed, failed, or completed — makes a later `add()` a no-op. Install through `addNotificationJob()` (`lib/queue/queues/notification.ts`), never `notificationQueue.add()` directly: it clears the stale job first, which is what makes a rescheduled appointment's reminder move. Cap deferrals (`notify:<type>:<subject>:deferN`) go through it too. The booting process also runs `reconcileAppointmentReminders()` once, to schedule reminders for appointments that predate the feature: a short-TTL Redis lock keeps two containers from scanning together, and the completion marker is written only after the scan, so a worker killed mid-scan re-runs it on the next boot.
+`notification-deliver` is the one queue that uses fixed job ids (`notify:<type>:<subject>`), so a job parked under that id — delayed, failed, or completed — makes a later `add()` a no-op. Install through `addNotificationJob()` (`lib/queue/queues/notification.ts`), never `notificationQueue.add()` directly: it clears the stale job first, which is what makes a rescheduled appointment's reminder move. Cap deferrals (`notify:<type>:<subject>:deferN`) and sweep re-queues (`…:sweepN`) go through it too. Reminders are the exception: `ensureAppointmentReminderJob()` is add-if-absent, so a job already installed for the same start (compared by the `<id>:<start>` dedupe key) is never reset, and one for an earlier start is replaced; the id stays fixed per appointment, so a moved appointment never holds two jobs.
 
-The four `notify_*` toggles control **email only**; the in-app row is always written. The processor claims the row first and reads the preference after, at delivery time (see the decision comment there). A reminder's dedupe key is `<appointment id>:<start ISO>`, so a moved appointment earns a second reminder; claiming it sets `superseded_at` on the rows for earlier times, which the bell and the unread badge filter out. Booking notifications are dispatched where the appointment is written — the dashboard action, and `createAppointmentServiceRole()` for the public page and the `book_appointment` voice tool — and the call-end seam re-dispatches as an idempotent backstop. The `client_booking` email, and the reminder email for a public-page booking, are capped at 20 per org per hour (separate windows); a capped email is deferred past the window, not dropped.
+**Postgres is the source of truth; Redis holds only the near window.** A reminder job exists in Redis only once its fire time is within 48 hours (`REMINDER_LOOKAHEAD_MS`); further out, the appointment row is the only record. The `notification-sweep` job scheduler (`lib/notifications/sweep.ts`, registered by `workers/jobs.ts` on boot and on every Redis reconnect) runs every 5 minutes on this queue, so any container hosting `notification-deliver` runs it. Each run is idempotent and has no completion marker:
+
+- **Reminders:** keyset-pages (`starts_at`, then `id`, no row cap) every non-cancelled appointment whose fire time falls between 30 minutes ago and 48 hours ahead, and installs its job add-if-absent. A booking made inside the 24h lead is still never reminded. Normally a reminder fires on time, because its job is installed up to two days ahead. **Worst case after a Redis loss: one sweep interval late, 5 minutes plus queue latency.** A fire time that passed more than 30 minutes before the next successful sweep is skipped.
+- **Emails:** re-queues `pending` rows older than 15 minutes that are not leased and have no waiting or running job (the original, a `:deferN`, or the last `:sweepN`), through the normal claim, lease and idempotency-key path. Re-queues back off (15m, 30m, 1h, 2h, 4h, 4h). After 6 the row becomes `abandoned` and an `ABANDONED` line is logged at error level. The schedule ends about 16 hours after the row was written, inside Resend's 24-hour idempotency window. Every run logs the `pending` and `abandoned` totals.
+
+The four `notify_*` toggles control **email only**; the in-app row is always written. The processor claims the row first and reads the preference after, at delivery time (see the decision comment there). A reminder's dedupe key is `<appointment id>:<start ISO>`. A move before the reminder fires just replaces the pending job, so it ends as one row. Only when an earlier reminder already went out does the move earn a second reminder and a second row. Claiming that row sets `superseded_at` on the rows for earlier times, which the bell and the unread badge filter out. Booking notifications are dispatched where the appointment is written — the dashboard action, and `createAppointmentServiceRole()` for the public page and the `book_appointment` voice tool — and the call-end seam re-dispatches as an idempotent backstop. The `client_booking` email, and the reminder email for a public-page booking, are capped at 20 per org per hour (separate windows). A capped email is deferred past the window up to 3 times. After that it stays `pending` and the sweep owns it, so it can end `abandoned` after the sweep's 6 retries. It is not guaranteed to be sent.
+
+`notifications.email_status` makes "still owed" explicit: `pending` is the only state the sweep acts on. `sent` (Resend accepted it, `email_sent_at` stamped), `skipped` (preference off at delivery, no resolvable recipients, or a cancelled, started or superseded reminder) and `abandoned` (sweep retries exhausted) are terminal. That is why an org that switched an email off is never mailed by a retry.
 
 Notification emails are claimed in two steps. `email_claimed_at` / `email_claim_token` are an expiring lease taken before the Resend call; `email_sent_at` is written only after the provider accepts. A worker that dies in between leaves a row that is still deliverable, and the retry re-submits under the same idempotency key (the notification id), so the provider dedupes it. Marking the row sent before the call is what previously lost an email with nothing able to detect it. Resend keeps idempotency keys for 24 hours, which bounds that guarantee: if the post-send `email_sent_at` write itself keeps failing, a re-install of the same job more than a day later would send once more.
 
@@ -330,6 +337,8 @@ Notification emails are claimed in two steps. `email_claimed_at` / `email_claim_
 ### Redis Connection
 
 `lib/queue/connection.ts` — single `ioredis` instance, configured via `REDIS_URL`.
+
+Run the queue's Redis with AOF persistence (`appendonly yes`) and `maxmemory-policy noeviction`. `docker-compose.yml` sets both. BullMQ requires `noeviction`, because an evicted key is a silently lost job. AOF keeps the writes an RDB-only Redis would lose on an unclean stop. Neither makes Redis the record of anything: if Redis loses its data anyway, the worker re-registers the notification sweep on reconnect, and the sweep rebuilds the near-window reminders and re-queues owed emails from Postgres within one interval. See [`jobs.ts`](#jobsts-bullmq--all-queues).
 
 ---
 
@@ -516,6 +525,7 @@ Last recorded 2026-10-13, on `feat/notification-delivery` after merging `main` a
 - `next.config.ts` has `output: "standalone"`; `scripts/prepare-standalone.ts` (postbuild) copies `public/` and `.next/static` into the standalone dir so `pnpm start` works locally
 - `NEXT_PUBLIC_*` vars passed as build args (baked into client JS at build time)
 - `REDIS_URL` overridden in compose to `redis://redis:6379/0` (containers use Docker DNS, not localhost)
+- The `redis` service runs `redis-server --appendonly yes --maxmemory-policy noeviction`, persisted to the `redis-data` volume
 - nginx uses `resolver 127.0.0.11` (Docker DNS) for dynamic upstream resolution
 - Static asset caching via `proxy_cache_path` with persistent volume
 - Workers run TypeScript directly with `node --import tsx`
@@ -530,7 +540,11 @@ docker compose --env-file .env.local up --build
 
 ## CI
 
-`.github/workflows/migrations.yml` runs `supabase db push --linked` on pushes to `main` that touch `supabase/migrations/**` or `supabase/config.toml` (also manual dispatch). Requires repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`. There is no build/test workflow yet.
+`.github/workflows/migrations.yml` runs `supabase db push --linked` on pushes to `main` that touch `supabase/migrations/**` or `supabase/config.toml` (also manual dispatch). Requires repo secrets `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `SUPABASE_DB_PASSWORD`.
+
+`.github/workflows/e2e.yml` runs the Playwright suite (`pnpm test:e2e`) on manual dispatch only. It does not gate pull requests.
+
+What CI does not have: no PR-gating workflow runs the build, typecheck or unit tests, and no job applies migrations to a live Postgres to exercise RLS policies and column grants.
 
 ---
 
@@ -543,7 +557,7 @@ docker compose --env-file .env.local up --build
 | `SUPABASE_SECRET_KEY` | Yes | App, workers | Service-role key (bypasses RLS) |
 | `NEXT_PUBLIC_SITE_URL` | Yes | App, jobs worker | Base URL, e.g. `http://localhost:3000`. Inlined at build time inside Next, but an ordinary runtime variable in the jobs worker, which asserts it before sending a notification email (an unset value would mail `localhost` call-to-action links) |
 | `ENCRYPTION_KEY` | For calendar sync | App, workers | Key material for `lib/crypto.ts` (AES-256-GCM OAuth token storage) |
-| `REDIS_URL` | Yes | App, workers | Redis connection for BullMQ |
+| `REDIS_URL` | Yes | App, workers | Redis connection for BullMQ. The instance must run `maxmemory-policy noeviction` (BullMQ requires it) and should run `appendonly yes`. Compose sets both. A Redis data loss is recovered by the notification sweep, see [Redis Connection](#redis-connection) |
 | `WORKER_QUEUES` | No | Jobs worker | Comma-separated subset of queues to run |
 | `GROQ_API_KEY` | Yes | App, workers | Groq — STT, conversation LLM, extraction, assistant |
 | `GROQ_ASSISTANT_MODEL` | No | App | Model for the in-app assistant |
